@@ -108,7 +108,7 @@ public class IslandManager {
     }
 
     private void generateBiomeDecorations(World world, int x, int y, int z, Biome biome) {
-        // Simple biome decorations (expand as needed)
+        // TODO: Expand with better biome-specific generation later
     }
 
     private void placeStarterChest(World world, int x, int y, int z, World.Environment dimension) {
@@ -148,7 +148,6 @@ public class IslandManager {
 
         Map<?, ?> trade = trades.get(tradeIndex);
 
-        // Safer extraction - this fixes the red underline
         Object levelObj = trade.get("level");
         int requiredLevel = levelObj instanceof Number ? ((Number) levelObj).intValue() : 1;
 
@@ -158,8 +157,8 @@ public class IslandManager {
             return;
         }
 
-        // TODO: Add real item exchange logic here later
-        player.sendMessage("§aTrade completed! (Level " + island.getLevel() + ")");
+        // TODO: Implement actual item exchange logic
+        player.sendMessage("§aTrade completed successfully!");
     }
 
     // ====================== LEVELING ======================
@@ -223,7 +222,9 @@ public class IslandManager {
         Island island = getIsland(ownerUuid, World.Environment.NORMAL);
         if (island == null) return false;
         boolean removed = island.getParty().removeMember(memberUuid);
-        if (removed) playerToIsland.getOrDefault(memberUuid, new EnumMap<>(World.Environment.class)).remove(World.Environment.NORMAL);
+        if (removed) {
+            playerToIsland.getOrDefault(memberUuid, new EnumMap<>(World.Environment.class)).remove(World.Environment.NORMAL);
+        }
         return removed;
     }
 
@@ -233,16 +234,22 @@ public class IslandManager {
         return island.getParty().setRank(setterUuid, targetUuid, newRank);
     }
 
+    public void inviteToParty(Player inviter, String targetName) {
+        // TODO: Full invite system (with pending invites map)
+        Player target = Bukkit.getPlayer(targetName);
+        if (target != null) {
+            target.sendMessage("§a" + inviter.getName() + " invited you to their island party!");
+        }
+    }
+
+    public void acceptPartyInvite(Player player) {
+        // TODO: Implement with pending invites
+        player.sendMessage("§aYou joined the party!");
+    }
+
     // ====================== DB LOADING ======================
     public void loadIslandData() {
-        plugin.getLogger().info("§eIsland data loaded into cache.");
-    }
-
-    public CompletableFuture<Boolean> inviteToParty(Player inviter, String targetName) {
-        return CompletableFuture.completedFuture(true);
-    }
-
-    public CompletableFuture<Boolean> acceptPartyInvite(Player player) {
-        return CompletableFuture.completedFuture(true);
+        // TODO: Load from database into caches on startup / player join
+        plugin.getLogger().info("§aIsland data loaded into cache.");
     }
 }

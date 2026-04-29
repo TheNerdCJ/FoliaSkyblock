@@ -7,11 +7,9 @@ import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.economy.EconomyManager;
 import com.thenerdcj.island.GridManager;
 import com.thenerdcj.island.IslandManager;
-import com.thenerdcj.listener.AntiCheatListener;
-import com.thenerdcj.listener.CombatListener;
-import com.thenerdcj.listener.DimensionIslandListener;
-import com.thenerdcj.listener.IslandProtectionListener;
+import com.thenerdcj.listener.*;
 import com.thenerdcj.rank.RankManager;
+import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.WorldType;
@@ -28,17 +26,29 @@ public class FoliaSkyblock extends JavaPlugin {
     private RankManager rankManager;
     private AntiCheatManager antiCheatManager;
 
+    // Folia detection
+    private boolean isFolia = false;
+
     @Override
     public void onEnable() {
         instance = this;
 
-        // Save all custom configuration files
-        saveDefaultConfig();                    // config.yml
-        saveResource("ranks.yml", false);       // ranks.yml
-        saveResource("anticheat.yml", false);   // anticheat.yml
-        saveResource("trades.yml", false);      // trades.yml
+        // Detect Folia at runtime
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            isFolia = true;
+            getLogger().info("§aFolia detected! Running in regionized multithreaded mode.");
+        } catch (ClassNotFoundException e) {
+            getLogger().info("§ePaper/Spigot detected — Folia optimizations disabled.");
+        }
 
-        // Initialize managers
+        // Save all config files
+        saveDefaultConfig();
+        saveResource("ranks.yml", false);
+        saveResource("anticheat.yml", false);
+        saveResource("trades.yml", false);
+
+        // Initialize all managers
         this.databaseManager = new DatabaseManager(this);
         this.gridManager = new GridManager(this);
         this.islandManager = new IslandManager(this);
@@ -46,9 +56,10 @@ public class FoliaSkyblock extends JavaPlugin {
         this.rankManager = new RankManager(this);
         this.antiCheatManager = new AntiCheatManager(this);
 
-        // Register commands
-        getCommand("island").setExecutor(new IslandCommand(this));
-        getCommand("island").setTabCompleter((IslandCommand) getCommand("island").getExecutor());
+        // Register commands (cleaner way)
+        IslandCommand islandCmd = new IslandCommand(this);
+        getCommand("island").setExecutor(islandCmd);
+        getCommand("island").setTabCompleter(islandCmd);
 
         MiscCommand misc = new MiscCommand(this);
         getCommand("spawn").setExecutor(misc);
@@ -65,7 +76,7 @@ public class FoliaSkyblock extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new DimensionIslandListener(this), this);
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
 
-        // === CONDITIONAL ANTI-CHEAT REGISTRATION ===
+        // Conditional anti-cheat
         if (antiCheatManager.getConfig().getBoolean("enabled", true)) {
             getServer().getPluginManager().registerEvents(new AntiCheatListener(this), this);
             getLogger().info("§aAnti-Cheat + Anti-Bot system enabled.");
@@ -73,22 +84,21 @@ public class FoliaSkyblock extends JavaPlugin {
             getLogger().info("§eAnti-Cheat + Anti-Bot system is DISABLED (via anticheat.yml).");
         }
 
-        // Setup custom void worlds
+        // Setup custom void worlds (must be sync)
         setupSkyblockWorlds();
 
-        getLogger().info("§aFoliaSkyblock has been enabled successfully!");
+        getLogger().info("§aFoliaSkyblock enabled successfully! " + (isFolia ? "§b[Folia Mode]" : ""));
     }
 
     private void setupSkyblockWorlds() {
         createVoidWorld("skyblock", World.Environment.NORMAL);
         createVoidWorld("skyblock_nether", World.Environment.NETHER);
         createVoidWorld("skyblock_end", World.Environment.THE_END);
-
-        getLogger().info("§aAll three Skyblock worlds (Overworld, Nether, End) have been created.");
+        getLogger().info("§aAll three Skyblock worlds ready.");
     }
 
     private void createVoidWorld(String name, World.Environment env) {
-        if (getServer().getWorld(name) != null) return;
+        if (Bukkit.getWorld(name) != null) return;
 
         WorldCreator creator = new WorldCreator(name);
         creator.environment(env);
@@ -99,7 +109,6 @@ public class FoliaSkyblock extends JavaPlugin {
         World world = creator.createWorld();
         if (world != null) {
             world.setSpawnLocation(0, 100, 0);
-            getLogger().info("§aCreated custom world: " + name);
         }
     }
 
@@ -112,6 +121,10 @@ public class FoliaSkyblock extends JavaPlugin {
     // ====================== GETTERS ======================
     public static FoliaSkyblock getInstance() {
         return instance;
+    }
+
+    public boolean isFolia() {
+        return isFolia;
     }
 
     public DatabaseManager getDatabaseManager() {

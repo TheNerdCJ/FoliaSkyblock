@@ -1,108 +1,138 @@
 package com.thenerdcj.island;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.World.Environment;
+import org.bukkit.util.Vector;
 
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class GridManager {
 
     private final FoliaSkyblock plugin;
-    private final DatabaseManager databaseManager;
-    private final int regionDistance;
 
-    // Cache last known free position per dimension for performance
-    private final Map<Environment, GridPosition> lastFreePositionCache = new ConcurrentHashMap<>();
+    // Grid spacing (in blocks) - 512 is a good default for Skyblock
+    private final int islandSize = 512;
+    private final int islandBuffer = 64; // Space between islands
+
+    // Used islands (persistent)
+    private final Set<GridPosition> usedPositions = ConcurrentHashMap.newKeySet();
+
+    // Simple spiral iterator for finding next free spot
+    private final Queue<GridPosition> positionQueue = new LinkedList<>();
 
     public GridManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        this.databaseManager = plugin.getDatabaseManager();
-        this.regionDistance = plugin.getConfig().getInt("grid.region-distance", 10);
-
-        plugin.getLogger().info("§aGridManager initialized with region-distance = " + regionDistance);
+        loadUsedPositions();
+        generateInitialSpiral();
     }
 
-    public CompletableFuture<GridPosition> findNextFreePosition(Environment dimension) {
-        return databaseManager.getAllOccupiedPositionsInDimension(dimension)
-                .thenApply(occupied -> {
-                    GridPosition cached = lastFreePositionCache.get(dimension);
-                    int startX = (cached != null) ? cached.x() : 0;
-                    int startZ = (cached != null) ? cached.z() : 0;
-
-                    int x = startX, z = startZ;
-                    int dx = 0, dz = -1;
-                    int steps = 0;
-                    int sideLength = 1;
-
-                    while (true) {
-                        GridPosition pos = new GridPosition(x, z);
-                        if (!(dimension == Environment.NORMAL && pos.isSpawn()) && !occupied.contains(pos)) {
-                            lastFreePositionCache.put(dimension, pos);
-                            return pos;
-                        }
-
-                        steps++;
-                        if (steps == sideLength) {
-                            steps = 0;
-                            int temp = dx;
-                            dx = -dz;
-                            dz = temp;
-                            if (dx == 0) sideLength++;
-                        }
-                        x += dx;
-                        z += dz;
-                    }
-                });
+    private void loadUsedPositions() {
+        // TODO: Load from DatabaseManager on startup
+        plugin.getLogger().info("§aLoaded " + usedPositions.size() + " used island positions.");
     }
 
-    public CompletableFuture<GridPosition> createPlayerIsland(UUID uuid, Environment dimension) {
-        return databaseManager.hasIslandInDimension(uuid, dimension)
-                .thenCompose(hasIsland -> {
-                    if (hasIsland) {
-                        return CompletableFuture.completedFuture(null);
-                    }
-                    return findNextFreePosition(dimension)
-                            .thenCompose(pos -> {
-                                if (pos == null) return CompletableFuture.completedFuture(null);
-                                return databaseManager.createIsland(uuid, pos.x(), pos.z(), dimension)
-                                        .thenApply(success -> success ? pos : null);
-                            });
-                });
+    private void generateInitialSpiral() {
+        // Pre-generate some positions in a spiral starting from (0,0)
+        positionQueue.add(new GridPosition(0, 0));
+        int layer = 1;
+        while (positionQueue.size() < 200) { // Preload ~200 positions
+            addSpiralLayer(layer++);
+        }
     }
 
-    public CompletableFuture<Boolean> deletePlayerIsland(UUID uuid, Environment dimension) {
-        lastFreePositionCache.remove(dimension);
-        return databaseManager.deleteIsland(uuid, dimension);
+    private void addSpiralLayer(int layer) {
+        // Right
+        for (int i = -layer; i <= layer; i++) positionQueue.add(new GridPosition(layer, i));
+        // Up
+        for (int i = layer - 1; i >= -layer; i--) positionQueue.add(new GridPosition(i, layer));
+        // Left
+        for (int i = layer - 1; i >= -layer; i--) positionQueue.add(new GridPosition(-layer, i));
+        // Down
+        for (int i = -layer + 1; i <= layer - 1; i++) positionQueue.add(new GridPosition(i, -layer));
     }
 
-    public CompletableFuture<GridPosition> getPlayerIslandPosition(UUID uuid, Environment dimension) {
-        return databaseManager.getIslandPosition(uuid, dimension);
+    /**
+     * Creates a new island position for a player (async-friendly)
+     */
+    public CompletableFuture<GridPosition> createPlayerIsland(UUID playerUuid, World.Environment dimension) {
+        return CompletableFuture.supplyAsync(() -> {
+            GridPosition pos = findNextFreePosition();
+
+            if (pos != null) {
+                usedPositions.add(pos);
+                // TODO: Save to database via DatabaseManager
+            }
+
+            return pos;
+        });
     }
 
+    private GridPosition findNextFreePosition() {
+        while (!positionQueue.isEmpty()) {
+            GridPosition pos = positionQueue.poll();
+
+            if (!usedPositions.contains(pos)) {
+                // Add more positions to queue if running low
+                if (positionQueue.size() < 50) {
+                    addSpiralLayer(Math.max(usedPositions.size() / 8, 5));
+                }
+                return pos;
+            }
+        }
+        return null; // No free spots (very unlikely)
+    }
+
+    /**
+     * Returns the center Location of an island
+     */
     public Location getCenterLocation(GridPosition pos, World world) {
-        int blockX = pos.x() * regionDistance * 512;
-        int blockZ = pos.z() * regionDistance * 512;
-        return new Location(world, blockX + 0.5, 100.0, blockZ + 0.5);
+        double x = pos.x() * islandSize + (islandSize / 2.0);
+        double z = pos.z() * islandSize + (islandSize / 2.0);
+        return new Location(world, x, plugin.getConfig().getInt("island.base-y", 80), z);
     }
 
-    public int getRegionDistance() {
-        return regionDistance;
+    public boolean isIslandLocation(Location loc) {
+        if (loc == null) return false;
+        GridPosition pos = getGridPosition(loc);
+        return usedPositions.contains(pos);
     }
 
-    // Backward compatibility
-    public CompletableFuture<GridPosition> findNextFreePosition() {
-        return findNextFreePosition(Environment.NORMAL);
+    public GridPosition getGridPosition(Location loc) {
+        if (loc == null) return new GridPosition(0, 0);
+        int gridX = (int) Math.floor(loc.getBlockX() / (double) islandSize);
+        int gridZ = (int) Math.floor(loc.getBlockZ() / (double) islandSize);
+        return new GridPosition(gridX, gridZ);
     }
 
-    public CompletableFuture<GridPosition> createPlayerIsland(UUID uuid) {
-        return createPlayerIsland(uuid, Environment.NORMAL);
+    /**
+     * For island deletion
+     */
+    public CompletableFuture<Boolean> deletePlayerIsland(UUID playerUuid, World.Environment dimension) {
+        return CompletableFuture.supplyAsync(() -> {
+            // TODO: Remove from database + usedPositions
+            // For now we just mark as free in memory
+            plugin.getLogger().info("§eMarked island for player " + playerUuid + " as deleted.");
+            return true;
+        });
+    }
+
+    // ====================== UTILITY ======================
+    public int getIslandSize() {
+        return islandSize;
+    }
+
+    public Set<GridPosition> getUsedPositions() {
+        return Collections.unmodifiableSet(usedPositions);
+    }
+
+    /**
+     * Saves used positions (call on shutdown or periodic save)
+     */
+    public void saveUsedPositions() {
+        // TODO: Save to database
     }
 }

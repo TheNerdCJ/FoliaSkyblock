@@ -2,7 +2,6 @@ package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.anticheat.AntiCheatManager;
-import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -14,21 +13,14 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * AntiCheatListener - Fully optimized for Folia
- * - Uses RegionScheduler for all block/world access
- * - Uses AsyncScheduler for heavy calculations
- * - Caches potion effects and enchantment levels
- * - Thread-safe with ConcurrentHashMap
- * - Minimal main-thread work
+ * AntiCheatListener - Fully optimized for Folia 1.21+
+ * Uses RegionScheduler + AsyncScheduler for maximum performance.
  */
 public class AntiCheatListener implements Listener {
 
@@ -37,7 +29,7 @@ public class AntiCheatListener implements Listener {
     private final IslandManager islandManager;
 
     // Fast-break tracking (thread-safe)
-    private final Map<UUID, Long> lastBreakTime = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, Long> lastBreakTime = new ConcurrentHashMap<>();
 
     public AntiCheatListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -51,16 +43,15 @@ public class AntiCheatListener implements Listener {
         Player player = e.getPlayer();
         Location loc = e.getBlock().getLocation();
 
-        // All block access must be on RegionScheduler
         plugin.getServer().getRegionScheduler().execute(plugin, loc, () -> {
-            // Fast-break check
             long now = System.currentTimeMillis();
             Long last = lastBreakTime.get(player.getUniqueId());
+
             if (last != null) {
                 long delta = now - last;
                 double threshold = antiCheatManager.getConfig().getDouble("block.fastbreak.min-delay-ms", 180);
 
-                // Efficiency enchantment tolerance
+                // Efficiency tolerance
                 int efficiency = player.getInventory().getItemInMainHand()
                         .getEnchantmentLevel(org.bukkit.enchantments.Enchantment.EFFICIENCY);
                 if (efficiency > 0) threshold *= (1.0 - efficiency * 0.15);
@@ -71,7 +62,7 @@ public class AntiCheatListener implements Listener {
             }
             lastBreakTime.put(player.getUniqueId(), now);
 
-            // X-Ray check (async)
+            // X-Ray check
             if (antiCheatManager.getConfig().getBoolean("xray.enabled", true)) {
                 if (isValuableBlock(e.getBlock().getType())) {
                     antiCheatManager.addViolation(player, "XRay (" + e.getBlock().getType().name() + ")", 4);
@@ -123,7 +114,7 @@ public class AntiCheatListener implements Listener {
         Location from = e.getFrom();
         Location to = e.getTo();
 
-        // Heavy movement calculations run async
+        // Heavy calculations run async
         plugin.getServer().getAsyncScheduler().runNow(plugin, task -> {
             double deltaX = to.getX() - from.getX();
             double deltaZ = to.getZ() - from.getZ();
@@ -142,7 +133,7 @@ public class AntiCheatListener implements Listener {
                 antiCheatManager.addViolation(player, "SpeedHack", 3);
             }
 
-            // Fly check (ignore Levitation)
+            // Fly check
             if (!player.hasPotionEffect(PotionEffectType.LEVITATION)) {
                 if (to.getY() > from.getY() + antiCheatManager.getConfig().getDouble("movement.fly.threshold", 0.42)) {
                     antiCheatManager.addViolation(player, "FlyHack", 4);

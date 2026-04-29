@@ -1,10 +1,8 @@
 package com.thenerdcj.command;
-
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
-import com.thenerdcj.island.IslandParty;
 import com.thenerdcj.island.IslandRank;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -120,11 +118,21 @@ public class IslandCommand implements CommandExecutor, TabCompleter, Listener {
         switch (action) {
             case "invite" -> islandManager.inviteToParty(player, args.length > 2 ? args[2] : null);
             case "accept" -> islandManager.acceptPartyInvite(player);
-            case "kick" -> islandManager.removeMemberFromIsland(player.getUniqueId(), args.length > 2 ? Bukkit.getOfflinePlayer(args[2]).getUniqueId() : null);
+            case "kick" -> {
+                if (args.length > 2) {
+                    UUID target = Bukkit.getOfflinePlayer(args[2]).getUniqueId();
+                    islandManager.removeMemberFromIsland(player.getUniqueId(), target);
+                }
+            }
             case "rank" -> {
                 if (args.length > 3) {
-                    IslandRank newRank = IslandRank.valueOf(args[3].toUpperCase());
-                    islandManager.setMemberRank(player.getUniqueId(), Bukkit.getOfflinePlayer(args[2]).getUniqueId(), newRank);
+                    try {
+                        IslandRank newRank = IslandRank.valueOf(args[3].toUpperCase());
+                        UUID target = Bukkit.getOfflinePlayer(args[2]).getUniqueId();
+                        islandManager.setMemberRank(player.getUniqueId(), target, newRank);
+                    } catch (IllegalArgumentException e) {
+                        player.sendMessage("§cInvalid rank! Use: OWNER, MODERATOR, HELPER, GUEST");
+                    }
                 }
             }
             default -> sendPartyHelp(player);
@@ -206,7 +214,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter, Listener {
 
         Player player = (Player) e.getWhoClicked();
         int slot = e.getRawSlot();
-        if (slot >= 45) return; // navigation
+        if (slot >= 45) return; // navigation slots
 
         int page = playerTradePage.getOrDefault(player.getUniqueId(), 0);
         int tradeIndex = page * 45 + slot;

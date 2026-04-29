@@ -1,54 +1,182 @@
 name: FoliaSkyblock
-version: 1.0-SNAPSHOT
+version: 1.0.0
 main: com.thenerdcj.FoliaSkyblock
 api-version: '1.21'
 folia-supported: true
-
 author: TheNerdCJ
-description: Advanced Skyblock plugin for Folia with custom islands, party system, and economy
+description: High-performance Skyblock plugin for Folia 1.21+ with custom islands, parties, economy, ranks, and anti-cheat
+
+bootstrapper: com.thenerdcj.FoliaSkyblock
+loader: com.thenerdcj.FoliaSkyblock
 
 commands:
   island:
-    description: Main Skyblock management command
-    aliases: [is]
-    permission: foliaskyblock.island
-    usage: /island <create|home|reset|delete|invite|accept|deny|kick|leave|setrank|members|top>
-
-  bal:
-    description: Player economy commands
-    aliases: [balance]
-    permission: foliaskyblock.economy
-    usage: /bal [player|pay|request|top|help]
+    description: Main island command
+    aliases: [is, skyblock]
+    usage: /island <create|home|reset|delete|party|trade|top|help>
+    permission: foliaskyblock.command.island
 
   spawn:
-    description: Teleport to skyblock spawn
-    permission: foliaskyblock.spawn
+    description: Teleport to spawn
     usage: /spawn
 
   setspawn:
-    description: Set the spawn location (Admin only)
-    permission: foliaskyblock.admin.setspawn
+    description: Set the server spawn location (Admin only)
     usage: /setspawn
+    permission: foliaskyblock.admin.setspawn
+
+  tpa:
+    description: Request to teleport to another player
+    usage: /tpa <player>
+
+  tpaccept:
+    description: Accept a teleport request
+    aliases: [tpac]
+    usage: /tpaccept
+
+  tpdeny:
+    description: Deny a teleport request
+    aliases: [tpdecline]
+    usage: /tpdeny
+
+  tpignore:
+    description: Ignore all teleport requests
+    usage: /tpignore
+
+  pending:
+    description: View your pending teleport requests
+    usage: /pending
+
+  rules:
+    description: View the server rules
+    usage: /rules
+
+  bal:
+    description: Check your balance (player + island balance)
+    usage: /bal [player]
+
+  mute:
+    description: Mute a player (Admin)
+    usage: /mute <player> [time]
+    permission: foliaskyblock.admin.mute
+
+  unmute:
+    description: Unmute a player (Admin)
+    usage: /unmute <player>
+    permission: foliaskyblock.admin.mute
+
+  rank:
+    description: Rank and voting system
+    aliases: [ranks]
+    usage: /rank <vote|check|top>
+    permission: foliaskyblock.command.rank
 
 permissions:
-  foliaskyblock.island:
-    description: Allows use of /island command
+  # ====================== COMMAND PERMISSIONS ======================
+  foliaskyblock.command.island:
+    description: Allows use of /island and all subcommands
     default: true
 
-  foliaskyblock.economy:
-    description: Allows use of /bal command
+  foliaskyblock.command.island.create:
+    description: Allows creating a new island
     default: true
 
-  foliaskyblock.spawn:
-    description: Allows use of /spawn
+  foliaskyblock.command.island.home:
+    description: Allows teleporting to your island
     default: true
 
-  foliaskyblock.admin.setspawn:
-    description: Allows use of /setspawn command
-    default: op
+  foliaskyblock.command.island.reset:
+    description: Allows resetting your island
+    default: true
 
+  foliaskyblock.command.island.delete:
+    description: Allows deleting your island
+    default: true
+
+  foliaskyblock.command.island.party:
+    description: Allows using party commands (invite, kick, rank, etc.)
+    default: true
+
+  foliaskyblock.command.island.trade:
+    description: Allows using the island trade system
+    default: true
+
+  foliaskyblock.command.island.top:
+    description: Allows viewing the top islands leaderboard
+    default: true
+
+  foliaskyblock.command.rank:
+    description: Allows using the rank and voting system
+    default: true
+
+  foliaskyblock.command.rank.vote:
+    description: Allows voting to increase your rank
+    default: true
+
+  # ====================== ADMIN PERMISSIONS ======================
   foliaskyblock.admin:
-    description: Full admin access
+    description: Full administrator access
     default: op
     children:
       foliaskyblock.admin.setspawn: true
+      foliaskyblock.admin.mute: true
+      foliaskyblock.admin.bypass: true
+      foliaskyblock.admin.reload: true
+
+  foliaskyblock.admin.setspawn:
+    description: Allows setting the global spawn location
+    default: op
+
+  foliaskyblock.admin.mute:
+    description: Allows muting and unmuting players
+    default: op
+
+  foliaskyblock.admin.bypass:
+    description: Bypass all island protection, cooldowns, and restrictions
+    default: op
+
+  foliaskyblock.admin.reload:
+    description: Allows reloading the plugin configuration
+    default: op
+
+  # ====================== ISLAND ACTION PERMISSIONS ======================
+  foliaskyblock.island.build:
+    description: Can build on islands they have access to
+    default: true
+
+  foliaskyblock.island.break:
+    description: Can break blocks on islands they have access to
+    default: true
+
+  foliaskyblock.island.interact:
+    description: Can interact with blocks, chests, and entities on islands
+    default: true
+
+  foliaskyblock.island.invite:
+    description: Can invite players to their island party
+    default: true
+
+  foliaskyblock.island.kick:
+    description: Can kick members from their island
+    default: true
+
+  foliaskyblock.island.setrank:
+    description: Can change the rank of island members
+    default: true
+
+  foliaskyblock.island.transfer:
+    description: Can transfer island ownership to another player
+    default: op
+
+  # ====================== BYPASS PERMISSIONS ======================
+  foliaskyblock.bypass.protection:
+    description: Bypass island protection systems
+    default: op
+
+  foliaskyblock.bypass.cooldown:
+    description: Bypass all command cooldowns
+    default: op
+
+  foliaskyblock.anticheat.bypass:
+    description: Bypass the anti-cheat system
+    default: op

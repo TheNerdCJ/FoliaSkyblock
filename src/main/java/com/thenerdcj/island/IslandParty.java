@@ -1,7 +1,6 @@
 package com.thenerdcj.island;
 
 import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,34 +15,47 @@ public class IslandParty {
         members.put(ownerUuid, IslandRank.OWNER);
     }
 
-    public UUID getOwnerUuid() {
-        return ownerUuid;
-    }
-
-    public boolean isOwner(UUID uuid) {
-        return ownerUuid.equals(uuid);
-    }
-
-    public boolean addMember(UUID uuid) {
-        if (members.containsKey(uuid)) return false;
-        members.put(uuid, IslandRank.GUEST);
+    // ====================== MEMBER MANAGEMENT ======================
+    public boolean addMember(UUID memberUuid) {
+        if (members.containsKey(memberUuid)) return false;
+        members.put(memberUuid, IslandRank.GUEST);
         return true;
     }
 
-    public boolean removeMember(UUID uuid) {
-        if (ownerUuid.equals(uuid)) return false;
-        return members.remove(uuid) != null;
+    public boolean removeMember(UUID memberUuid) {
+        if (memberUuid.equals(ownerUuid)) return false; // Can't remove owner
+        return members.remove(memberUuid) != null;
     }
 
+    public boolean isMember(UUID uuid) {
+        return members.containsKey(uuid);
+    }
+
+    public Set<UUID> getMembers() {
+        return Collections.unmodifiableSet(members.keySet());
+    }
+
+    public int getMemberCount() {
+        return members.size();
+    }
+
+    // ====================== RANK MANAGEMENT ======================
     public boolean setRank(UUID setterUuid, UUID targetUuid, IslandRank newRank) {
-        if (!isOwner(setterUuid)) {
-            IslandRank setterRank = getRank(setterUuid);
-            IslandRank targetRank = getRank(targetUuid);
-            if (setterRank.getPriority() <= targetRank.getPriority()) {
-                return false;
-            }
+        // Only owner or moderator can change ranks
+        IslandRank setterRank = members.get(setterUuid);
+        if (setterRank == null || (setterRank != IslandRank.OWNER && setterRank != IslandRank.MODERATOR)) {
+            return false;
         }
-        if (ownerUuid.equals(targetUuid)) return false;
+
+        // Owner can't be demoted
+        if (targetUuid.equals(ownerUuid) && newRank != IslandRank.OWNER) {
+            return false;
+        }
+
+        // Moderators can't promote to owner
+        if (setterRank == IslandRank.MODERATOR && newRank == IslandRank.OWNER) {
+            return false;
+        }
 
         members.put(targetUuid, newRank);
         return true;
@@ -53,23 +65,44 @@ public class IslandParty {
         return members.getOrDefault(uuid, IslandRank.GUEST);
     }
 
-    public Set<UUID> getMembers() {
-        return Collections.unmodifiableSet(members.keySet());
+    public boolean hasRank(UUID uuid, IslandRank rank) {
+        return getRank(uuid) == rank;
     }
 
-    public boolean hasPermission(UUID uuid, IslandPermission permission) {
-        if (isOwner(uuid)) return true;
-        IslandRank rank = getRank(uuid);
-        return rank.hasPermission(permission);
+    // ====================== OWNER MANAGEMENT ======================
+    public UUID getOwnerUuid() {
+        return ownerUuid;
     }
 
-    public String getPartyInfo() {
-        StringBuilder sb = new StringBuilder("§6Island Party Members:\n");
-        members.forEach((uuid, rank) -> {
-            Player p = Bukkit.getPlayer(uuid);
-            String name = p != null ? p.getName() : "Offline";
-            sb.append("§e").append(name).append(" §7- §f").append(rank.name()).append("\n");
-        });
-        return sb.toString();
+    public boolean isOwner(UUID uuid) {
+        return uuid.equals(ownerUuid);
+    }
+
+    /**
+     * Transfers ownership to another member (owner only)
+     */
+    public boolean transferOwnership(UUID newOwnerUuid) {
+        if (!members.containsKey(newOwnerUuid)) return false;
+        if (newOwnerUuid.equals(ownerUuid)) return false;
+
+        members.put(ownerUuid, IslandRank.MODERATOR); // Old owner becomes moderator
+        members.put(newOwnerUuid, IslandRank.OWNER);
+        return true;
+    }
+
+    // ====================== UTILITY ======================
+    public List<UUID> getMembersByRank(IslandRank rank) {
+        List<UUID> result = new ArrayList<>();
+        for (Map.Entry<UUID, IslandRank> entry : members.entrySet()) {
+            if (entry.getValue() == rank) {
+                result.add(entry.getKey());
+            }
+        }
+        return result;
+    }
+
+    public String getInfo() {
+        return "§6Party §7| §eMembers: " + getMemberCount() +
+                " §7| §eOwner: " + Bukkit.getOfflinePlayer(ownerUuid).getName();
     }
 }

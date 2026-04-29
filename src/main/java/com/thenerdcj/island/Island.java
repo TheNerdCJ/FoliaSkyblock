@@ -61,6 +61,7 @@ public class Island {
     }
 
     private long calculateXpRequiredForLevel(int targetLevel) {
+        // Quadratic scaling: 350 * level² (feels good for Skyblock)
         return (long) (350.0 * targetLevel * targetLevel);
     }
 
@@ -68,7 +69,7 @@ public class Island {
         party.getMembers().forEach(uuid -> {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null) {
-                p.sendMessage("§6§lISLAND LEVEL UP §e§l" + (level - 1) + " §f→ §e§l" + level);
+                p.sendMessage("§6§lISLAND LEVEL UP! §e§l" + (level - 1) + " §f→ §e§l" + level);
                 p.sendMessage("§aYour island has reached level §e" + level + "§a!");
             }
         });
@@ -76,8 +77,7 @@ public class Island {
 
     // ====================== LOCATION ======================
     /**
-     * Returns the center location of this island in the given world
-     * (used by IslandProtectionListener and commands)
+     * Returns the center location of this island
      */
     public Location getCenter(World world) {
         return new Location(world,
@@ -112,6 +112,10 @@ public class Island {
 
     public boolean isOwner(UUID playerUuid) {
         return ownerUuid.equals(playerUuid);
+    }
+
+    public boolean isMember(UUID playerUuid) {
+        return party.getRank(playerUuid) != null || isOwner(playerUuid);
     }
 
     public String getInfo() {

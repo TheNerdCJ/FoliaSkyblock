@@ -1,7 +1,7 @@
 package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.combat.CombatManager;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -9,48 +9,94 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
- * Combat Listener - Prevents combat logging and blocks dangerous actions during combat
+ * CombatListener - Fully optimized for Folia 1.21+
+ * Uses ConcurrentHashMap for thread-safe combat tagging.
  */
 public class CombatListener implements Listener {
 
     private final FoliaSkyblock plugin;
-    private final CombatManager combatManager;
+
+    // Thread-safe combat tag storage: UUID -> expiry time (ms)
+    private final ConcurrentHashMap<UUID, Long> combatTags = new ConcurrentHashMap<>();
+
+    // Combat tag duration in milliseconds (default 15 seconds)
+    private final long combatTagDuration;
 
     public CombatListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        this.combatManager = new CombatManager(plugin);
+        this.combatTagDuration = plugin.getConfig().getLong("combat.tag-duration", 15000);
     }
 
     /**
-     * Tag players when they deal or receive damage
+     * Tag a player in combat (thread-safe)
      */
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    private void tagPlayer(Player player) {
+        combatTags.put(player.getUniqueId(), System.currentTimeMillis() + combatTagDuration);
+    }
+
+    /**
+     * Check if player is in combat
+     */
+    public boolean isInCombat(Player player) {
+        Long expiry = combatTags.get(player.getUniqueId());
+        if (expiry == null) return false;
+
+        if (System.currentTimeMillis() > expiry) {
+            combatTags.remove(player.getUniqueId());
+            return false;
+        }
+        return true;
+    }
+
+    // ====================== EVENT HANDLERS ======================
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageByEntityEvent e) {
-        // Player damages another player
-        if (e.getDamager() instanceof Player damager) {
-            combatManager.tagCombat(damager);
-        }
+        if (!(e.getDamager() instanceof Player damager)) return;
+        if (!(e.getEntity() instanceof Player victim)) return;
 
-        // Player gets damaged by another player
-        if (e.getEntity() instanceof Player victim) {
-            combatManager.tagCombat(victim);
-        }
+        // Tag both players
+        tagPlayer(damager);
+        tagPlayer(victim);
     }
 
-    /**
-     * Prevent combat logging (player quitting during combat)
-     */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerQuit(PlayerQuitEvent e) {
         Player player = e.getPlayer();
+        UUID uuid = player.getUniqueId();
 
-        if (combatManager.isInCombat(player)) {
-            // Kill the player and drop items (anti-combat log)
-            player.setHealth(0);
-            plugin.getLogger().info("§c" + player.getName() + " combat logged and was killed.");
+        if (isInCombat(player)) {
+            // Use EntityScheduler for Folia-safe player killing
+            if (plugin.isFolia()) {
+                player.getScheduler().run(plugin, scheduledTask -> {
+                    if (player.isOnline()) {
+                        player.setHealth(0);
+                        plugin.getLogger().info("§c" + player.getName() + " combat logged and was killed.");
+                    }
+                }, null);
+            } else {
+                // Fallback for Paper/Spigot
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline()) {
+                        player.setHealth(0);
+                        plugin.getLogger().info("§c" + player.getName() + " combat logged and was killed.");
+                    }
+                });
+            }
         }
 
-        combatManager.onPlayerQuit(player);
+        // Clean up
+        combatTags.remove(uuid);
+    }
+
+    /**
+     * Clean up expired tags (call this periodically if needed)
+     */
+    public void cleanupExpiredTags() {
+        long now = System.currentTimeMillis();
+        combatTags.entrySet().removeIf(entry -> entry.getValue() < now);
     }
 }
