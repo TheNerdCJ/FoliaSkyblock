@@ -1,6 +1,7 @@
 package com.thenerdcj.island;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -14,6 +15,10 @@ public class GridManager {
 
     private final FoliaSkyblock plugin;
 
+    private int currentX = 0;
+    private int currentZ = 0;
+    private int step = 1;
+    private int direction = 0; // 0=right, 1=up, 2=left, 3=down
     // Grid spacing (in blocks) - 512 is a good default for Skyblock
     private final int islandSize = 512;
     private final int islandBuffer = 64; // Space between islands
@@ -26,13 +31,20 @@ public class GridManager {
 
     public GridManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        loadUsedPositions();
+        loadUsedPositions(plugin.getDatabaseManager());
         generateInitialSpiral();
     }
 
-    private void loadUsedPositions() {
-        // TODO: Load from DatabaseManager on startup
-        plugin.getLogger().info("§aLoaded " + usedPositions.size() + " used island positions.");
+    public void loadUsedPositions(DatabaseManager databaseManager) {
+        // Query the database for the highest grid position currently in use
+        // For now, we'll start at a safe offset
+        // TODO: Implement actual database query to find max(grid_x, grid_z)
+
+        this.currentX = 100;  // Start at a safe offset
+        this.currentZ = 100;
+        this.step = 20;       // Larger step to avoid collisions
+
+        System.out.println("[GridManager] Loaded last position: (" + currentX + ", " + currentZ + ")");
     }
 
     private void generateInitialSpiral() {
@@ -135,4 +147,6 @@ public class GridManager {
     public void saveUsedPositions() {
         // TODO: Save to database
     }
+    public int getCurrentX() { return currentX; }
+    public int getCurrentZ() { return currentZ; }
 }
