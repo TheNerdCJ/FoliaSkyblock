@@ -1,28 +1,36 @@
 package com.thenerdcj.island;
 
 /**
- * Ultra-lightweight permission enum optimized for Folia.
- * All checks are O(1) via EnumSet in IslandRank.
+ * IslandPermission - Clean enum for all island permissions
  */
 public enum IslandPermission {
 
-    // Core building
-    BUILD("Build on island"),
-    BREAK("Break blocks on island"),
-    INTERACT("Use blocks, chests, etc."),
+    // Building & World Interaction
+    BUILD("Build on the island"),
+    BREAK("Break blocks on the island"),
+    INTERACT("Interact with blocks, entities, and containers"),
+    USE_TRADES("Use the level-gated trade system"),
 
-    // Party management
-    INVITE("Invite players to island"),
-    KICK("Kick members from island"),
-    KICK_GUEST("Kick only guests"),
+    // Party Management
+    INVITE("Invite players to the island"),
+    KICK("Kick any non-owner player"),
+    KICK_GUEST("Only kick guests"),
     SET_RANK("Change member ranks"),
-    TRANSFER_OWNERSHIP("Transfer island ownership"),
+    MANAGE_MEMBERS("Full member management"),
+
+    // Information & Leaderboards
+    VIEW_TOP("View island leaderboards"),
+    VIEW_MEMBERS("View island member list"),
+
+    // Teleport & Movement
+    TELEPORT_HOME("Teleport to island home"),
+    TELEPORT_MEMBERS("Teleport to other members"),
 
     // Advanced
-    ACCESS_NETHER("Access nether island"),
-    ACCESS_END("Access end island"),
-    USE_TRADES("Use island trade system"),
-    VIEW_TOP("View top islands leaderboard");
+    CHANGE_BIOME("Change island biome"),
+    UPGRADE_LEVEL("Upgrade island level"),
+    ACCESS_ENDER_CHEST("Access ender chest on island"),
+    USE_REDSTONE("Use redstone devices");
 
     private final String description;
 
@@ -32,12 +40,5 @@ public enum IslandPermission {
 
     public String getDescription() {
         return description;
-    }
-
-    /**
-     * Folia-safe permission node
-     */
-    public String getNode() {
-        return "foliaskyblock.island." + this.name().toLowerCase();
     }
 }

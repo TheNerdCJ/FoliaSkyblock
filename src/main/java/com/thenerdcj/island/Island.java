@@ -1,89 +1,37 @@
 package com.thenerdcj.island;
 
 import com.thenerdcj.database.GridPosition;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.entity.Player;
 
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Island class - Fully updated with Party System support
+ */
 public class Island {
 
     private final GridPosition gridPosition;
-    private final UUID ownerUuid;
-    private final IslandParty party;
+    private UUID ownerUuid;
+    private String biomeName;
     private final World.Environment dimension;
 
+    // Party members: UUID -> Rank
+    private final Map<UUID, IslandRank> members = new ConcurrentHashMap<>();
+
+    // Leveling system
     private int level = 1;
     private double xp = 0.0;
 
-    /**
-     * Main constructor used by IslandManager
-     */
-    public Island(GridPosition gridPosition, UUID ownerUuid, IslandParty party, World.Environment dimension) {
+    public Island(GridPosition gridPosition, UUID ownerUuid, String biomeName, World.Environment dimension) {
         this.gridPosition = gridPosition;
         this.ownerUuid = ownerUuid;
-        this.party = party;
+        this.biomeName = biomeName;
         this.dimension = dimension;
-    }
 
-    // ====================== LEVELING SYSTEM ======================
-    public int getLevel() {
-        return level;
-    }
-
-    public double getXp() {
-        return xp;
-    }
-
-    public double getXpToNextLevel() {
-        return calculateXpRequiredForLevel(level + 1) - calculateXpRequiredForLevel(level);
-    }
-
-    public double getProgress() {
-        return (xp - calculateXpRequiredForLevel(level)) / getXpToNextLevel();
-    }
-
-    public void addXp(double amount) {
-        if (amount <= 0) return;
-        xp += amount;
-
-        boolean leveledUp = false;
-        while (xp >= calculateXpRequiredForLevel(level + 1)) {
-            level++;
-            leveledUp = true;
-        }
-
-        if (leveledUp) {
-            onLevelUp();
-        }
-    }
-
-    private long calculateXpRequiredForLevel(int targetLevel) {
-        // Quadratic scaling: 350 * level² (feels good for Skyblock)
-        return (long) (350.0 * targetLevel * targetLevel);
-    }
-
-    private void onLevelUp() {
-        party.getMembers().forEach(uuid -> {
-            Player p = Bukkit.getPlayer(uuid);
-            if (p != null) {
-                p.sendMessage("§6§lISLAND LEVEL UP! §e§l" + (level - 1) + " §f→ §e§l" + level);
-                p.sendMessage("§aYour island has reached level §e" + level + "§a!");
-            }
-        });
-    }
-
-    // ====================== LOCATION ======================
-    /**
-     * Returns the center location of this island
-     */
-    public Location getCenter(World world) {
-        return new Location(world,
-                gridPosition.x() * 512 + 0.5,
-                100.0,
-                gridPosition.z() * 512 + 0.5);
+        // Owner is automatically OWNER rank
+        members.put(ownerUuid, IslandRank.OWNER);
     }
 
     // ====================== BASIC GETTERS ======================
@@ -95,30 +43,85 @@ public class Island {
         return ownerUuid;
     }
 
-    public IslandParty getParty() {
-        return party;
+    public String getBiomeName() {
+        return biomeName;
     }
 
     public World.Environment getDimension() {
         return dimension;
     }
 
-    // ====================== PERMISSIONS ======================
+    public int getLevel() {
+        return level;
+    }
+
+    public double getXp() {
+        return xp;
+    }
+
+    public void setLevel(int level) {
+        this.level = level;
+    }
+
+    public void addXp(double amount) {
+        this.xp += amount;
+        // You can add level-up logic here
+    }
+
+    // ====================== PARTY SYSTEM ======================
+    public Map<UUID, IslandRank> getMembers() {
+        return Collections.unmodifiableMap(members);
+    }
+
+    public boolean isOwner(UUID uuid) {
+        return ownerUuid.equals(uuid);
+    }
+
+    public boolean isMember(UUID uuid) {
+        return members.containsKey(uuid);
+    }
+
+    public IslandRank getRank(UUID uuid) {
+        return members.getOrDefault(uuid, IslandRank.GUEST);
+    }
+
+    public void addMember(UUID uuid, IslandRank rank) {
+        if (!isOwner(uuid)) {
+            members.put(uuid, rank);
+        }
+    }
+
+    public void removeMember(UUID uuid) {
+        if (!isOwner(uuid)) {
+            members.remove(uuid);
+        }
+    }
+
+    public void setMemberRank(UUID uuid, IslandRank rank) {
+        if (!isOwner(uuid) && members.containsKey(uuid)) {
+            members.put(uuid, rank);
+        }
+    }
+
+    public void transferOwnership(UUID newOwnerUuid) {
+        if (members.containsKey(newOwnerUuid)) {
+            members.put(ownerUuid, IslandRank.GUEST); // Demote old owner
+            members.put(newOwnerUuid, IslandRank.OWNER);
+            this.ownerUuid = newOwnerUuid;
+        }
+    }
+
+    // ====================== LOCATION HELPERS ======================
+    public Location getCenter(World world) {
+        if (world.getEnvironment() != this.dimension) return null;
+        int centerX = gridPosition.x() * 128 + 64;
+        int centerZ = gridPosition.z() * 128 + 64;
+        return new Location(world, centerX, 100, centerZ);
+    }
+
+    // ====================== PERMISSION CHECK ======================
     public boolean hasPermission(UUID playerUuid, IslandPermission permission) {
-        if (ownerUuid.equals(playerUuid)) return true;
-        IslandRank rank = party.getRank(playerUuid);
+        IslandRank rank = getRank(playerUuid);
         return rank != null && rank.hasPermission(permission);
-    }
-
-    public boolean isOwner(UUID playerUuid) {
-        return ownerUuid.equals(playerUuid);
-    }
-
-    public boolean isMember(UUID playerUuid) {
-        return party.getRank(playerUuid) != null || isOwner(playerUuid);
-    }
-
-    public String getInfo() {
-        return "§6Island §7| §eLevel " + level + " §7| §eXP: " + String.format("%.0f", xp);
     }
 }

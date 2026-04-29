@@ -1,89 +1,87 @@
 package com.thenerdcj.island;
 
-import org.bukkit.permissions.Permission;
-
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
- * Highly optimized rank enum for Folia Skyblock.
- * Uses EnumSet + EnumMap for O(1) permission checks.
+ * IslandRank - Ultra-efficient enum for Folia
+ * Uses pre-computed EnumSet for O(1) permission checks
  */
 public enum IslandRank {
 
-    OWNER("Owner", "§6[Owner]"),
-    MODERATOR("Moderator", "§b[Mod]"),
-    HELPER("Helper", "§a[Helper]"),
-    GUEST("Guest", "§7[Guest]");
+    OWNER("Owner", EnumSet.allOf(IslandPermission.class)),
+    MODERATOR("Moderator", EnumSet.of(
+            IslandPermission.BUILD,
+            IslandPermission.BREAK,
+            IslandPermission.INTERACT,
+            IslandPermission.INVITE,
+            IslandPermission.KICK,
+            IslandPermission.KICK_GUEST,
+            IslandPermission.SET_RANK,
+            IslandPermission.USE_TRADES,
+            IslandPermission.VIEW_TOP
+    )),
+    HELPER("Helper", EnumSet.of(
+            IslandPermission.BUILD,
+            IslandPermission.BREAK,
+            IslandPermission.INTERACT,
+            IslandPermission.INVITE,
+            IslandPermission.USE_TRADES,
+            IslandPermission.VIEW_TOP
+    )),
+    GUEST("Guest", EnumSet.of(
+            IslandPermission.BUILD,
+            IslandPermission.BREAK,
+            IslandPermission.INTERACT,
+            IslandPermission.USE_TRADES
+    ));
 
     private final String displayName;
-    private final String prefix;
+    private final Set<IslandPermission> permissions;
 
-    // Pre-computed permission sets for lightning-fast checks
-    private static final EnumMap<IslandRank, Set<IslandPermission>> PERMISSIONS = new EnumMap<>(IslandRank.class);
+    // Pre-computed permission map for maximum speed
+    private static final Map<IslandRank, Set<IslandPermission>> RANK_PERMISSIONS = new EnumMap<>(IslandRank.class);
 
     static {
-        // OWNER - full access
-        PERMISSIONS.put(OWNER, EnumSet.allOf(IslandPermission.class));
-
-        // MODERATOR - almost everything except ownership transfer
-        PERMISSIONS.put(MODERATOR, EnumSet.complementOf(
-                EnumSet.of(IslandPermission.TRANSFER_OWNERSHIP)));
-
-        // HELPER - limited management
-        PERMISSIONS.put(HELPER, EnumSet.of(
-                IslandPermission.BUILD,
-                IslandPermission.BREAK,
-                IslandPermission.INTERACT,
-                IslandPermission.INVITE,
-                IslandPermission.KICK_GUEST));
-
-        // GUEST - basic access only
-        PERMISSIONS.put(GUEST, EnumSet.of(
-                IslandPermission.BUILD,
-                IslandPermission.BREAK,
-                IslandPermission.INTERACT));
+        for (IslandRank rank : values()) {
+            RANK_PERMISSIONS.put(rank, rank.permissions);
+        }
     }
 
-    IslandRank(String displayName, String prefix) {
+    IslandRank(String displayName, Set<IslandPermission> permissions) {
         this.displayName = displayName;
-        this.prefix = prefix;
+        this.permissions = permissions;
     }
 
     public String getDisplayName() {
         return displayName;
     }
 
-    public String getPrefix() {
-        return prefix;
-    }
-
-    /**
-     * Ultra-fast permission check (O(1) via EnumSet)
-     */
     public boolean hasPermission(IslandPermission permission) {
-        return PERMISSIONS.get(this).contains(permission);
+        return RANK_PERMISSIONS.get(this).contains(permission);
     }
 
-    /**
-     * Get all permissions for this rank (returns immutable view)
-     */
     public Set<IslandPermission> getPermissions() {
-        return EnumSet.copyOf(PERMISSIONS.get(this));
+        return RANK_PERMISSIONS.get(this);
     }
 
     /**
-     * Check if this rank can promote/demote another rank
+     * Get next higher rank (for promotion)
      */
-    public boolean canManageRank(IslandRank targetRank) {
-        return this.ordinal() < targetRank.ordinal(); // Higher rank = lower ordinal
+    public IslandRank getNextRank() {
+        IslandRank[] ranks = values();
+        int index = ordinal();
+        return index < ranks.length - 1 ? ranks[index + 1] : this;
     }
 
     /**
-     * Folia-safe: returns a lightweight permission node string
+     * Get previous lower rank (for demotion)
      */
-    public String getPermissionNode() {
-        return "foliaskyblock.rank." + this.name().toLowerCase();
+    public IslandRank getPreviousRank() {
+        IslandRank[] ranks = values();
+        int index = ordinal();
+        return index > 0 ? ranks[index - 1] : this;
     }
 }
