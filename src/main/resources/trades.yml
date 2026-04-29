@@ -1,0 +1,57 @@
+# trades.yml - Balanced Level-Gated Island Trades (1-100)
+trades:
+  # Level 5-15: Starter upgrades
+  1:
+    input: "COBBLESTONE:64"
+    output: "IRON_INGOT:8"
+    level: 5
+  2:
+    input: "OAK_LOG:32"
+    output: "BONE_MEAL:16"
+    level: 8
+
+  # Level 20-35: Mid-game resources
+  3:
+    input: "COAL:64"
+    output: "DIAMOND:3"
+    level: 22
+  4:
+    input: "IRON_INGOT:32"
+    output: "GOLD_INGOT:16"
+    level: 28
+  5:
+    input: "RAW_CHICKEN:64"
+    output: "ENCHANTED_GOLDEN_APPLE:1"
+    level: 35
+
+  # Level 40-60: Advanced crafting
+  6:
+    input: "OBSIDIAN:16"
+    output: "NETHERITE_SCRAP:4"
+    level: 45
+  7:
+    input: "ENDER_PEARL:16"
+    output: "SHULKER_SHELL:2"
+    level: 52
+  8:
+    input: "BLAZE_ROD:8"
+    output: "DRAGON_EGG:1"
+    level: 60
+
+  # Level 70-100: End-game rewards
+  9:
+    input: "NETHER_STAR:1"
+    output: "ELYTRA:1"
+    level: 75
+  10:
+    input: "HEART_OF_THE_SEA:1"
+    output: "NETHERITE_INGOT:8"
+    level: 85
+  11:
+    input: "TOTEM_OF_UNDYING:3"
+    output: "ENCHANTED_GOLDEN_APPLE:8"
+    level: 95
+  12:
+    input: "ANCIENT_DEBRIS:16"
+    output: "NETHERITE_BLOCK:1"
+    level: 100

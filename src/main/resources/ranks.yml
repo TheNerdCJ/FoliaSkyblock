@@ -1,0 +1,78 @@
+# =============================================
+# FoliaSkyblock Ranks Configuration
+# Add as many ranks as you want!
+# =============================================
+
+ranks:
+  # Staff Ranks
+  member:
+    prefix: "§7Member"
+    priority: 0
+    permissions:
+      - "foliaskyblock.command.tpa"
+      - "foliaskyblock.command.bal"
+      - "foliaskyblock.command.island"
+
+  helper:
+    prefix: "§aHelper"
+    priority: 10
+    permissions:
+      - "foliaskyblock.command.tpa"
+      - "foliaskyblock.command.bal"
+      - "foliaskyblock.command.island"
+      - "foliaskyblock.keepinventory"
+      - "foliaskyblock.fly.island"
+
+  moderator:
+    prefix: "§9Moderator"
+    priority: 30
+    permissions:
+      - "foliaskyblock.command.*"
+      - "foliaskyblock.moderate.*"
+
+  admin:
+    prefix: "§cAdmin"
+    priority: 100
+    permissions:
+      - "*"
+
+  # Donor Ranks
+  vip:
+    prefix: "§6VIP"
+    priority: 5
+    permissions:
+      - "foliaskyblock.fly.island"
+      - "foliaskyblock.shop.discount"
+
+  mvp:
+    prefix: "§bMVP"
+    priority: 15
+    permissions:
+      - "foliaskyblock.fly.island"
+      - "foliaskyblock.shop.discount"
+      - "foliaskyblock.joinmessage.custom"
+
+  elite:
+    prefix: "§dElite"
+    priority: 25
+    permissions:
+      - "foliaskyblock.fly.island"
+      - "foliaskyblock.shop.discount"
+      - "foliaskyblock.joinmessage.custom"
+      - "foliaskyblock.rewards.double"
+
+  legend:
+    prefix: "§eLegend"
+    priority: 40
+    permissions:
+      - "foliaskyblock.fly.island"
+      - "foliaskyblock.shop.discount"
+      - "foliaskyblock.joinmessage.custom"
+      - "foliaskyblock.rewards.double"
+      - "foliaskyblock.viparea.access"
+# Voting & Auto-Promotion
+voting:
+	min-upvotes-helper: 10
+    min-upvotes-moderator: 25
+    vote-cooldown-seconds: 3600
+    vote-expiration-days: 90

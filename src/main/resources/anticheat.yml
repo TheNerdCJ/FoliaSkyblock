@@ -1,0 +1,127 @@
+# ================================================
+# FoliaSkyblock - Advanced AntiCheat Configuration
+# ================================================
+
+# General Settings
+enabled: true
+max-violations: 15
+violation-decay-seconds: 120
+
+# Staff alert permission
+alert-permission: "foliaskyblock.staff.alert"
+
+# ================================================
+# Movement Checks
+# ================================================
+movement:
+  speed:
+    enabled: true
+    threshold: 0.68
+    violation-weight: 3
+  fly:
+    enabled: true
+    threshold: 0.42
+    violation-weight: 4
+  nofall:
+    enabled: true
+    violation-weight: 3
+  jesus:
+    enabled: true
+    violation-weight: 3
+  step:
+    enabled: true
+    max-step: 1.1
+    violation-weight: 2
+
+# ================================================
+# Combat Checks
+# ================================================
+combat:
+  reach:
+    enabled: true
+    max-distance: 3.85
+    violation-weight: 4
+  killaura:
+    enabled: true
+    max-angle: 75
+    violation-weight: 5
+  autoclicker:
+    enabled: true
+    max-cps: 18
+    violation-weight: 3
+
+# ================================================
+# Block Interaction Checks
+# ================================================
+block:
+  fastbreak:
+    enabled: true
+    min-delay-ms: 180
+    violation-weight: 3
+  fastplace:
+    enabled: true
+    min-delay-ms: 150
+    violation-weight: 2
+  scaffold:
+    enabled: true
+    violation-weight: 4
+  nuker:
+    enabled: true
+    max-blocks-per-second: 25
+    violation-weight: 5
+
+# ================================================
+# X-Ray Detection
+# ================================================
+xray:
+  enabled: true
+  valuable-blocks:
+    - DIAMOND_ORE
+    - DEEPSLATE_DIAMOND_ORE
+    - ANCIENT_DEBRIS
+    - EMERALD_ORE
+    - DEEPSLATE_EMERALD_ORE
+    - NETHERITE_BLOCK
+  max-per-minute: 8
+  violation-weight: 4
+
+# ================================================
+# Anti-Bot & Rate Limiter
+# ================================================
+antibot:
+  enabled: true
+  # Login flood protection
+  max-logins-per-ip-per-minute: 6
+  max-logins-per-second: 3
+  # Common bot name patterns
+  blocked-name-patterns:
+    - ".*[0-9]{4,}$"
+    - ".*bot.*"
+    - ".*cracked.*"
+    - "bot[0-9]+"
+  reconnect-cooldown-seconds: 8
+
+ratelimit:
+  enabled: true
+  max-commands-per-second: 8
+  max-commands-per-10-seconds: 25
+  max-chat-messages-per-5-seconds: 6
+  max-tpa-per-30-seconds: 4
+
+# ================================================
+# Punishment System
+# ================================================
+punishment:
+  # Level thresholds
+  level-1: warn          # 5-7 violations
+  level-2: kick          # 8-11 violations
+  level-3: ban           # 12+ violations
+  ban-duration-hours: 24
+  # Broadcast alerts to staff
+  broadcast-to-staff: true
+  
+# Mute system settings
+mute:
+  default-duration: "1h"        # Default mute length if no time is specified
+  max-duration: "30d"           # Maximum allowed mute duration
+  broadcast-mute: true          # Announce when someone is muted

@@ -1,0 +1,71 @@
+name: FoliaSkyblock
+version: 1.0-SNAPSHOT
+main: com.thenerdcj.FoliaSkyblock
+api-version: '1.21'
+author: TheNerdCJ
+description: Advanced Skyblock plugin for Folia with custom dimensions
+
+commands:
+  island:
+    description: Main island command
+    aliases: [is]
+    usage: /island <subcommand>
+    permission: foliaskyblock.command.island
+
+  spawn:
+    description: Teleport to spawn
+    usage: /spawn
+
+  setspawn:
+    description: Set spawn location (admin only)
+    usage: /setspawn
+    permission: foliaskyblock.admin.setspawn
+
+  tpa:
+    description: Request teleport to a player
+    usage: /tpa <player>
+
+  tpaccept:
+    description: Accept a teleport request
+    aliases: [tpac]
+    usage: /tpaccept
+
+  tpdeny:
+    description: Deny a teleport request
+    aliases: [tpdecline]
+    usage: /tpdeny
+
+  rules:
+    description: Show server rules
+    usage: /rules
+
+  bal:
+    description: Balance and economy commands
+    usage: /bal
+
+  rank:
+    description: Rank management and voting
+    aliases: [ranks]
+    usage: /rank <subcommand>
+    permission: foliaskyblock.command.rank
+
+permissions:
+  foliaskyblock.command.island:
+    description: Allows use of /island commands
+    default: true
+
+  foliaskyblock.command.rank:
+    description: Allows use of /rank commands
+    default: true
+
+  foliaskyblock.admin:
+    description: Full admin access
+    default: op
+
+  foliaskyblock.admin.setspawn:
+    description: Allows setting spawn location
+    default: op
+
+  foliaskyblock.admin.bypass:
+    description: Bypass island protection and build restrictions
+    default: op

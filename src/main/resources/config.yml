@@ -1,0 +1,82 @@
+# ================================================
+# FoliaSkyblock - Full Configuration
+# ================================================
+
+# World Settings
+world:
+  name: "skyblock"
+  nether-name: "skyblock_nether"
+  end-name: "skyblock_end"
+
+# Island Settings
+island:
+  base-y: 80
+  spawn-protection-radius: 150
+  # Default starter items are handled in IslandManager.java
+
+# Grid System
+grid:
+  region-distance: 10   # Distance between islands (in chunks * 16)
+
+# Default biomes for new players (Overworld only)
+biomes:
+  default:
+    - "PLAINS"
+    - "FOREST"
+    - "DESERT"
+    - "JUNGLE"
+    - "SWAMP"
+    - "SNOWY_PLAINS"
+
+# Cooldowns (in seconds, 0 = disabled)
+cooldowns:
+  spawn: 60
+  setspawn: 0
+  tpa: 30
+  tpaccept: 0
+  tpdeny: 0
+  tpignore: 30
+  rules: 0
+  bal: 5
+  create: 300
+  home: 60
+  reset: 300
+  delete: 0
+  invite: 30
+  accept: 0
+  deny: 0
+  kick: 30
+  leave: 30
+  setrank: 30
+  members: 0
+  top: 30
+  trade: 5
+
+# Economy Settings
+economy:
+  starting-balance: 1500.0
+  currency-symbol: "$"
+  # Format for display (you can change this later in EconomyManager)
+  format: "%.2f"
+
+# Island Economy (bank for leveling/trades)
+island-economy:
+  starting-balance: 500.0
+
+# ================================================
+# Messages (you can expand these later)
+# ================================================
+messages:
+  no-permission: "§cYou do not have permission to do that."
+  not-online: "§cThat player is not online."
+  combat-block: "§cYou cannot do that while in combat!"
+
+# ================================================
+# Rank System (used by RankManager)
+# ================================================
+# Full rank configuration is in ranks.yml (separate file)
+# Voting settings are also in ranks.yml
+
+# ================================================
+# Do not edit below this line unless you know what you're doing
+# ================================================

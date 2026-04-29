@@ -1,0 +1,54 @@
+name: FoliaSkyblock
+version: 1.0-SNAPSHOT
+main: com.thenerdcj.FoliaSkyblock
+api-version: '1.21'
+folia-supported: true
+
+author: TheNerdCJ
+description: Advanced Skyblock plugin for Folia with custom islands, party system, and economy
+
+commands:
+  island:
+    description: Main Skyblock management command
+    aliases: [is]
+    permission: foliaskyblock.island
+    usage: /island <create|home|reset|delete|invite|accept|deny|kick|leave|setrank|members|top>
+
+  bal:
+    description: Player economy commands
+    aliases: [balance]
+    permission: foliaskyblock.economy
+    usage: /bal [player|pay|request|top|help]
+
+  spawn:
+    description: Teleport to skyblock spawn
+    permission: foliaskyblock.spawn
+    usage: /spawn
+
+  setspawn:
+    description: Set the spawn location (Admin only)
+    permission: foliaskyblock.admin.setspawn
+    usage: /setspawn
+
+permissions:
+  foliaskyblock.island:
+    description: Allows use of /island command
+    default: true
+
+  foliaskyblock.economy:
+    description: Allows use of /bal command
+    default: true
+
+  foliaskyblock.spawn:
+    description: Allows use of /spawn
+    default: true
+
+  foliaskyblock.admin.setspawn:
+    description: Allows use of /setspawn command
+    default: op
+
+  foliaskyblock.admin:
+    description: Full admin access
+    default: op
+    children:
+      foliaskyblock.admin.setspawn: true
