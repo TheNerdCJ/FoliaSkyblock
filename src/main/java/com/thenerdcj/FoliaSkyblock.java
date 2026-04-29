@@ -61,15 +61,25 @@ public class FoliaSkyblock extends JavaPlugin {
         getCommand("island").setExecutor(islandCmd);
         getCommand("island").setTabCompleter(islandCmd);
 
-        MiscCommand misc = new MiscCommand(this);
-        getCommand("spawn").setExecutor(misc);
-        getCommand("setspawn").setExecutor(misc);
-        getCommand("tpa").setExecutor(misc);
-        getCommand("tpaccept").setExecutor(misc);
-        getCommand("tpdeny").setExecutor(misc);
-        getCommand("rules").setExecutor(misc);
-        getCommand("bal").setExecutor(misc);
-        getCommand("rank").setExecutor(misc);
+        MiscCommand miscCommand = new MiscCommand(this);
+
+// Register all commands that MiscCommand handles
+        getCommand("spawn").setExecutor(miscCommand);
+        getCommand("setspawn").setExecutor(miscCommand);
+        getCommand("tpa").setExecutor(miscCommand);
+        getCommand("tpaccept").setExecutor(miscCommand);
+        getCommand("tpac").setExecutor(miscCommand);
+        getCommand("tpdeny").setExecutor(miscCommand);
+        getCommand("tpdecline").setExecutor(miscCommand);
+        getCommand("tpignore").setExecutor(miscCommand);
+        getCommand("pending").setExecutor(miscCommand);
+        getCommand("rules").setExecutor(miscCommand);
+        getCommand("bal").setExecutor(miscCommand);
+        getCommand("mute").setExecutor(miscCommand);
+        getCommand("unmute").setExecutor(miscCommand);
+
+// Also set TabCompleter
+        getCommand("spawn").setTabCompleter(miscCommand);
 
         // Register listeners
         getServer().getPluginManager().registerEvents(new IslandProtectionListener(this), this);

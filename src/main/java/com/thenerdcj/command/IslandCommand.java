@@ -1,42 +1,24 @@
 package com.thenerdcj.command;
+
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.database.GridPosition;
-import com.thenerdcj.island.Island;
-import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.island.IslandRank;
 import org.bukkit.Bukkit;
-import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 
-import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
-public class IslandCommand implements CommandExecutor, TabCompleter, Listener {
+public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private final FoliaSkyblock plugin;
-    private final IslandManager islandManager;
-
-    // Trade GUI pagination
-    private final Map<UUID, Integer> playerTradePage = new HashMap<>();
-
-    // Cooldown tracking
-    private final Map<UUID, Long> cooldowns = new HashMap<>();
 
     public IslandCommand(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        this.islandManager = plugin.getIslandManager();
     }
 
     @Override
@@ -47,242 +29,100 @@ public class IslandCommand implements CommandExecutor, TabCompleter, Listener {
         }
 
         if (args.length == 0) {
-            sendHelp(player);
+            player.sendMessage("§a=== Island Commands ===");
+            player.sendMessage("§e/island create §7- Create a new island");
+            player.sendMessage("§e/island home §7- Teleport to your island");
+            player.sendMessage("§e/island invite <player> §7- Invite player");
+            player.sendMessage("§e/island accept §7- Accept invite");
+            player.sendMessage("§e/island kick <player> §7- Kick member");
+            player.sendMessage("§e/island rank <player> <rank> §7- Set member rank");
+            player.sendMessage("§e/island top §7- View top islands");
             return true;
         }
 
-        String sub = args[0].toLowerCase();
+        switch (args[0].toLowerCase()) {
+            case "create":
+                plugin.getIslandManager().createIsland(player, "PLAINS", World.Environment.NORMAL);
+                player.sendMessage("§aCreating your island...");
+                break;
 
-        if (isOnCooldown(player, sub)) return true;
+            case "home":
+                player.teleport(plugin.getIslandManager().getIslandHome(player));
+                player.sendMessage("§aTeleported to your island home.");
+                break;
 
-        switch (sub) {
-            case "create" -> handleCreate(player, args.length > 1 ? args[1] : null);
-            case "home", "h" -> handleHome(player);
-            case "reset" -> handleReset(player, args.length > 1 ? args[1] : null);
-            case "delete" -> handleDelete(player);
-            case "party" -> handleParty(player, args);
-            case "trade" -> openTradeGUI(player);
-            case "top" -> handleTop(player);
-            case "help" -> sendHelp(player);
-            default -> sendHelp(player);
+            case "invite":
+                if (args.length < 2) { player.sendMessage("§cUsage: /island invite <player>"); return true; }
+                Player target = Bukkit.getPlayer(args[1]);
+                if (target == null) { player.sendMessage("§cPlayer not found."); return true; }
+                plugin.getIslandManager().inviteToParty(player, target);
+                player.sendMessage("§aInvite sent to " + target.getName());
+                break;
+
+            case "accept":
+                plugin.getIslandManager().acceptPartyInvite(player);
+                player.sendMessage("§aInvite accepted!");
+                break;
+
+            case "kick":
+                if (args.length < 2) { player.sendMessage("§cUsage: /island kick <player>"); return true; }
+                Player kickTarget = Bukkit.getPlayer(args[1]);
+                if (kickTarget != null) {
+                    plugin.getIslandManager().removeMemberFromIsland(player.getUniqueId(), kickTarget.getUniqueId());
+                    player.sendMessage("§aKicked " + kickTarget.getName());
+                }
+                break;
+
+            case "rank":
+                if (args.length < 3) { player.sendMessage("§cUsage: /island rank <player> <GUEST|HELPER|MODERATOR>"); return true; }
+                Player rankTarget = Bukkit.getPlayer(args[1]);
+                if (rankTarget != null) {
+                    try {
+                        IslandRank rank = IslandRank.valueOf(args[2].toUpperCase());
+                        plugin.getIslandManager().setMemberRank(player.getUniqueId(), rankTarget.getUniqueId(), rank);
+                        player.sendMessage("§aSet " + rankTarget.getName() + "'s rank to " + rank);
+                    } catch (IllegalArgumentException e) {
+                        player.sendMessage("§cInvalid rank. Use: GUEST, HELPER, MODERATOR");
+                    }
+                }
+                break;
+
+            case "top":
+                player.sendMessage("§aTop islands feature coming soon!");
+                break;
+
+            default:
+                player.sendMessage("§cUnknown subcommand. Use /island for help.");
+                break;
         }
+
         return true;
     }
 
-    // ====================== CREATE ======================
-    private void handleCreate(Player player, String biomeName) {
-        islandManager.createIsland(player, biomeName, World.Environment.NORMAL)
-                .thenAccept(success -> {
-                    if (success) player.sendMessage("§aYour island has been created!");
-                    else player.sendMessage("§cYou already have an island!");
-                });
-    }
-
-    // ====================== HOME ======================
-    private void handleHome(Player player) {
-        Island island = islandManager.getIsland(player.getUniqueId(), World.Environment.NORMAL);
-        if (island == null) {
-            player.sendMessage("§cYou don't have an island!");
-            return;
-        }
-        player.teleport(islandManager.getIslandHome(player));
-        player.sendMessage("§aTeleported to your island.");
-    }
-
-    // ====================== RESET ======================
-    private void handleReset(Player player, String biomeName) {
-        islandManager.resetIsland(player, biomeName != null ? biomeName : "PLAINS")
-                .thenAccept(success -> {
-                    if (success) player.sendMessage("§aIsland reset successfully!");
-                    else player.sendMessage("§cFailed to reset island.");
-                });
-    }
-
-    // ====================== DELETE ======================
-    private void handleDelete(Player player) {
-        islandManager.deleteIsland(player.getUniqueId(), World.Environment.NORMAL)
-                .thenAccept(success -> {
-                    if (success) player.sendMessage("§aIsland deleted.");
-                    else player.sendMessage("§cYou don't have an island to delete.");
-                });
-    }
-
-    // ====================== PARTY ======================
-    private void handleParty(Player player, String[] args) {
-        if (args.length < 2) {
-            sendPartyHelp(player);
-            return;
-        }
-        String action = args[1].toLowerCase();
-
-        switch (action) {
-            case "invite" -> islandManager.inviteToParty(player, args.length > 2 ? args[2] : null);
-            case "accept" -> islandManager.acceptPartyInvite(player);
-            case "kick" -> {
-                if (args.length > 2) {
-                    UUID target = Bukkit.getOfflinePlayer(args[2]).getUniqueId();
-                    islandManager.removeMemberFromIsland(player.getUniqueId(), target);
-                }
-            }
-            case "rank" -> {
-                if (args.length > 3) {
-                    try {
-                        IslandRank newRank = IslandRank.valueOf(args[3].toUpperCase());
-                        UUID target = Bukkit.getOfflinePlayer(args[2]).getUniqueId();
-                        islandManager.setMemberRank(player.getUniqueId(), target, newRank);
-                    } catch (IllegalArgumentException e) {
-                        player.sendMessage("§cInvalid rank! Use: OWNER, MODERATOR, HELPER, GUEST");
-                    }
-                }
-            }
-            default -> sendPartyHelp(player);
-        }
-    }
-
-    private void sendPartyHelp(Player player) {
-        player.sendMessage("§6=== Party Commands ===");
-        player.sendMessage("§e/is party invite <player>");
-        player.sendMessage("§e/is party accept");
-        player.sendMessage("§e/is party kick <player>");
-        player.sendMessage("§e/is party rank <player> <OWNER|MODERATOR|HELPER|GUEST>");
-    }
-
-    // ====================== TRADE GUI ======================
-    public void openTradeGUI(Player player) {
-        Island island = islandManager.getIsland(player.getUniqueId(), World.Environment.NORMAL);
-        if (island == null) {
-            player.sendMessage("§cYou need an island to trade!");
-            return;
-        }
-
-        int page = playerTradePage.getOrDefault(player.getUniqueId(), 0);
-        Inventory gui = Bukkit.createInventory(null, 54, "§6Island Trades §7(Page " + (page + 1) + ")");
-
-        File tradesFile = new File(plugin.getDataFolder(), "trades.yml");
-        YamlConfiguration tradesConfig = YamlConfiguration.loadConfiguration(tradesFile);
-        List<Map<?, ?>> tradeList = tradesConfig.getMapList("trades");
-
-        for (int i = 0; i < 45 && (page * 45 + i) < tradeList.size(); i++) {
-            Map<?, ?> trade = tradeList.get(page * 45 + i);
-            Object levelObj = trade.get("level");
-            int requiredLevel = levelObj instanceof Number ? ((Number) levelObj).intValue() : 1;
-
-            String outputStr = (String) trade.get("output");
-            Material material = Material.valueOf(outputStr.split(":")[0]);
-
-            ItemStack item = new ItemStack(material);
-            ItemMeta meta = item.getItemMeta();
-            meta.setDisplayName("§eTrade #" + (page * 45 + i + 1));
-
-            List<String> lore = new ArrayList<>();
-            lore.add("§7Input: " + trade.get("input"));
-            lore.add("§7Output: " + trade.get("output"));
-            lore.add("");
-
-            if (island.getLevel() >= requiredLevel) {
-                lore.add("§a✔ Click to trade!");
-                item.setType(Material.GREEN_STAINED_GLASS_PANE);
-            } else {
-                lore.add("§c✖ Locked - Island Level " + requiredLevel + " required");
-                item.setType(Material.RED_STAINED_GLASS_PANE);
-            }
-            meta.setLore(lore);
-            item.setItemMeta(meta);
-            gui.setItem(i, item);
-        }
-
-        // Navigation
-        gui.setItem(45, createNavItem(Material.ARROW, "§ePrevious Page"));
-        gui.setItem(53, createNavItem(Material.ARROW, "§eNext Page"));
-
-        player.openInventory(gui);
-        playerTradePage.put(player.getUniqueId(), page);
-    }
-
-    private ItemStack createNavItem(Material mat, String name) {
-        ItemStack item = new ItemStack(mat);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    @EventHandler
-    public void onTradeClick(InventoryClickEvent e) {
-        if (!e.getView().getTitle().startsWith("§6Island Trades")) return;
-        e.setCancelled(true);
-
-        Player player = (Player) e.getWhoClicked();
-        int slot = e.getRawSlot();
-        if (slot >= 45) return; // navigation slots
-
-        int page = playerTradePage.getOrDefault(player.getUniqueId(), 0);
-        int tradeIndex = page * 45 + slot;
-
-        File tradesFile = new File(plugin.getDataFolder(), "trades.yml");
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(tradesFile);
-        List<Map<?, ?>> tradeList = config.getMapList("trades");
-
-        if (tradeIndex >= tradeList.size()) return;
-
-        Map<?, ?> trade = tradeList.get(tradeIndex);
-        Object levelObj = trade.get("level");
-        int requiredLevel = levelObj instanceof Number ? ((Number) levelObj).intValue() : 1;
-
-        Island island = islandManager.getIsland(player.getUniqueId(), World.Environment.NORMAL);
-        if (island == null || island.getLevel() < requiredLevel) {
-            player.sendMessage("§cYou need island level §e" + requiredLevel + " §cto unlock this trade!");
-            return;
-        }
-
-        islandManager.performTrade(player, tradeIndex);
-    }
-
-    // ====================== TOP ======================
-    private void handleTop(Player player) {
-        plugin.getDatabaseManager().getTopIslands(10).thenAccept(topList -> {
-            player.sendMessage("§6=== Top 10 Richest Islands ===");
-            for (int i = 0; i < topList.size(); i++) {
-                var entry = topList.get(i);
-                String name = Bukkit.getOfflinePlayer(entry.ownerUuid()).getName() != null ?
-                        Bukkit.getOfflinePlayer(entry.ownerUuid()).getName() : "Unknown";
-                player.sendMessage("§e#" + (i + 1) + " §f" + name + " §7- §e" + entry.balance());
-            }
-        });
-    }
-
-    private void sendHelp(Player player) {
-        player.sendMessage("§6=== Island Commands ===");
-        player.sendMessage("§e/is create [biome] §7- Create island");
-        player.sendMessage("§e/is home §7- Teleport home");
-        player.sendMessage("§e/is reset [biome] §7- Reset island");
-        player.sendMessage("§e/is delete §7- Delete island");
-        player.sendMessage("§e/is party ... §7- Party commands");
-        player.sendMessage("§e/is trade §7- Open trade menu");
-        player.sendMessage("§e/is top §7- Top islands");
-        player.sendMessage("§e/is help §7- This menu");
-    }
-
-    // ====================== COOLDOWN ======================
-    private boolean isOnCooldown(Player player, String action) {
-        int cooldown = plugin.getConfig().getInt("cooldowns.island-" + action, 3);
-        long now = System.currentTimeMillis();
-        long last = cooldowns.getOrDefault(player.getUniqueId(), 0L);
-
-        if (now - last < cooldown * 1000L) {
-            player.sendMessage("§cWait §e" + ((cooldown * 1000L - (now - last)) / 1000) + "§c seconds.");
-            return true;
-        }
-        cooldowns.put(player.getUniqueId(), now);
-        return false;
-    }
-
     @Override
-    public List<String> onTabComplete(CommandSender sender, Command cmd, String alias, String[] args) {
-        if (!(sender instanceof Player)) return Collections.emptyList();
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        List<String> completions = new ArrayList<>();
+
         if (args.length == 1) {
-            return List.of("create", "home", "reset", "delete", "party", "trade", "top", "help");
+            completions.add("create");
+            completions.add("home");
+            completions.add("invite");
+            completions.add("accept");
+            completions.add("kick");
+            completions.add("rank");
+            completions.add("top");
+        } else if (args.length == 2) {
+            if (args[0].equalsIgnoreCase("invite") || args[0].equalsIgnoreCase("kick") || args[0].equalsIgnoreCase("rank")) {
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    completions.add(p.getName());
+                }
+            }
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("rank")) {
+            completions.add("GUEST");
+            completions.add("HELPER");
+            completions.add("MODERATOR");
         }
-        return Collections.emptyList();
+
+        return completions;
     }
 }

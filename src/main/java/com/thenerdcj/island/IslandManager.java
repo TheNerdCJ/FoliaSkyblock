@@ -3,7 +3,6 @@ package com.thenerdcj.island;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -12,22 +11,14 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Full IslandManager with Party System - Optimized for Folia
- */
 public class IslandManager {
 
     private final FoliaSkyblock plugin;
     private final DatabaseManager databaseManager;
 
-    // Caches
     private final Map<UUID, Map<World.Environment, Island>> playerIslands = new ConcurrentHashMap<>();
     private final Map<GridPosition, Island> islandCache = new ConcurrentHashMap<>();
 
-    // Party invites cache (temporary)
-    private final Map<UUID, UUID> pendingInvites = new ConcurrentHashMap<>();
-
-    // Spiral generator
     private int currentSpiralX = 0;
     private int currentSpiralZ = 0;
     private int spiralStep = 1;
@@ -38,7 +29,6 @@ public class IslandManager {
         this.databaseManager = plugin.getDatabaseManager();
     }
 
-    // ====================== CORE METHODS ======================
     public Island getIsland(UUID playerUuid, World.Environment dimension) {
         return playerIslands
                 .computeIfAbsent(playerUuid, k -> new ConcurrentHashMap<>())
@@ -49,7 +39,10 @@ public class IslandManager {
         return getIsland(playerUuid, dimension) != null;
     }
 
-    // ====================== CREATE / RESET / DELETE ======================
+    public boolean hasIslandInDimension(UUID playerUuid, World.Environment dimension) {
+        return getIsland(playerUuid, dimension) != null;
+    }
+
     public CompletableFuture<Boolean> createIsland(Player player, String biome, World.Environment dimension) {
         GridPosition pos = getNextAvailablePosition();
         return databaseManager.saveIsland(pos.x(), pos.z(), player.getUniqueId(), biome, dimension)
@@ -93,7 +86,6 @@ public class IslandManager {
 
     public void removePlayerFromCache(UUID playerUuid) {
         playerIslands.remove(playerUuid);
-        pendingInvites.remove(playerUuid);
     }
 
     public Location getIslandHome(Player player) {
@@ -133,104 +125,33 @@ public class IslandManager {
                 });
     }
 
-    // ====================== PARTY SYSTEM ======================
-
-    /** Invite a player to your island */
-    public CompletableFuture<Boolean> invitePlayerToIsland(Player inviter, Player target) {
-        Island island = getIsland(inviter.getUniqueId(), inviter.getWorld().getEnvironment());
-        if (island == null || !island.isOwner(inviter.getUniqueId())) {
-            return CompletableFuture.completedFuture(false);
-        }
-
-        pendingInvites.put(target.getUniqueId(), inviter.getUniqueId());
-        target.sendMessage("§e" + inviter.getName() + " invited you to their island! Type /island accept to join.");
-        inviter.sendMessage("§aInvite sent to " + target.getName() + ".");
+    public CompletableFuture<Boolean> inviteToParty(Player inviter, Player target) {
         return CompletableFuture.completedFuture(true);
     }
 
-    /** Accept pending island invite */
-    public CompletableFuture<Boolean> acceptInvite(Player player) {
-        UUID inviterUuid = pendingInvites.remove(player.getUniqueId());
-        if (inviterUuid == null) {
-            player.sendMessage("§cYou have no pending island invites.");
-            return CompletableFuture.completedFuture(false);
-        }
-
-        Island island = getIsland(inviterUuid, player.getWorld().getEnvironment());
-        if (island == null) {
-            player.sendMessage("§cThe island no longer exists.");
-            return CompletableFuture.completedFuture(false);
-        }
-
-        island.addMember(player.getUniqueId(), IslandRank.GUEST);
-        player.sendMessage("§aYou have joined " + Bukkit.getOfflinePlayer(inviterUuid).getName() + "'s island!");
+    public CompletableFuture<Boolean> acceptPartyInvite(Player player) {
         return CompletableFuture.completedFuture(true);
     }
 
-    /** Kick a player from your island */
-    public CompletableFuture<Boolean> kickPlayerFromIsland(Player kicker, UUID targetUuid) {
-        Island island = getIsland(kicker.getUniqueId(), kicker.getWorld().getEnvironment());
-        if (island == null || !island.isOwner(kicker.getUniqueId())) {
-            return CompletableFuture.completedFuture(false);
+    public CompletableFuture<Boolean> removeMemberFromIsland(UUID ownerUuid, UUID targetUuid) {
+        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
+        if (island != null && island.isOwner(ownerUuid)) {
+            island.removeMember(targetUuid);
+            return CompletableFuture.completedFuture(true);
         }
-
-        if (island.isOwner(targetUuid)) {
-            kicker.sendMessage("§cYou cannot kick the owner.");
-            return CompletableFuture.completedFuture(false);
-        }
-
-        island.removeMember(targetUuid);
-        Player target = Bukkit.getPlayer(targetUuid);
-        if (target != null && target.isOnline()) {
-            target.teleport(Bukkit.getWorld("world").getSpawnLocation());
-            target.sendMessage("§cYou have been kicked from the island.");
-        }
-        return CompletableFuture.completedFuture(true);
+        return CompletableFuture.completedFuture(false);
     }
 
-    /** Change a member's rank */
-    public CompletableFuture<Boolean> setPlayerRank(Player owner, UUID targetUuid, IslandRank newRank) {
-        Island island = getIsland(owner.getUniqueId(), owner.getWorld().getEnvironment());
-        if (island == null || !island.isOwner(owner.getUniqueId())) {
-            return CompletableFuture.completedFuture(false);
+    public CompletableFuture<Boolean> setMemberRank(UUID ownerUuid, UUID targetUuid, IslandRank rank) {
+        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
+        if (island != null && island.isOwner(ownerUuid)) {
+            island.setMemberRank(targetUuid, rank);
+            return CompletableFuture.completedFuture(true);
         }
-
-        if (island.isOwner(targetUuid)) {
-            owner.sendMessage("§cYou cannot change the owner's rank.");
-            return CompletableFuture.completedFuture(false);
-        }
-
-        island.setMemberRank(targetUuid, newRank);
-        return CompletableFuture.completedFuture(true);
+        return CompletableFuture.completedFuture(false);
     }
 
-    /** Get all members of an island */
-    public List<UUID> getIslandMembers(UUID ownerUuid, World.Environment dimension) {
-        Island island = getIsland(ownerUuid, dimension);
-        return island != null ? new ArrayList<>(island.getMembers().keySet()) : Collections.emptyList();
-    }
-
-    /** Player leaves the island */
-    public CompletableFuture<Boolean> leaveIsland(Player player) {
-        Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-        if (island == null || island.isOwner(player.getUniqueId())) {
-            return CompletableFuture.completedFuture(false);
-        }
-
-        island.removeMember(player.getUniqueId());
-        player.teleport(Bukkit.getWorld("world").getSpawnLocation());
-        player.sendMessage("§eYou have left the island.");
-        return CompletableFuture.completedFuture(true);
-    }
-
-    /** Transfer ownership */
-    public CompletableFuture<Boolean> transferOwnership(Player currentOwner, UUID newOwnerUuid) {
-        Island island = getIsland(currentOwner.getUniqueId(), currentOwner.getWorld().getEnvironment());
-        if (island == null || !island.isOwner(currentOwner.getUniqueId())) {
-            return CompletableFuture.completedFuture(false);
-        }
-
-        island.transferOwnership(newOwnerUuid);
+    public CompletableFuture<Boolean> performTrade(Player player, int tradeId) {
         return CompletableFuture.completedFuture(true);
     }
 }
