@@ -8,6 +8,7 @@ import com.thenerdcj.economy.EconomyManager;
 import com.thenerdcj.island.GridManager;
 import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.listener.*;
+import com.thenerdcj.rank.RankManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -25,6 +26,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private CombatManager combatManager;
     private EconomyManager economyManager;
     private GridManager gridManager;
+    private RankManager rankManager;
 
     @Override
     public void onEnable() {
@@ -43,13 +45,18 @@ public class FoliaSkyblock extends JavaPlugin {
             return;
         }
 
-        // 2. Initialize All Managers
+        // 2. Initialize GridManager and load used positions from database
+        gridManager = new GridManager(this);
+        gridManager.loadUsedPositions(databaseManager);
+        getLogger().info("§a[✓] GridManager initialized and loaded used positions");
+
+        // 3. Initialize All Other Managers
         try {
             islandManager = new IslandManager(this);
             chatManager = new ChatManager(this);
             combatManager = new CombatManager(this);
             economyManager = new EconomyManager(this);
-            gridManager = new GridManager(this);
+            rankManager = new RankManager(this);
             getLogger().info("§a[✓] All managers initialized");
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "§cFailed to initialize managers!", e);
@@ -57,15 +64,14 @@ public class FoliaSkyblock extends JavaPlugin {
             return;
         }
 
-        // 3. Create Default Spawn Island
+        // 4. Create Default Spawn Island
         createDefaultSpawnIsland();
 
-        // 4. Register Commands
+        // 5. Register Commands
         getCommand("island").setExecutor(new IslandCommand(this));
         getCommand("bal").setExecutor(new BalanceCommand(this));
         getCommand("rank").setExecutor(new RankCommand(this));
 
-        // Player commands
         PlayerCommand playerCmd = new PlayerCommand(this);
         getCommand("spawn").setExecutor(playerCmd);
         getCommand("home").setExecutor(playerCmd);
@@ -78,7 +84,6 @@ public class FoliaSkyblock extends JavaPlugin {
         getCommand("pending").setExecutor(playerCmd);
         getCommand("rules").setExecutor(playerCmd);
 
-        // Staff commands
         StaffCommand staffCmd = new StaffCommand(this);
         getCommand("mute").setExecutor(staffCmd);
         getCommand("unmute").setExecutor(staffCmd);
@@ -86,7 +91,7 @@ public class FoliaSkyblock extends JavaPlugin {
 
         getLogger().info("§a[✓] All commands registered");
 
-        // 5. Register Listeners
+        // 6. Register Listeners
         getServer().getPluginManager().registerEvents(new IslandProtectionListener(this), this);
         getServer().getPluginManager().registerEvents(new DimensionIslandListener(this), this);
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
@@ -125,4 +130,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public CombatManager getCombatManager() { return combatManager; }
     public EconomyManager getEconomyManager() { return economyManager; }
     public GridManager getGridManager() { return gridManager; }
+    public RankManager getRankManager() { return rankManager; }
+    public boolean isFolia() { return true; } // Folia detection
 }
