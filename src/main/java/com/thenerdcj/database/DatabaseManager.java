@@ -8,14 +8,23 @@ import com.zaxxer.hikari.HikariDataSource;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * DatabaseManager with Balance Caching for maximum performance
+ */
 public class DatabaseManager {
 
     private final FoliaSkyblock plugin;
     private HikariDataSource dataSource;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
+
+    // ====================== BALANCE CACHE ======================
+    private final ConcurrentHashMap<UUID, Double> balanceCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, Long> cacheTimestamps = new ConcurrentHashMap<>();
+    private static final long CACHE_TTL_MS = 30000; // 30 seconds cache TTL
 
     public DatabaseManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -78,39 +87,78 @@ public class DatabaseManager {
         return dataSource.getConnection();
     }
 
-    // ====================== ALL METHODS ======================
+    // ====================== BALANCE CACHE METHODS ======================
+
+    private boolean isCacheValid(UUID uuid) {
+        Long timestamp = cacheTimestamps.get(uuid);
+        if (timestamp == null) return false;
+        return (System.currentTimeMillis() - timestamp) < CACHE_TTL_MS;
+    }
+
+    private void invalidateCache(UUID uuid) {
+        balanceCache.remove(uuid);
+        cacheTimestamps.remove(uuid);
+    }
+
+    // ====================== PLAYER BALANCE (WITH CACHE) ======================
 
     public CompletableFuture<Double> getPlayerBalance(UUID uuid) {
+        // Check cache first
+        if (isCacheValid(uuid)) {
+            Double cached = balanceCache.get(uuid);
+            if (cached != null) {
+                return CompletableFuture.completedFuture(cached);
+            }
+        }
+
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement("SELECT balance FROM player_balances WHERE uuid = ?")) {
                 ps.setString(1, uuid.toString());
                 try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? rs.getDouble("balance") : 0.0;
+                    double balance = rs.next() ? rs.getDouble("balance") : 0.0;
+
+                    // Update cache
+                    balanceCache.put(uuid, balance);
+                    cacheTimestamps.put(uuid, System.currentTimeMillis());
+
+                    return balance;
                 }
             } catch (SQLException e) { e.printStackTrace(); return 0.0; }
         }, executor);
     }
 
     public CompletableFuture<Boolean> setPlayerBalance(UUID uuid, double balance) {
+        // Invalidate cache
+        invalidateCache(uuid);
+
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                          "INSERT OR REPLACE INTO player_balances (uuid, balance) VALUES (?, ?)")) {
                 ps.setString(1, uuid.toString());
                 ps.setDouble(2, balance);
+
+                // Update cache immediately
+                balanceCache.put(uuid, balance);
+                cacheTimestamps.put(uuid, System.currentTimeMillis());
+
                 return ps.executeUpdate() > 0;
             } catch (SQLException e) { e.printStackTrace(); return false; }
         }, executor);
     }
 
     public CompletableFuture<Boolean> addPlayerBalance(UUID uuid, double amount) {
-        return getPlayerBalance(uuid).thenCompose(current -> setPlayerBalance(uuid, current + amount));
+        return getPlayerBalance(uuid).thenCompose(current ->
+                setPlayerBalance(uuid, current + amount));
     }
 
     public CompletableFuture<Boolean> removePlayerBalance(UUID uuid, double amount) {
-        return getPlayerBalance(uuid).thenCompose(current -> setPlayerBalance(uuid, Math.max(0, current - amount)));
+        return getPlayerBalance(uuid).thenCompose(current ->
+                setPlayerBalance(uuid, Math.max(0, current - amount)));
     }
+
+    // ====================== ISLAND BALANCE ======================
 
     public CompletableFuture<Double> getIslandBalance(GridPosition pos) {
         return CompletableFuture.supplyAsync(() -> {
@@ -137,12 +185,16 @@ public class DatabaseManager {
     }
 
     public CompletableFuture<Boolean> addIslandBalance(GridPosition pos, double amount) {
-        return getIslandBalance(pos).thenCompose(current -> setIslandBalance(pos, current + amount));
+        return getIslandBalance(pos).thenCompose(current ->
+                setIslandBalance(pos, current + amount));
     }
 
     public CompletableFuture<Boolean> removeIslandBalance(GridPosition pos, double amount) {
-        return getIslandBalance(pos).thenCompose(current -> setIslandBalance(pos, Math.max(0, current - amount)));
+        return getIslandBalance(pos).thenCompose(current ->
+                setIslandBalance(pos, Math.max(0, current - amount)));
     }
+
+    // ====================== GET ISLAND BY OWNER ======================
 
     public CompletableFuture<Island> getIslandByOwner(UUID ownerUuid, org.bukkit.World.Environment dimension) {
         return CompletableFuture.supplyAsync(() -> {
@@ -162,13 +214,18 @@ public class DatabaseManager {
         }, executor);
     }
 
+    // ====================== SAVE / DELETE ISLAND ======================
+
     public CompletableFuture<Boolean> saveIsland(int gridX, int gridZ, UUID ownerUuid, String biome, org.bukkit.World.Environment dimension) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                          "INSERT OR REPLACE INTO islands (grid_x, grid_z, dimension, owner_uuid, biome_name) VALUES (?, ?, ?, ?, ?)")) {
-                ps.setInt(1, gridX); ps.setInt(2, gridZ); ps.setString(3, dimension.name());
-                ps.setString(4, ownerUuid.toString()); ps.setString(5, biome);
+                ps.setInt(1, gridX);
+                ps.setInt(2, gridZ);
+                ps.setString(3, dimension.name());
+                ps.setString(4, ownerUuid.toString());
+                ps.setString(5, biome);
                 return ps.executeUpdate() > 0;
             } catch (SQLException e) { e.printStackTrace(); return false; }
         }, executor);
@@ -179,11 +236,14 @@ public class DatabaseManager {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                          "DELETE FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-                ps.setString(1, ownerUuid.toString()); ps.setString(2, dimension.name());
+                ps.setString(1, ownerUuid.toString());
+                ps.setString(2, dimension.name());
                 return ps.executeUpdate() > 0;
             } catch (SQLException e) { e.printStackTrace(); return false; }
         }, executor);
     }
+
+    // ====================== TOP ISLANDS ======================
 
     public CompletableFuture<List<TopIslandEntry>> getTopIslands(int limit) {
         return CompletableFuture.supplyAsync(() -> {
@@ -202,6 +262,8 @@ public class DatabaseManager {
             return top;
         }, executor);
     }
+
+    // ====================== RANK SYSTEM ======================
 
     public CompletableFuture<String> getCurrentRankId(UUID uuid) {
         return CompletableFuture.supplyAsync(() -> {
@@ -254,6 +316,8 @@ public class DatabaseManager {
         }, executor);
     }
 
+    // ====================== MUTE SYSTEM ======================
+
     public CompletableFuture<Set<UUID>> loadMutedPlayers() {
         return CompletableFuture.supplyAsync(() -> {
             Set<UUID> muted = new HashSet<>();
@@ -291,6 +355,8 @@ public class DatabaseManager {
         }, executor);
     }
 
+    // ====================== TOP BALANCES ======================
+
     public CompletableFuture<List<TopBalanceEntry>> getTopBalances(int limit) {
         return CompletableFuture.supplyAsync(() -> {
             List<TopBalanceEntry> top = new ArrayList<>();
@@ -310,6 +376,8 @@ public class DatabaseManager {
 
     public record TopBalanceEntry(UUID uuid, double balance) {}
     public record TopIslandEntry(GridPosition pos, UUID ownerUuid, String biome, double balance) {}
+
+    // ====================== SHUTDOWN ======================
 
     public void close() {
         executor.shutdown();
