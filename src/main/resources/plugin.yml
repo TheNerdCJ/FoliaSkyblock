@@ -3,77 +3,87 @@ version: 1.0.0
 main: com.thenerdcj.FoliaSkyblock
 api-version: 1.21
 author: TheNerdCJ
-description: High-performance Skyblock plugin for Folia 1.21+
+description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, and economy.
 
 commands:
   island:
-    description: Main island command
-    usage: /<command> [create|home|invite|accept|kick|rank|top]
-    aliases: [is, skyblock]
+    description: Main island command with create, home, invite, etc.
+    usage: /<command> [create|home|tp|invite|accept|kick|rank|top|setspawn]
+    aliases: [is, skyblock, sb]
 
   bal:
-    description: Check your balance
+    description: Check your player balance
     usage: /<command>
-    aliases: [balance, money]
+    aliases: [balance, money, coins]
 
   rank:
-    description: Check your rank
-    usage: /<command>
+    description: Check your player rank and voting
+    usage: /<command> [vote|top]
 
   mute:
-    description: Mute a player
+    description: Mute a player (staff)
     usage: /<command> <player> [duration] [reason]
-    permission: folia.moderator.mute
+    permission: foliasb.staff.mute
 
   unmute:
-    description: Unmute a player
+    description: Unmute a player (staff)
     usage: /<command> <player>
-    permission: folia.moderator.mute
+    permission: foliasb.staff.mute
 
   staff:
-    description: Staff panel
+    description: Staff panel and tools
     usage: /<command>
-    permission: folia.staff
-
-  admin:
-    description: Admin panel
-    usage: /<command>
-    permission: folia.admin
+    permission: foliasb.staff
 
   setspawn:
-    description: Set the server spawn location
+    description: Set the server spawn location (admin)
     usage: /<command>
-    permission: folia.admin
+    permission: foliasb.admin.setspawn
     aliases: [spawnset]
 
   spawn:
-    description: Teleport to spawn
+    description: Teleport to server spawn
     usage: /<command>
+    aliases: [lobby]
 
   home:
     description: Teleport to your island home
     usage: /<command>
+    aliases: [is home]
 
   tpa:
-    description: Send teleport request
+    description: Request to teleport to a player
     usage: /<command> <player>
 
   tpaccept:
-    description: Accept teleport request
-    usage: /<command> [player]
+    description: Accept a teleport request
+    usage: /<command>
     aliases: [tpac]
 
   tpdeny:
-    description: Deny teleport request
-    usage: /<command> [player]
+    description: Deny a teleport request
+    usage: /<command>
     aliases: [tpdecline]
 
   tpignore:
-    description: Ignore TPA requests
-    usage: /<command> [player]
+    description: Ignore teleport requests from a player
+    usage: /<command> <player>
 
   pending:
-    description: View pending TPA requests
+    description: List your pending teleport requests
+    usage: /<command>
+
+  challenge:
+    description: View your daily and weekly challenges
+    usage: /<command>
+    aliases: [challenges, daily]
+
+  daily:
+    description: View your daily island challenges
+    usage: /<command>
+
+  trade:
+    description: Open the island trading GUI
     usage: /<command>
 
   rules:
@@ -81,20 +91,60 @@ commands:
     usage: /<command>
 
 permissions:
-  folia.moderator.mute:
+  # Donor permissions
+  foliasb.donor:
+    description: Access to donor features (biome selection, etc.)
+    default: false
+
+  foliasb.create.biome:
+    description: Allows choosing biome when creating island
+    default: false
+    children:
+      foliasb.donor: true
+
+  # Staff permissions
+  foliasb.staff:
+    description: Base staff permission
+    default: op
+
+  foliasb.staff.mute:
     description: Allows muting/unmuting players
     default: op
+    children:
+      foliasb.staff: true
 
-  folia.staff:
-    description: Access to staff commands
-    default: op
-
-  folia.admin:
-    description: Access to admin commands
-    default: op
-
-  folia.moderator:
-    description: Moderator permissions
+  foliasb.staff.kick:
+    description: Allows kicking players from islands
     default: op
     children:
-      folia.moderator.mute: true
+      foliasb.staff: true
+
+  # Admin permissions
+  foliasb.admin:
+    description: Full admin access
+    default: op
+
+  foliasb.admin.setspawn:
+    description: Allows setting server spawn
+    default: op
+    children:
+      foliasb.admin: true
+
+  foliasb.admin.editspawn:
+    description: Allows editing blocks in spawn protection zone (0,0)
+    default: op
+    children:
+      foliasb.admin: true
+
+  foliasb.admin.bypass:
+    description: Bypass all island protections
+    default: op
+    children:
+      foliasb.admin: true
+
+  # Default permissions for all players
+  foliasb.default:
+    description: Basic permissions given to all players
+    default: true
+    children:
+      foliasb.donor: false

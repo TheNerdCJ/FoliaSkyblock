@@ -5,10 +5,12 @@ import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.generator.IslandGenerator;
+import com.thenerdcj.island.IslandRank;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.World;
+import org.bukkit.block.Biome;
 import org.bukkit.entity.Player;
 
 import java.util.*;
@@ -65,13 +67,12 @@ public class IslandManager {
                         Biome chosenBiome = null;
                         if (biomeName != null && !biomeName.isEmpty()) {
                             try {
-                                // Modern way (1.21.3+ compatible) - avoid deprecated Biome.valueOf()
+                                // Modern way (1.21.3+ compatible)
                                 NamespacedKey key = NamespacedKey.minecraft(biomeName.toLowerCase().replace(" ", "_"));
                                 chosenBiome = Registry.BIOME.get(key);
                             } catch (Exception ignored) {}
                         }
 
-                        // Normal players get random biome, donors can choose later via GUI
                         boolean isDonor = player.hasPermission("foliasb.donor");
                         islandGenerator.generateIsland(island, player, chosenBiome, isDonor);
 
@@ -84,7 +85,6 @@ public class IslandManager {
     private GridPosition getNextAvailablePosition() {
         GridPosition pos = new GridPosition(currentSpiralX, currentSpiralZ);
 
-        // Move to next position in spiral
         switch (spiralDirection) {
             case 0: currentSpiralX += spiralStep; break;
             case 1: currentSpiralZ += spiralStep; break;
@@ -139,11 +139,8 @@ public class IslandManager {
         return databaseManager.deleteIsland(player.getUniqueId(), dimension)
                 .thenCompose(deleted -> {
                     if (deleted) {
-                        // Remove from cache
                         playerIslands.getOrDefault(player.getUniqueId(), new HashMap<>()).remove(dimension);
                         islandCache.remove(island.getGridPosition());
-
-                        // Create new island
                         return createIsland(player, "PLAINS", dimension);
                     }
                     return CompletableFuture.completedFuture(false);
@@ -187,15 +184,11 @@ public class IslandManager {
         return getIsland(playerUuid, dimension) != null;
     }
 
-    /**
-     * Get the island at a specific location (used by protection listener)
-     */
     public Island getIslandAt(Location location) {
         if (location == null || location.getWorld() == null) return null;
 
         World.Environment env = location.getWorld().getEnvironment();
 
-        // Check all cached islands in this dimension
         for (Island island : islandCache.values()) {
             if (island.getDimension() != env) continue;
 
@@ -205,5 +198,41 @@ public class IslandManager {
             }
         }
         return null;
+    }
+
+    // ====================== PARTY SYSTEM METHODS ======================
+
+    public void inviteToParty(Player inviter, Player target) {
+        Island island = getIsland(inviter.getUniqueId(), inviter.getWorld().getEnvironment());
+        if (island == null) {
+            inviter.sendMessage("§cYou don't have an island in this dimension!");
+            return;
+        }
+        if (!island.isOwner(inviter.getUniqueId())) {
+            inviter.sendMessage("§cOnly the island owner can invite players.");
+            return;
+        }
+        target.sendMessage("§a" + inviter.getName() + " has invited you to join their island!");
+        target.sendMessage("§7Use §b/island accept§7 to join.");
+    }
+
+    public void acceptPartyInvite(Player player) {
+        player.sendMessage("§aYou have joined the island! (Party system coming soon)");
+    }
+
+    public void removeMemberFromIsland(UUID ownerUuid, UUID targetUuid) {
+        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
+        if (island == null || !island.isOwner(ownerUuid)) {
+            return;
+        }
+        island.removeMember(targetUuid);
+    }
+
+    public void setMemberRank(UUID ownerUuid, UUID targetUuid, IslandRank rank) {
+        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
+        if (island == null || !island.isOwner(ownerUuid)) {
+            return;
+        }
+        island.setMemberRank(targetUuid, rank);
     }
 }

@@ -114,7 +114,7 @@ public class BiomeTemplate {
 
     // ==================== BIOME REGISTRY ====================
 
-    private static final Map<Biome, BiomeTemplate> BIOME_REGISTRY = new EnumMap<>(Biome.class);
+    private static final Map<Biome, BiomeTemplate> BIOME_REGISTRY = new HashMap<>();
 
     static {
         BIOME_REGISTRY.put(Biome.PLAINS, PLAINS);

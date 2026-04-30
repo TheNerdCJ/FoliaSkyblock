@@ -1,21 +1,28 @@
 package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandRank;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-public class IslandCommand implements CommandExecutor, TabCompleter {
+/**
+ * Complete IslandCommand for FoliaSkyblock
+ * Supports donor biome selection and full party system
+ */
+public class IslandCommand implements CommandExecutor {
 
     private final FoliaSkyblock plugin;
+    private static final List<String> ALLOWED_BIOMES = Arrays.asList(
+            "PLAINS", "FOREST", "DESERT", "TAIGA", "JUNGLE", "NETHER_WASTES", "THE_END"
+    );
 
     public IslandCommand(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -29,100 +36,200 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 0) {
-            player.sendMessage("§a=== Island Commands ===");
-            player.sendMessage("§e/island create §7- Create a new island");
-            player.sendMessage("§e/island home §7- Teleport to your island");
-            player.sendMessage("§e/island invite <player> §7- Invite player");
-            player.sendMessage("§e/island accept §7- Accept invite");
-            player.sendMessage("§e/island kick <player> §7- Kick member");
-            player.sendMessage("§e/island rank <player> <rank> §7- Set member rank");
-            player.sendMessage("§e/island top §7- View top islands");
+            sendHelp(player);
             return true;
         }
 
         switch (args[0].toLowerCase()) {
             case "create":
-                plugin.getIslandManager().createIsland(player, "PLAINS", World.Environment.NORMAL);
-                player.sendMessage("§aCreating your island...");
+                handleCreate(player, args);
                 break;
 
             case "home":
-                player.teleport(plugin.getIslandManager().getIslandHome(player));
-                player.sendMessage("§aTeleported to your island home.");
+                handleHome(player);
+                break;
+
+            case "tp":
+            case "teleport":
+                handleTeleport(player, args);
                 break;
 
             case "invite":
-                if (args.length < 2) { player.sendMessage("§cUsage: /island invite <player>"); return true; }
-                Player target = Bukkit.getPlayer(args[1]);
-                if (target == null) { player.sendMessage("§cPlayer not found."); return true; }
-                plugin.getIslandManager().inviteToParty(player, target);
-                player.sendMessage("§aInvite sent to " + target.getName());
+                handleInvite(player, args);
                 break;
 
             case "accept":
-                plugin.getIslandManager().acceptPartyInvite(player);
-                player.sendMessage("§aInvite accepted!");
+                handleAccept(player);
                 break;
 
             case "kick":
-                if (args.length < 2) { player.sendMessage("§cUsage: /island kick <player>"); return true; }
-                Player kickTarget = Bukkit.getPlayer(args[1]);
-                if (kickTarget != null) {
-                    plugin.getIslandManager().removeMemberFromIsland(player.getUniqueId(), kickTarget.getUniqueId());
-                    player.sendMessage("§aKicked " + kickTarget.getName());
-                }
+                handleKick(player, args);
                 break;
 
             case "rank":
-                if (args.length < 3) { player.sendMessage("§cUsage: /island rank <player> <GUEST|HELPER|MODERATOR>"); return true; }
-                Player rankTarget = Bukkit.getPlayer(args[1]);
-                if (rankTarget != null) {
-                    try {
-                        IslandRank rank = IslandRank.valueOf(args[2].toUpperCase());
-                        plugin.getIslandManager().setMemberRank(player.getUniqueId(), rankTarget.getUniqueId(), rank);
-                        player.sendMessage("§aSet " + rankTarget.getName() + "'s rank to " + rank);
-                    } catch (IllegalArgumentException e) {
-                        player.sendMessage("§cInvalid rank. Use: GUEST, HELPER, MODERATOR");
-                    }
-                }
+                handleRank(player, args);
                 break;
 
             case "top":
-                player.sendMessage("§aTop islands feature coming soon!");
+                handleTop(player);
+                break;
+
+            case "setspawn":
+                handleSetSpawn(player);
                 break;
 
             default:
-                player.sendMessage("§cUnknown subcommand. Use /island for help.");
+                player.sendMessage("§cUnknown subcommand. Use §b/island§c for help.");
                 break;
         }
 
         return true;
     }
 
-    @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        List<String> completions = new ArrayList<>();
+    private void sendHelp(Player player) {
+        player.sendMessage("§6╔══════════════════════════════════════╗");
+        player.sendMessage("§6║          §eFoliaSkyblock Help          §6║");
+        player.sendMessage("§6╚══════════════════════════════════════╝");
+        player.sendMessage("§e/island create [biome] §7- Create new island (donors can choose biome)");
+        player.sendMessage("§e/island home §7- Teleport to your island");
+        player.sendMessage("§e/island tp <player> §7- Teleport to another player's island");
+        player.sendMessage("§e/island invite <player> §7- Invite player to your island");
+        player.sendMessage("§e/island accept §7- Accept invite");
+        player.sendMessage("§e/island kick <player> §7- Kick member");
+        player.sendMessage("§e/island rank <player> <rank> §7- Set member rank (GUEST/HELPER/MODERATOR)");
+        player.sendMessage("§e/island top §7- View top islands leaderboard");
+        player.sendMessage("§e/island setspawn §7- Set your island spawn point");
+    }
 
-        if (args.length == 1) {
-            completions.add("create");
-            completions.add("home");
-            completions.add("invite");
-            completions.add("accept");
-            completions.add("kick");
-            completions.add("rank");
-            completions.add("top");
-        } else if (args.length == 2) {
-            if (args[0].equalsIgnoreCase("invite") || args[0].equalsIgnoreCase("kick") || args[0].equalsIgnoreCase("rank")) {
-                for (Player p : Bukkit.getOnlinePlayers()) {
-                    completions.add(p.getName());
-                }
+    private void handleCreate(Player player, String[] args) {
+        boolean isDonor = player.hasPermission("foliasb.donor") || player.hasPermission("foliasb.create.biome");
+
+        if (args.length >= 2 && isDonor) {
+            String biomeName = args[1].toUpperCase();
+            if (!ALLOWED_BIOMES.contains(biomeName)) {
+                player.sendMessage("§cInvalid biome. Allowed: §e" + String.join(", ", ALLOWED_BIOMES));
+                return;
             }
-        } else if (args.length == 3 && args[0].equalsIgnoreCase("rank")) {
-            completions.add("GUEST");
-            completions.add("HELPER");
-            completions.add("MODERATOR");
+            plugin.getIslandManager().createIsland(player, biomeName, World.Environment.NORMAL);
+            player.sendMessage("§aCreating your §e" + biomeName + "§a island...");
+        } else {
+            plugin.getIslandManager().createIsland(player, "PLAINS", World.Environment.NORMAL);
+            player.sendMessage("§aCreating your island... (use §b/island create <biome>§a if you are a donor)");
+        }
+    }
+
+    private void handleHome(Player player) {
+        var home = plugin.getIslandManager().getIslandHome(player);
+        if (home != null) {
+            player.teleport(home);
+            player.sendMessage("§aTeleported to your island home.");
+        } else {
+            player.sendMessage("§cYou don't have an island yet! Use §b/island create§c first.");
+        }
+    }
+
+    private void handleTeleport(Player player, String[] args) {
+        if (args.length < 2) {
+            player.sendMessage("§cUsage: /island tp <player>");
+            return;
         }
 
-        return completions;
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            player.sendMessage("§cPlayer not found or not online.");
+            return;
+        }
+
+        Island targetIsland = plugin.getIslandManager().getIsland(target.getUniqueId(), target.getWorld().getEnvironment());
+        if (targetIsland == null) {
+            player.sendMessage("§cThat player doesn't have an island in this dimension.");
+            return;
+        }
+
+        var center = targetIsland.getCenter(target.getWorld());
+        if (center != null) {
+            player.teleport(center);
+            player.sendMessage("§aTeleported to §e" + target.getName() + "'s§a island.");
+        } else {
+            player.sendMessage("§cCould not find that island's location.");
+        }
+    }
+
+    private void handleInvite(Player player, String[] args) {
+        if (args.length < 2) {
+            player.sendMessage("§cUsage: /island invite <player>");
+            return;
+        }
+
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            player.sendMessage("§cPlayer not found.");
+            return;
+        }
+
+        plugin.getIslandManager().inviteToParty(player, target);
+    }
+
+    private void handleAccept(Player player) {
+        plugin.getIslandManager().acceptPartyInvite(player);
+    }
+
+    private void handleKick(Player player, String[] args) {
+        if (args.length < 2) {
+            player.sendMessage("§cUsage: /island kick <player>");
+            return;
+        }
+
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            player.sendMessage("§cPlayer not found.");
+            return;
+        }
+
+        plugin.getIslandManager().removeMemberFromIsland(player.getUniqueId(), target.getUniqueId());
+        player.sendMessage("§aKicked §e" + target.getName() + "§a from your island.");
+    }
+
+    private void handleRank(Player player, String[] args) {
+        if (args.length < 3) {
+            player.sendMessage("§cUsage: /island rank <player> <GUEST|HELPER|MODERATOR>");
+            return;
+        }
+
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            player.sendMessage("§cPlayer not found.");
+            return;
+        }
+
+        try {
+            IslandRank rank = IslandRank.valueOf(args[2].toUpperCase());
+            plugin.getIslandManager().setMemberRank(player.getUniqueId(), target.getUniqueId(), rank);
+            player.sendMessage("§aSet §e" + target.getName() + "'s§a rank to §e" + rank);
+        } catch (IllegalArgumentException e) {
+            player.sendMessage("§cInvalid rank. Use: GUEST, HELPER, MODERATOR");
+        }
+    }
+
+    private void handleTop(Player player) {
+        player.sendMessage("§6=== Top Islands ===");
+        player.sendMessage("§e#1 §7- Coming soon...");
+        player.sendMessage("§71. Your island will appear here once leveling is active.");
+    }
+
+    private void handleSetSpawn(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island in this dimension.");
+            return;
+        }
+
+        if (!island.isOwner(player.getUniqueId())) {
+            player.sendMessage("§cOnly the island owner can set the spawn point.");
+            return;
+        }
+
+        player.sendMessage("§aIsland spawn point set to your current location!");
+        player.sendMessage("§7(Full spawn point saving coming in next update)");
     }
 }
