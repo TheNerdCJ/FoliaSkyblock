@@ -8,21 +8,22 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Island class with Permission Caching for maximum performance
+ * Core Island object with full leveling system.
+ * XP scales based on party size (diminishing returns for larger parties).
  */
 public class Island {
+
     private final GridPosition gridPosition;
     private UUID ownerUuid;
     private String biomeName;
     private final World.Environment dimension;
+
     private final Map<UUID, IslandRank> members = new ConcurrentHashMap<>();
     private int level = 1;
     private double xp = 0.0;
 
-    // ====================== PERMISSION CACHE ======================
-    private final ConcurrentHashMap<String, Boolean> permissionCache = new ConcurrentHashMap<>();
-    private static final long CACHE_TTL_MS = 60000; // 1 minute cache TTL
-    private long lastCacheClear = System.currentTimeMillis();
+    // XP required for next level (quadratic scaling like Hypixel Skyblock)
+    private static final double BASE_XP_PER_LEVEL = 100.0;
 
     public Island(GridPosition gridPosition, UUID ownerUuid, String biomeName, World.Environment dimension) {
         this.gridPosition = gridPosition;
@@ -32,58 +33,112 @@ public class Island {
         members.put(ownerUuid, IslandRank.OWNER);
     }
 
+    // ====================== GETTERS ======================
     public GridPosition getGridPosition() { return gridPosition; }
     public UUID getOwnerUuid() { return ownerUuid; }
     public String getBiomeName() { return biomeName; }
+
+    public void setBiome(String biomeName) {
+        this.biomeName = biomeName;
+    }
     public World.Environment getDimension() { return dimension; }
     public int getLevel() { return level; }
     public double getXp() { return xp; }
-    public void setLevel(int level) { this.level = level; clearPermissionCache(); }
-    public void addXp(double amount) { this.xp += amount; }
+    public double getXpForNextLevel() { return getRequiredXpForLevel(level + 1); }
 
     public Map<UUID, IslandRank> getMembers() { return Collections.unmodifiableMap(members); }
+    public int getMemberCount() { return members.size(); }
+
     public boolean isOwner(UUID uuid) { return ownerUuid.equals(uuid); }
     public boolean isMember(UUID uuid) { return members.containsKey(uuid); }
     public IslandRank getRank(UUID uuid) { return members.getOrDefault(uuid, IslandRank.GUEST); }
-    public void addMember(UUID uuid, IslandRank rank) { if (!isOwner(uuid)) { members.put(uuid, rank); clearPermissionCache(); } }
-    public void removeMember(UUID uuid) { if (!isOwner(uuid)) { members.remove(uuid); clearPermissionCache(); } }
-    public void setMemberRank(UUID uuid, IslandRank rank) { if (!isOwner(uuid) && members.containsKey(uuid)) { members.put(uuid, rank); clearPermissionCache(); } }
+
+    // ====================== MEMBER MANAGEMENT ======================
+    public void addMember(UUID uuid, IslandRank rank) {
+        if (!isOwner(uuid)) members.put(uuid, rank);
+    }
+
+    public void removeMember(UUID uuid) {
+        if (!isOwner(uuid)) members.remove(uuid);
+    }
+
+    public void setMemberRank(UUID uuid, IslandRank rank) {
+        if (!isOwner(uuid) && members.containsKey(uuid)) members.put(uuid, rank);
+    }
+
     public void transferOwnership(UUID newOwnerUuid) {
         if (members.containsKey(newOwnerUuid)) {
             members.put(ownerUuid, IslandRank.GUEST);
             members.put(newOwnerUuid, IslandRank.OWNER);
             this.ownerUuid = newOwnerUuid;
-            clearPermissionCache();
         }
     }
-    public Location getCenter(World world) { if (world.getEnvironment() != this.dimension) return null; int centerX = gridPosition.x() * 128 + 64; int centerZ = gridPosition.z() * 128 + 64; return new Location(world, centerX, 100, centerZ); }
 
-    // ====================== PERMISSION CACHE METHODS ======================
-
-    private void clearPermissionCache() {
-        permissionCache.clear();
-        lastCacheClear = System.currentTimeMillis();
+    // ====================== CENTER LOCATION ======================
+    public Location getCenter(World world) {
+        if (world.getEnvironment() != this.dimension) return null;
+        int centerX = gridPosition.x() * 128 + 64;
+        int centerZ = gridPosition.z() * 128 + 64;
+        return new Location(world, centerX, 100, centerZ);
     }
 
-    private boolean isPermissionCacheValid() {
-        return (System.currentTimeMillis() - lastCacheClear) < CACHE_TTL_MS;
-    }
-
+    // ====================== PERMISSIONS ======================
     public boolean hasPermission(UUID playerUuid, IslandPermission permission) {
-        String cacheKey = playerUuid.toString() + ":" + permission.name();
-
-        // Check cache first
-        if (isPermissionCacheValid() && permissionCache.containsKey(cacheKey)) {
-            return permissionCache.get(cacheKey);
-        }
-
-        // Calculate permission
         IslandRank rank = getRank(playerUuid);
-        boolean result = rank != null && rank.hasPermission(permission);
+        return rank != null && rank.hasPermission(permission);
+    }
 
-        // Cache the result
-        permissionCache.put(cacheKey, result);
+    // ====================== LEVELING SYSTEM ======================
+    /**
+     * Add XP with automatic party-size scaling.
+     * Solo players get full XP. Larger parties get diminishing returns.
+     */
+    public void addXp(double baseAmount, int partySize) {
+        if (baseAmount <= 0) return;
+        if (partySize <= 0) partySize = 1;
 
-        return result;
+        double multiplier = calculateXpMultiplier(partySize);
+        double effectiveXp = baseAmount * multiplier;
+
+        this.xp += effectiveXp;
+        checkLevelUp();
+    }
+
+    /**
+     * Add XP as solo player (100% value)
+     */
+    public void addXp(double amount) {
+        addXp(amount, 1);
+    }
+
+    private double calculateXpMultiplier(int partySize) {
+        if (partySize == 1) return 1.0;
+        if (partySize == 2) return 0.85;
+        if (partySize == 3) return 0.75;
+        // 4+ members: diminishing returns
+        return Math.max(0.55, 1.0 - (partySize - 1) * 0.12);
+    }
+
+    private double getRequiredXpForLevel(int targetLevel) {
+        // Quadratic scaling: Level 1→2 = 100 XP, Level 50→51 = ~2500 XP
+        return BASE_XP_PER_LEVEL * targetLevel * targetLevel;
+    }
+
+    private void checkLevelUp() {
+        while (xp >= getRequiredXpForLevel(level + 1)) {
+            xp -= getRequiredXpForLevel(level + 1);
+            level++;
+            // TODO: Fire IslandLevelUpEvent here
+        }
+    }
+
+    public double getProgressToNextLevel() {
+        double required = getRequiredXpForLevel(level + 1);
+        return Math.min(1.0, xp / required);
+    }
+
+    public void setLevel(int newLevel) {
+        this.level = Math.max(1, newLevel);
+        this.xp = 0;
     }
 }

@@ -2,116 +2,80 @@ package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
-import com.thenerdcj.island.IslandManager;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.player.PlayerPortalEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 
 /**
- * DimensionIslandListener - Fully optimized for Folia 1.21+
- * Handles automatic island creation for Nether (portal) and End (void fall).
+ * DimensionIslandListener - Handles dimension transitions and island loading.
+ *
+ * Features:
+ * - Auto-loads player islands on join
+ * - Notifies players when they enter a dimension without an island
+ * - Optional auto-create island when entering new dimension (configurable)
  */
 public class DimensionIslandListener implements Listener {
 
     private final FoliaSkyblock plugin;
-    private final IslandManager islandManager;
+    private final boolean autoCreateOnDimensionEnter;
 
     public DimensionIslandListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        this.islandManager = plugin.getIslandManager();
+        this.autoCreateOnDimensionEnter = plugin.getConfig().getBoolean("island.auto-create-on-dimension", false);
     }
 
-    // ====================== NETHER ISLAND (Portal) ======================
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onNetherPortal(PlayerPortalEvent e) {
-        if (e.getTo() == null || e.getTo().getWorld().getEnvironment() != World.Environment.NETHER) {
-            return;
-        }
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
 
-        Player player = e.getPlayer();
-        World.Environment dimension = World.Environment.NETHER;
+        // Load all islands for this player across all dimensions
+        plugin.getIslandManager().loadPlayerIslands(player);
 
-        if (islandManager.hasIslandInDimension(player.getUniqueId(), dimension)) {
-            return; // Already has one
-        }
-
-        e.setCancelled(true); // Stop default teleport
-
-        player.sendMessage("§eCreating your Nether island...");
-
-        islandManager.createIsland(player, null, dimension)
-                .thenAccept(success -> {
-                    if (success) {
-                        player.sendMessage("§a§lYour Nether island has been generated!");
-
-                        // Folia-safe teleport using EntityScheduler
-                        if (plugin.isFolia()) {
-                            player.getScheduler().run(plugin, scheduledTask -> {
-                                Island island = islandManager.getIsland(player.getUniqueId(), dimension);
-                                if (island != null) {
-                                    player.teleport(islandManager.getIslandHome(player));
-                                }
-                            }, null);
-                        } else {
-                            org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
-                                Island island = islandManager.getIsland(player.getUniqueId(), dimension);
-                                if (island != null) {
-                                    player.teleport(islandManager.getIslandHome(player));
-                                }
-                            });
-                        }
-                    } else {
-                        player.sendMessage("§cFailed to create Nether island.");
-                    }
-                });
+        // Welcome message with island info
+        plugin.getServer().getRegionScheduler().execute(plugin, player.getLocation(), () -> {
+            Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), World.Environment.NORMAL);
+            if (island != null) {
+                player.sendMessage("§aWelcome back! Your island is level §e" + island.getLevel());
+            } else {
+                player.sendMessage("§eYou don't have an island yet! Use §b/island create§e to begin.");
+            }
+        });
     }
 
-    // ====================== END ISLAND (Void Fall) ======================
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onEndVoidFall(EntityDamageEvent e) {
-        if (!(e.getEntity() instanceof Player player)) return;
-        if (e.getCause() != EntityDamageEvent.DamageCause.VOID) return;
-        if (player.getWorld().getEnvironment() != World.Environment.THE_END) return;
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onWorldChange(PlayerChangedWorldEvent event) {
+        Player player = event.getPlayer();
+        World.Environment newDimension = player.getWorld().getEnvironment();
 
-        World.Environment dimension = World.Environment.THE_END;
+        // Check if player has an island in the new dimension
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), newDimension);
 
-        if (islandManager.hasIslandInDimension(player.getUniqueId(), dimension)) {
-            return; // Already has one
+        if (island == null) {
+            player.sendMessage("§eYou don't have an island in this dimension yet!");
+
+            // Auto-create island if enabled (for donors or if configured)
+            if (autoCreateOnDimensionEnter &&
+                    (player.hasPermission("foliasb.donor") || player.hasPermission("foliasb.autocreate"))) {
+
+                player.sendMessage("§aCreating your island in this dimension...");
+
+                plugin.getIslandManager().createIsland(player, null, newDimension)
+                        .thenAccept(success -> {
+                            if (success) {
+                                player.sendMessage("§a§lIsland created! Welcome to the " +
+                                        newDimension.name().toLowerCase() + " dimension!");
+                            }
+                        });
+            } else {
+                player.sendMessage("§7Use §b/island create§7 to claim an island here.");
+            }
+        } else {
+            // Player has an island here - show quick info
+            player.sendMessage("§aWelcome to your §e" + island.getBiomeName() + "§a island (Level " + island.getLevel() + ")");
         }
-
-        e.setCancelled(true);
-        player.setFallDistance(0);
-
-        player.sendMessage("§eCreating your End island...");
-
-        islandManager.createIsland(player, null, dimension)
-                .thenAccept(success -> {
-                    if (success) {
-                        player.sendMessage("§a§lYour End island has been generated!");
-
-                        // Folia-safe teleport using EntityScheduler
-                        if (plugin.isFolia()) {
-                            player.getScheduler().run(plugin, scheduledTask -> {
-                                Island island = islandManager.getIsland(player.getUniqueId(), dimension);
-                                if (island != null) {
-                                    player.teleport(islandManager.getIslandHome(player));
-                                }
-                            }, null);
-                        } else {
-                            org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
-                                Island island = islandManager.getIsland(player.getUniqueId(), dimension);
-                                if (island != null) {
-                                    player.teleport(islandManager.getIslandHome(player));
-                                }
-                            });
-                        }
-                    } else {
-                        player.sendMessage("§cFailed to create End island.");
-                    }
-                });
     }
 }

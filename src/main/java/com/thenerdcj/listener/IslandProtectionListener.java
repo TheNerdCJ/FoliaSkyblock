@@ -2,26 +2,29 @@ package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
-import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.island.IslandPermission;
+import com.thenerdcj.manager.IslandManager;
 import org.bukkit.Location;
 import org.bukkit.World.Environment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.entity.EntityChangeBlockEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.block.*;
+import org.bukkit.event.entity.*;
 import org.bukkit.event.hanging.HangingBreakByEntityEvent;
-import org.bukkit.event.player.PlayerBucketEmptyEvent;
-import org.bukkit.event.player.PlayerBucketFillEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.*;
+import org.bukkit.event.world.PortalCreateEvent;
 
 /**
- * IslandProtectionListener - Highly optimized for Folia 1.21+
- * Uses cached island lookups (O(1)) and pre-computed EnumSet permissions.
+ * IslandProtectionListener - Highly optimized protection system for Folia 1.21+
+ *
+ * Features:
+ * - Cached island lookups (O(1) permission checks)
+ * - Spawn protection at 0,0 (unclaimable admin island)
+ * - Full party permission support
+ * - Prevents griefing from endermen, explosions, pistons, etc.
+ * - Dimension-aware protection
  */
 public class IslandProtectionListener implements Listener {
 
@@ -32,49 +35,52 @@ public class IslandProtectionListener implements Listener {
     public IslandProtectionListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.islandManager = plugin.getIslandManager();
-        this.spawnProtectionRadius = plugin.getConfig().getInt("island.spawn-protection-radius", 150);
+        this.spawnProtectionRadius = plugin.getConfig().getInt("island.spawn-protection-radius", 128);
     }
 
+    // ==================== CORE PERMISSION CHECK ====================
+
     /**
-     * Ultra-fast permission check using cached island data.
-     * This is the hot path - keep it as fast as possible.
+     * Ultra-fast permission check. This is the hot path - optimized heavily.
      */
     private boolean canPerformAction(Player player, Location location) {
         if (location.getWorld() == null) return true;
 
         // Admin bypass (fastest check first)
-        if (player.hasPermission("foliaskyblock.admin.bypass")) {
+        if (player.hasPermission("foliasb.admin.bypass")) {
             return true;
         }
 
         Environment env = location.getWorld().getEnvironment();
 
-        // Spawn protection (only in overworld)
+        // Spawn protection at 0,0 (unclaimable admin island)
         if (env == Environment.NORMAL) {
             double distance = location.distance(new Location(location.getWorld(), 0, location.getY(), 0));
             if (distance <= spawnProtectionRadius) {
-                return false;
+                if (!player.hasPermission("foliasb.admin.editspawn")) {
+                    return false;
+                }
             }
         }
 
-        // Get cached island for this player + dimension (O(1) lookup)
+        // Get cached island
         Island island = islandManager.getIsland(player.getUniqueId(), env);
         if (island == null) {
-            return false; // Player has no island in this dimension
+            return false; // No island = no build rights
         }
 
-        // Distance check from island center
+        // Check distance from island center (64 block radius)
         Location center = island.getCenter(location.getWorld());
-        if (center == null || location.distance(center) > 64) { // 64 block radius
+        if (center == null || location.distance(center) > 64) {
             return false;
         }
 
-        // Final permission check (uses pre-computed EnumSet - O(1))
+        // Permission check using pre-computed EnumSet (O(1))
         return island.hasPermission(player.getUniqueId(), IslandPermission.BUILD);
     }
 
     /**
-     * Check if two players are on the exact same island (same dimension + same grid)
+     * Check if two players are on the same island (for friendly fire protection)
      */
     private boolean isSameIsland(Player p1, Player p2) {
         Environment env = p1.getWorld().getEnvironment();
@@ -88,11 +94,13 @@ public class IslandProtectionListener implements Listener {
         return island1.getGridPosition().equals(island2.getGridPosition());
     }
 
-    // ====================== BLOCK EVENTS ======================
+    // ==================== BLOCK EVENTS ====================
+
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent e) {
         if (!canPerformAction(e.getPlayer(), e.getBlock().getLocation())) {
             e.setCancelled(true);
+            e.getPlayer().sendMessage("§cYou cannot break blocks here!");
         }
     }
 
@@ -100,6 +108,7 @@ public class IslandProtectionListener implements Listener {
     public void onBlockPlace(BlockPlaceEvent e) {
         if (!canPerformAction(e.getPlayer(), e.getBlock().getLocation())) {
             e.setCancelled(true);
+            e.getPlayer().sendMessage("§cYou cannot place blocks here!");
         }
     }
 
@@ -125,7 +134,48 @@ public class IslandProtectionListener implements Listener {
         }
     }
 
-    // ====================== ENTITY EVENTS ======================
+    // ==================== PISTON & EXPLOSION PROTECTION ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPistonExtend(BlockPistonExtendEvent e) {
+        for (org.bukkit.block.Block block : e.getBlocks()) {
+            Island island = islandManager.getIslandAt(block.getLocation());
+            if (island != null && !island.hasPermission(null, IslandPermission.BUILD)) {
+                e.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPistonRetract(BlockPistonRetractEvent e) {
+        for (org.bukkit.block.Block block : e.getBlocks()) {
+            Island island = islandManager.getIslandAt(block.getLocation());
+            if (island != null && !island.hasPermission(null, IslandPermission.BUILD)) {
+                e.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityExplode(EntityExplodeEvent e) {
+        e.blockList().removeIf(block -> {
+            Island island = islandManager.getIslandAt(block.getLocation());
+            return island != null;
+        });
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockExplode(BlockExplodeEvent e) {
+        e.blockList().removeIf(block -> {
+            Island island = islandManager.getIslandAt(block.getLocation());
+            return island != null;
+        });
+    }
+
+    // ==================== ENTITY & HANGING PROTECTION ====================
+
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageByEntityEvent e) {
         if (!(e.getDamager() instanceof Player damager)) return;
@@ -134,6 +184,7 @@ public class IslandProtectionListener implements Listener {
         // Prevent friendly fire on the same island
         if (isSameIsland(damager, victim)) {
             e.setCancelled(true);
+            damager.sendMessage("§cYou cannot attack players on your island!");
         }
     }
 
@@ -150,6 +201,29 @@ public class IslandProtectionListener implements Listener {
         if (!(e.getEntity() instanceof org.bukkit.entity.Enderman)) return;
         // Prevent endermen from griefing islands
         if (!canPerformAction(null, e.getBlock().getLocation())) {
+            e.setCancelled(true);
+        }
+    }
+
+    // ==================== PORTAL PROTECTION ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPortalCreate(PortalCreateEvent e) {
+        for (org.bukkit.block.BlockState state : e.getBlocks()) {
+            Island island = islandManager.getIslandAt(state.getLocation());
+            if (island != null) {
+                e.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    // ==================== VEHICLE & HANGING ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onVehicleDestroy(org.bukkit.event.vehicle.VehicleDestroyEvent e) {
+        if (!(e.getAttacker() instanceof Player player)) return;
+        if (!canPerformAction(player, e.getVehicle().getLocation())) {
             e.setCancelled(true);
         }
     }

@@ -4,7 +4,7 @@ import com.thenerdcj.command.*;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.manager.EconomyManager;
 import com.thenerdcj.island.GridManager;
-import com.thenerdcj.island.IslandManager;
+import com.thenerdcj.manager.IslandManager;
 import com.thenerdcj.listener.*;
 import com.thenerdcj.manager.*;
 import com.thenerdcj.rank.RankManager;

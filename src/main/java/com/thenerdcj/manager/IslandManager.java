@@ -1,9 +1,13 @@
-package com.thenerdcj.island;
+package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
+import com.thenerdcj.island.Island;
+import com.thenerdcj.island.generator.IslandGenerator;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
@@ -12,63 +16,65 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Optimized IslandManager with multi-layer caching for maximum performance
+ * Full-featured, highly optimized IslandManager for Folia 1.21+
  */
 public class IslandManager {
 
     private final FoliaSkyblock plugin;
     private final DatabaseManager databaseManager;
+    private final IslandGenerator islandGenerator;
 
-    // Layer 1: Player → Dimension → Island (primary cache)
+    // Caches
     private final Map<UUID, Map<World.Environment, Island>> playerIslands = new ConcurrentHashMap<>();
-
-    // Layer 2: GridPosition → Island (reverse lookup for fast position-based access)
     private final Map<GridPosition, Island> islandCache = new ConcurrentHashMap<>();
 
-    // Layer 3: UUID → Island (fast owner lookup - NEW OPTIMIZATION)
-    private final Map<UUID, Island> ownerCache = new ConcurrentHashMap<>();
-
-    // Spiral generator
+    // Simple spiral generator for new islands
     private int currentSpiralX = 0;
     private int currentSpiralZ = 0;
     private int spiralStep = 1;
-    private int spiralDirection = 0;
+    private int spiralDirection = 0; // 0=right, 1=up, 2=left, 3=down
 
     public IslandManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
+        this.islandGenerator = new IslandGenerator(plugin);
     }
 
-    // ====================== OPTIMIZED LOOKUP ======================
-
+    // ====================== CORE LOOKUP ======================
     public Island getIsland(UUID playerUuid, World.Environment dimension) {
-        Map<World.Environment, Island> dimMap = playerIslands.get(playerUuid);
-        return dimMap != null ? dimMap.get(dimension) : null;
+        return playerIslands
+                .computeIfAbsent(playerUuid, k -> new ConcurrentHashMap<>())
+                .get(dimension);
     }
 
     public boolean hasIsland(UUID playerUuid, World.Environment dimension) {
         return getIsland(playerUuid, dimension) != null;
     }
 
-    public boolean hasIslandInDimension(UUID playerUuid, World.Environment dimension) {
-        return getIsland(playerUuid, dimension) != null;
-    }
-
-    // NEW: Fast owner lookup (O(1))
-    public Island getIslandByOwner(UUID ownerUuid) {
-        return ownerCache.get(ownerUuid);
-    }
-
     // ====================== CREATE ISLAND ======================
-
-    public CompletableFuture<Boolean> createIsland(Player player, String biome, World.Environment dimension) {
+    public CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension) {
         GridPosition pos = getNextAvailablePosition();
 
-        return databaseManager.saveIsland(pos.x(), pos.z(), player.getUniqueId(), biome, dimension)
+        return databaseManager.saveIsland(pos.x(), pos.z(), player.getUniqueId(), biomeName, dimension)
                 .thenApply(success -> {
                     if (success) {
-                        Island island = new Island(pos, player.getUniqueId(), biome, dimension);
+                        Island island = new Island(pos, player.getUniqueId(), biomeName, dimension);
                         cacheIsland(player.getUniqueId(), island);
+
+                        // Generate the physical island (biome-aware)
+                        Biome chosenBiome = null;
+                        if (biomeName != null && !biomeName.isEmpty()) {
+                            try {
+                                // Modern way (1.21.3+ compatible) - avoid deprecated Biome.valueOf()
+                                NamespacedKey key = NamespacedKey.minecraft(biomeName.toLowerCase().replace(" ", "_"));
+                                chosenBiome = Registry.BIOME.get(key);
+                            } catch (Exception ignored) {}
+                        }
+
+                        // Normal players get random biome, donors can choose later via GUI
+                        boolean isDonor = player.hasPermission("foliasb.donor");
+                        islandGenerator.generateIsland(island, player, chosenBiome, isDonor);
+
                         return true;
                     }
                     return false;
@@ -78,6 +84,7 @@ public class IslandManager {
     private GridPosition getNextAvailablePosition() {
         GridPosition pos = new GridPosition(currentSpiralX, currentSpiralZ);
 
+        // Move to next position in spiral
         switch (spiralDirection) {
             case 0: currentSpiralX += spiralStep; break;
             case 1: currentSpiralZ += spiralStep; break;
@@ -91,21 +98,14 @@ public class IslandManager {
         return pos;
     }
 
-    // ====================== MULTI-LAYER CACHING ======================
-
     private void cacheIsland(UUID playerUuid, Island island) {
-        // Layer 1: Player → Dimension → Island
         playerIslands
                 .computeIfAbsent(playerUuid, k -> new ConcurrentHashMap<>())
                 .put(island.getDimension(), island);
-
-        // Layer 2: GridPosition → Island
         islandCache.put(island.getGridPosition(), island);
-
-        // Layer 3: Owner → Island (NEW)
-        ownerCache.put(playerUuid, island);
     }
 
+    // ====================== LOAD ON JOIN ======================
     public void loadPlayerIslands(Player player) {
         for (World.Environment dim : World.Environment.values()) {
             databaseManager.getIslandByOwner(player.getUniqueId(), dim)
@@ -118,17 +118,10 @@ public class IslandManager {
     }
 
     public void removePlayerFromCache(UUID playerUuid) {
-        Map<World.Environment, Island> removed = playerIslands.remove(playerUuid);
-        if (removed != null) {
-            for (Island island : removed.values()) {
-                islandCache.remove(island.getGridPosition());
-                ownerCache.remove(playerUuid);
-            }
-        }
+        playerIslands.remove(playerUuid);
     }
 
     // ====================== HOME & TELEPORT ======================
-
     public Location getIslandHome(Player player) {
         Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island != null) {
@@ -138,8 +131,7 @@ public class IslandManager {
         return player.getWorld().getSpawnLocation();
     }
 
-    // ====================== RESET / DELETE ======================
-
+    // ====================== RESET ISLAND ======================
     public CompletableFuture<Boolean> resetIsland(Player player, World.Environment dimension) {
         Island island = getIsland(player.getUniqueId(), dimension);
         if (island == null) return CompletableFuture.completedFuture(false);
@@ -147,15 +139,18 @@ public class IslandManager {
         return databaseManager.deleteIsland(player.getUniqueId(), dimension)
                 .thenCompose(deleted -> {
                     if (deleted) {
-                        playerIslands.getOrDefault(player.getUniqueId(), Collections.emptyMap()).remove(dimension);
+                        // Remove from cache
+                        playerIslands.getOrDefault(player.getUniqueId(), new HashMap<>()).remove(dimension);
                         islandCache.remove(island.getGridPosition());
-                        ownerCache.remove(player.getUniqueId());
+
+                        // Create new island
                         return createIsland(player, "PLAINS", dimension);
                     }
                     return CompletableFuture.completedFuture(false);
                 });
     }
 
+    // ====================== DELETE ISLAND ======================
     public CompletableFuture<Boolean> deleteIsland(Player player, World.Environment dimension) {
         Island island = getIsland(player.getUniqueId(), dimension);
         if (island == null) return CompletableFuture.completedFuture(false);
@@ -163,43 +158,52 @@ public class IslandManager {
         return databaseManager.deleteIsland(player.getUniqueId(), dimension)
                 .thenApply(deleted -> {
                     if (deleted) {
-                        playerIslands.getOrDefault(player.getUniqueId(), Collections.emptyMap()).remove(dimension);
+                        playerIslands.getOrDefault(player.getUniqueId(), new HashMap<>()).remove(dimension);
                         islandCache.remove(island.getGridPosition());
-                        ownerCache.remove(player.getUniqueId());
                     }
                     return deleted;
                 });
     }
 
-    // ====================== PARTY / RANK / TRADE ======================
-
-    public CompletableFuture<Boolean> inviteToParty(Player inviter, Player target) {
-        return CompletableFuture.completedFuture(true);
-    }
-
-    public CompletableFuture<Boolean> acceptPartyInvite(Player player) {
-        return CompletableFuture.completedFuture(true);
-    }
-
-    public CompletableFuture<Boolean> removeMemberFromIsland(UUID ownerUuid, UUID targetUuid) {
-        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
-        if (island != null && island.isOwner(ownerUuid)) {
-            island.removeMember(targetUuid);
-            return CompletableFuture.completedFuture(true);
+    // ====================== XP SYSTEM ======================
+    public void addIslandXp(Player player, double baseAmount) {
+        Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island != null) {
+            int partySize = island.getMemberCount();
+            island.addXp(baseAmount, partySize);
         }
-        return CompletableFuture.completedFuture(false);
     }
 
-    public CompletableFuture<Boolean> setMemberRank(UUID ownerUuid, UUID targetUuid, IslandRank rank) {
-        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
-        if (island != null && island.isOwner(ownerUuid)) {
-            island.setMemberRank(targetUuid, rank);
-            return CompletableFuture.completedFuture(true);
+    public void addIslandXp(UUID playerUuid, World.Environment dimension, double baseAmount) {
+        Island island = getIsland(playerUuid, dimension);
+        if (island != null) {
+            int partySize = island.getMemberCount();
+            island.addXp(baseAmount, partySize);
         }
-        return CompletableFuture.completedFuture(false);
     }
 
-    public CompletableFuture<Boolean> performTrade(Player player, int tradeId) {
-        return CompletableFuture.completedFuture(true);
+    // ====================== HELPER METHODS ======================
+    public boolean hasIslandInDimension(UUID playerUuid, World.Environment dimension) {
+        return getIsland(playerUuid, dimension) != null;
+    }
+
+    /**
+     * Get the island at a specific location (used by protection listener)
+     */
+    public Island getIslandAt(Location location) {
+        if (location == null || location.getWorld() == null) return null;
+
+        World.Environment env = location.getWorld().getEnvironment();
+
+        // Check all cached islands in this dimension
+        for (Island island : islandCache.values()) {
+            if (island.getDimension() != env) continue;
+
+            Location center = island.getCenter(location.getWorld());
+            if (center != null && location.distance(center) <= 64) {
+                return island;
+            }
+        }
+        return null;
     }
 }
