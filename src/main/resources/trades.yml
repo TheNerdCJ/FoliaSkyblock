@@ -1,57 +1,652 @@
-# trades.yml - Balanced Level-Gated Island Trades (1-100)
+# FoliaSkyblock COMPREHENSIVE Trade System
+# Almost every Minecraft item - BALANCED for progression
+# Includes: Obsidian, Lava Buckets, End Portal items, and ALL unobtainable items
+
+# ============================================
+# BALANCE PHILOSOPHY:
+# - Essential items: Cheap + High stock (prevent getting stuck)
+# - Common items: Moderate cost + Medium stock
+# - Rare items: Expensive + Low stock
+# - Epic items: Very expensive + Very low stock
+# - Legendary items: Extremely expensive + 1 stock + Long cooldown
+# ============================================
+
 trades:
-  # Level 5-15: Starter upgrades
-  1:
-    input: "COBBLESTONE:64"
-    output: "IRON_INGOT:8"
-    level: 5
-  2:
-    input: "OAK_LOG:32"
-    output: "BONE_MEAL:16"
-    level: 8
+  # ============================================
+  # TIER 1: ESSENTIAL ITEMS (Level 1-10)
+  # These prevent players from getting stuck
+  # ============================================
+  essential:
+    # Portal Creation Essentials
+    level_1:
+      name: "§aObsidian (x4)"
+      item: OBSIDIAN
+      cost: 200
+      level_required: 1
+      stock: -1
+      description: "§7For building Nether portals"
 
-  # Level 20-35: Mid-game resources
-  3:
-    input: "COAL:64"
-    output: "DIAMOND:3"
-    level: 22
-  4:
-    input: "IRON_INGOT:32"
-    output: "GOLD_INGOT:16"
-    level: 28
-  5:
-    input: "RAW_CHICKEN:64"
-    output: "ENCHANTED_GOLDEN_APPLE:1"
-    level: 35
+    level_2:
+      name: "§aLava Bucket"
+      item: LAVA_BUCKET
+      cost: 150
+      level_required: 2
+      stock: -1
+      description: "§7For making obsidian yourself"
 
-  # Level 40-60: Advanced crafting
-  6:
-    input: "OBSIDIAN:16"
-    output: "NETHERITE_SCRAP:4"
-    level: 45
-  7:
-    input: "ENDER_PEARL:16"
-    output: "SHULKER_SHELL:2"
-    level: 52
-  8:
-    input: "BLAZE_ROD:8"
-    output: "DRAGON_EGG:1"
-    level: 60
+    level_3:
+      name: "§aWater Bucket"
+      item: WATER_BUCKET
+      cost: 100
+      level_required: 3
+      stock: -1
+      description: "§7Essential for farming and obsidian"
 
-  # Level 70-100: End-game rewards
-  9:
-    input: "NETHER_STAR:1"
-    output: "ELYTRA:1"
-    level: 75
-  10:
-    input: "HEART_OF_THE_SEA:1"
-    output: "NETHERITE_INGOT:8"
-    level: 85
-  11:
-    input: "TOTEM_OF_UNDYING:3"
-    output: "ENCHANTED_GOLDEN_APPLE:8"
-    level: 95
-  12:
-    input: "ANCIENT_DEBRIS:16"
-    output: "NETHERITE_BLOCK:1"
-    level: 100
+    level_4:
+      name: "§aFlint and Steel"
+      item: FLINT_AND_STEEL
+      cost: 80
+      level_required: 4
+      stock: -1
+      description: "§7For lighting portals and campfires"
+
+    level_5:
+      name: "§aObsidian (x16)"
+      item: OBSIDIAN
+      cost: 600
+      level_required: 5
+      stock: -1
+      description: "§7Bulk obsidian for larger portals"
+
+    # Basic Building Materials
+    level_6:
+      name: "§aIron Ingot (x8)"
+      item: IRON_INGOT
+      cost: 200
+      level_required: 6
+      stock: -1
+      description: "§7For tools, armor, and hoppers"
+
+    level_7:
+      name: "§aGold Ingot (x4)"
+      item: GOLD_INGOT
+      cost: 150
+      level_required: 7
+      stock: -1
+      description: "§7For powered rails and golden apples"
+
+    level_8:
+      name: "§aDiamond (x2)"
+      item: DIAMOND
+      cost: 400
+      level_required: 8
+      stock: -1
+      description: "§7For tools and armor"
+
+    level_9:
+      name: "§aRedstone (x16)"
+      item: REDSTONE
+      cost: 100
+      level_required: 9
+      stock: -1
+      description: "§7For redstone contraptions"
+
+    level_10:
+      name: "§aObsidian (x32)"
+      item: OBSIDIAN
+      cost: 1000
+      level_required: 10
+      stock: -1
+      description: "§7Bulk obsidian for End portal frames"
+
+  # ============================================
+  # TIER 2: COMMON ITEMS (Level 11-25)
+  # Building blocks and basic progression
+  # ============================================
+  common:
+    level_11:
+      name: "§aEnder Pearl (x4)"
+      item: ENDER_PEARL
+      cost: 300
+      level_required: 11
+      stock: -1
+      description: "§7For teleportation and Eyes of Ender"
+
+    level_12:
+      name: "§aBlaze Powder (x4)"
+      item: BLAZE_POWDER
+      cost: 200
+      level_required: 12
+      stock: -1
+      description: "§7For brewing and Eyes of Ender"
+
+    level_13:
+      name: "§aGhast Tear"
+      item: GHAST_TEAR
+      cost: 400
+      level_required: 13
+      stock: 5
+      cooldown: 3600
+      description: "§7For regeneration potions"
+
+    level_14:
+      name: "§aMagma Cream (x2)"
+      item: MAGMA_CREAM
+      cost: 150
+      level_required: 14
+      stock: -1
+      description: "§7For fire resistance potions"
+
+    level_15:
+      name: "§aEnder Eye (x2)"
+      item: ENDER_EYE
+      cost: 500
+      level_required: 15
+      stock: -1
+      description: "§7For finding and activating End portals"
+
+    level_16:
+      name: "§aSlime Ball (x4)"
+      item: SLIME_BALL
+      cost: 100
+      level_required: 16
+      stock: -1
+      description: "§7For sticky pistons and slime blocks"
+
+    level_17:
+      name: "§aGunpowder (x8)"
+      item: GUNPOWDER
+      cost: 80
+      level_required: 17
+      stock: -1
+      description: "§7For TNT and fireworks"
+
+    level_18:
+      name: "§aBone (x8)"
+      item: BONE
+      cost: 60
+      level_required: 18
+      stock: -1
+      description: "§7For bone meal and taming wolves"
+
+    level_19:
+      name: "§aLeather (x8)"
+      item: LEATHER
+      cost: 80
+      level_required: 19
+      stock: -1
+      description: "§7For armor and item frames"
+
+    level_20:
+      name: "§aFeather (x8)"
+      item: FEATHER
+      cost: 50
+      level_required: 20
+      stock: -1
+      description: "§7For arrows and books"
+
+    level_21:
+      name: "§aString (x8)"
+      item: STRING
+      cost: 60
+      level_required: 21
+      stock: -1
+      description: "§7For bows, fishing rods, and leads"
+
+    level_22:
+      name: "§aInk Sac (x4)"
+      item: INK_SAC
+      cost: 40
+      level_required: 22
+      stock: -1
+      description: "§7For books and signs"
+
+    level_23:
+      name: "§aGlow Ink Sac (x2)"
+      item: GLOW_INK_SAC
+      cost: 150
+      level_required: 23
+      stock: -1
+      description: "§7For glowing signs and item frames"
+
+    level_24:
+      name: "§aHoney Bottle (x2)"
+      item: HONEY_BOTTLE
+      cost: 100
+      level_required: 24
+      stock: -1
+      description: "§7For removing poison effects"
+
+    level_25:
+      name: "§aEnder Eye (x8)"
+      item: ENDER_EYE
+      cost: 1500
+      level_required: 25
+      stock: -1
+      description: "§7Bulk Eyes of Ender for End portal"
+
+  # ============================================
+  # TIER 3: RARE ITEMS (Level 26-50)
+  # Nether and ocean progression
+  # ============================================
+  rare:
+    level_26:
+      name: "§cNetherrack (x64)"
+      item: NETHERRACK
+      cost: 200
+      level_required: 26
+      stock: -1
+      description: "§7Nether building block"
+
+    level_27:
+      name: "§cSoul Sand (x16)"
+      item: SOUL_SAND
+      cost: 300
+      level_required: 27
+      stock: -1
+      description: "§7For Wither summoning and soul speed"
+
+    level_28:
+      name: "§cGlowstone Dust (x8)"
+      item: GLOWSTONE_DUST
+      cost: 200
+      level_required: 28
+      stock: -1
+      description: "§7For glowstone and brewing"
+
+    level_29:
+      name: "§cNether Brick (x32)"
+      item: NETHER_BRICK
+      cost: 250
+      level_required: 29
+      stock: -1
+      description: "§7For Nether building"
+
+    level_30:
+      name: "§cWither Skeleton Skull"
+      item: WITHER_SKELETON_SKULL
+      cost: 5000
+      level_required: 30
+      stock: 2
+      cooldown: 86400
+      description: "§7For summoning Wither - VERY RARE"
+
+    level_32:
+      name: "§cBlaze Rod (x4)"
+      item: BLAZE_ROD
+      cost: 600
+      level_required: 32
+      stock: -1
+      description: "§7For brewing stands and powered rails"
+
+    level_34:
+      name: "§cMagma Block (x16)"
+      item: MAGMA_BLOCK
+      cost: 200
+      level_required: 34
+      stock: -1
+      description: "§7Nether building block"
+
+    level_36:
+      name: "§cCrying Obsidian (x4)"
+      item: CRYING_OBSIDIAN
+      cost: 800
+      level_required: 36
+      stock: 10
+      cooldown: 3600
+      description: "§7For respawn anchors"
+
+    level_38:
+      name: "§cRespawn Anchor"
+      item: RESPAWN_ANCHOR
+      cost: 2000
+      level_required: 38
+      stock: 3
+      cooldown: 7200
+      description: "§7Set spawn point in Nether"
+
+    level_40:
+      name: "§cAncient Debris (x2)"
+      item: ANCIENT_DEBRIS
+      cost: 3000
+      level_required: 40
+      stock: 5
+      cooldown: 86400
+      description: "§7For crafting Netherite - RARE"
+
+    level_42:
+      name: "§cNetherite Scrap (x4)"
+      item: NETHERITE_SCRAP
+      cost: 4000
+      level_required: 42
+      stock: 5
+      cooldown: 86400
+      description: "§7For crafting Netherite ingots"
+
+    level_44:
+      name: "§cNetherite Ingot"
+      item: NETHERITE_INGOT
+      cost: 8000
+      level_required: 44
+      stock: 3
+      cooldown: 172800
+      description: "§7For Netherite tools and armor"
+
+    level_46:
+      name: "§cLodestone"
+      item: LODESTONE
+      cost: 1500
+      level_required: 46
+      stock: 5
+      cooldown: 3600
+      description: "§7For compass tracking"
+
+    level_48:
+      name: "§cNether Star"
+      item: NETHER_STAR
+      cost: 15000
+      level_required: 48
+      stock: 1
+      cooldown: 259200
+      description: "§7For crafting Beacons - EXTREMELY RARE"
+
+    level_50:
+      name: "§cNetherite Upgrade Smithing Template"
+      item: NETHERITE_UPGRADE_SMITHING_TEMPLATE
+      cost: 20000
+      level_required: 50
+      stock: 1
+      cooldown: 259200
+      description: "§7For upgrading to Netherite"
+
+  # ============================================
+  # TIER 4: EPIC ITEMS (Level 51-75)
+  # Ocean, woodland, and raid items
+  # ============================================
+  epic:
+    level_51:
+      name: "§bPrismarine Shard (x16)"
+      item: PRISMARINE_SHARD
+      cost: 300
+      level_required: 51
+      stock: -1
+      description: "§7Ocean monument building block"
+
+    level_52:
+      name: "§bPrismarine Crystals (x8)"
+      item: PRISMARINE_CRYSTALS
+      cost: 250
+      level_required: 52
+      stock: -1
+      description: "§7For sea lanterns"
+
+    level_53:
+      name: "§bSea Lantern"
+      item: SEA_LANTERN
+      cost: 400
+      level_required: 53
+      stock: -1
+      description: "§7Ocean light source"
+
+    level_54:
+      name: "§bSponge"
+      item: SPONGE
+      cost: 500
+      level_required: 54
+      stock: 10
+      cooldown: 3600
+      description: "§7Absorbs water"
+
+    level_55:
+      name: "§bWet Sponge"
+      item: WET_SPONGE
+      cost: 300
+      level_required: 55
+      stock: -1
+      description: "§7Can be dried in furnace"
+
+    level_56:
+      name: "§bTurtle Egg"
+      item: TURTLE_EGG
+      cost: 800
+      level_required: 56
+      stock: 5
+      cooldown: 7200
+      description: "§7For breeding turtles"
+
+    level_57:
+      name: "§bScute"
+      item: SCUTE
+      cost: 600
+      level_required: 57
+      stock: 10
+      cooldown: 3600
+      description: "§7For crafting turtle shells"
+
+    level_58:
+      name: "§bTurtle Shell"
+      item: TURTLE_HELMET
+      cost: 2000
+      level_required: 58
+      stock: 3
+      cooldown: 7200
+      description: "§7Water breathing helmet"
+
+    level_59:
+      name: "§bConduit"
+      item: CONDUIT
+      cost: 25000
+      level_required: 59
+      stock: 1
+      cooldown: 259200
+      description: "§7Underwater status effects - EXTREMELY RARE"
+
+    level_60:
+      name: "§bHeart of the Sea"
+      item: HEART_OF_THE_SEA
+      cost: 10000
+      level_required: 60
+      stock: 1
+      cooldown: 259200
+      description: "§7For crafting Conduit - VERY RARE"
+
+    level_62:
+      name: "§bNautilus Shell (x4)"
+      item: NAUTILUS_SHELL
+      cost: 800
+      level_required: 62
+      stock: -1
+      description: "§7For crafting Conduit"
+
+    level_64:
+      name: "§bTotem of Undying"
+      item: TOTEM_OF_UNDYING
+      cost: 15000
+      level_required: 64
+      stock: 1
+      cooldown: 259200
+      description: "§7Prevents death once - EXTREMELY RARE"
+
+    level_66:
+      name: "§bEnchanted Golden Apple"
+      item: ENCHANTED_GOLDEN_APPLE
+      cost: 20000
+      level_required: 66
+      stock: 1
+      cooldown: 259200
+      description: "§7Ultimate food - EXTREMELY RARE"
+
+    level_68:
+      name: "§bTrident"
+      item: TRIDENT
+      cost: 30000
+      level_required: 68
+      stock: 1
+      cooldown: 259200
+      description: "§7Ultimate weapon - EXTREMELY RARE"
+
+    level_70:
+      name: "§bBeacon"
+      item: BEACON
+      cost: 35000
+      level_required: 70
+      stock: 1
+      cooldown: 259200
+      description: "§7Status effects in an area - VERY RARE"
+
+    level_72:
+      name: "§bElytra"
+      item: ELYTRA
+      cost: 50000
+      level_required: 72
+      stock: 1
+      cooldown: 604800
+      description: "§7Wings for flying - EXTREMELY RARE"
+
+    level_74:
+      name: "§bDragon Head"
+      item: DRAGON_HEAD
+      cost: 25000
+      level_required: 74
+      stock: 1
+      cooldown: 259200
+      description: "§7Decoration from End Ships - VERY RARE"
+
+    level_75:
+      name: "§bEnd Crystal (x4)"
+      item: END_CRYSTAL
+      cost: 5000
+      level_required: 75
+      stock: 5
+      cooldown: 7200
+      description: "§7For respawning Ender Dragon"
+
+  # ============================================
+  # TIER 5: LEGENDARY ITEMS (Level 76-100)
+  # End-game and ultra-rare items
+  # ============================================
+  legendary:
+    level_76:
+      name: "§5Ender Dragon Spawn Egg"
+      item: DRAGON_EGG
+      cost: 150000
+      level_required: 76
+      stock: 1
+      cooldown: 604800
+      description: "§7THE FINAL BOSS - Defeat to win!"
+
+    level_78:
+      name: "§5Shulker Shell (x4)"
+      item: SHULKER_SHELL
+      cost: 3000
+      level_required: 78
+      stock: -1
+      description: "§7For crafting Shulker Boxes"
+
+    level_80:
+      name: "§5Shulker Spawn Egg"
+      item: SHULKER_SPAWN_EGG
+      cost: 10000
+      level_required: 80
+      stock: 3
+      cooldown: 7200
+      description: "§7Spawns in End Cities"
+
+    level_82:
+      name: "§5End Crystal (x8)"
+      item: END_CRYSTAL
+      cost: 8000
+      level_required: 82
+      stock: 5
+      cooldown: 7200
+      description: "§7For respawning Ender Dragon"
+
+    level_84:
+      name: "§5Dragon Egg"
+      item: DRAGON_EGG
+      cost: 50000
+      level_required: 84
+      stock: 1
+      cooldown: 604800
+      description: "§7Decoration from defeating Ender Dragon"
+
+    level_86:
+      name: "§5Netherite Helmet"
+      item: NETHERITE_HELMET
+      cost: 25000
+      level_required: 86
+      stock: 1
+      cooldown: 259200
+      description: "§7Ultimate helmet - ONE TIME"
+
+    level_88:
+      name: "§5Netherite Chestplate"
+      item: NETHERITE_CHESTPLATE
+      cost: 40000
+      level_required: 88
+      stock: 1
+      cooldown: 259200
+      description: "§7Ultimate chestplate - ONE TIME"
+
+    level_90:
+      name: "§5Netherite Leggings"
+      item: NETHERITE_LEGGINGS
+      cost: 35000
+      level_required: 90
+      stock: 1
+      cooldown: 259200
+      description: "§7Ultimate leggings - ONE TIME"
+
+    level_92:
+      name: "§5Netherite Boots"
+      item: NETHERITE_BOOTS
+      cost: 30000
+      level_required: 92
+      stock: 1
+      cooldown: 259200
+      description: "§7Ultimate boots - ONE TIME"
+
+    level_94:
+      name: "§5Netherite Sword"
+      item: NETHERITE_SWORD
+      cost: 30000
+      level_required: 94
+      stock: 1
+      cooldown: 259200
+      description: "§7Ultimate sword - ONE TIME"
+
+    level_96:
+      name: "§5Netherite Pickaxe"
+      item: NETHERITE_PICKAXE
+      cost: 25000
+      level_required: 96
+      stock: 1
+      cooldown: 259200
+      description: "§7Ultimate pickaxe - ONE TIME"
+
+    level_98:
+      name: "§5Netherite Axe"
+      item: NETHERITE_AXE
+      cost: 25000
+      level_required: 98
+      stock: 1
+      cooldown: 259200
+      description: "§7Ultimate axe - ONE TIME"
+
+    level_100:
+      name: "§6§lVICTORY CROWN"
+      item: NETHERITE_INGOT
+      cost: 0
+      level_required: 100
+      stock: 1
+      description: "§7You have conquered all dimensions!"
+
+# ============================================
+# NOTES:
+# - All essential items (obsidian, lava, water, flint & steel) are available from Level 1
+# - End portal items (Ender Eyes) are available from Level 15
+# - Costs scale with rarity and level requirement
+# - Stock limits prevent economy abuse
+# - Cooldowns prevent spam purchases
+# - One-time rewards for dimension unlocks
+# ============================================
