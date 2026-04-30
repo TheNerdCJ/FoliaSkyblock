@@ -1,13 +1,12 @@
 package com.thenerdcj;
 
-import com.thenerdcj.chat.ChatManager;
-import com.thenerdcj.combat.CombatManager;
 import com.thenerdcj.command.*;
 import com.thenerdcj.database.DatabaseManager;
-import com.thenerdcj.economy.EconomyManager;
+import com.thenerdcj.manager.EconomyManager;
 import com.thenerdcj.island.GridManager;
 import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.listener.*;
+import com.thenerdcj.manager.*;
 import com.thenerdcj.rank.RankManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -27,6 +26,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private EconomyManager economyManager;
     private GridManager gridManager;
     private RankManager rankManager;
+    private WorldManager worldManager;
 
     @Override
     public void onEnable() {
@@ -35,7 +35,10 @@ public class FoliaSkyblock extends JavaPlugin {
         getLogger().info("§6║     FoliaSkyblock Starting...        ║");
         getLogger().info("§6╚══════════════════════════════════════╝");
 
-        // 1. Initialize HikariCP Database
+        // 1. Save default config if it doesn't exist
+        saveDefaultConfig();
+
+        // 2. Initialize HikariCP Database
         try {
             databaseManager = new DatabaseManager(this);
             getLogger().info("§a[✓] HikariCP Database initialized");
@@ -45,12 +48,23 @@ public class FoliaSkyblock extends JavaPlugin {
             return;
         }
 
-        // 2. Initialize GridManager and load used positions from database
+        // 3. Initialize World Manager and create void worlds
+        try {
+            worldManager = new WorldManager(this);
+            worldManager.initializeWorlds();
+            getLogger().info("§a[✓] World Manager initialized");
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "§cFailed to initialize World Manager!", e);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
+        // 4. Initialize GridManager and load used positions from database
         gridManager = new GridManager(this);
         gridManager.loadUsedPositions(databaseManager);
         getLogger().info("§a[✓] GridManager initialized and loaded used positions");
 
-        // 3. Initialize All Other Managers
+        // 5. Initialize All Other Managers
         try {
             islandManager = new IslandManager(this);
             chatManager = new ChatManager(this);
@@ -64,10 +78,10 @@ public class FoliaSkyblock extends JavaPlugin {
             return;
         }
 
-        // 4. Create Default Spawn Island
+        // 6. Create Default Spawn Island
         createDefaultSpawnIsland();
 
-        // 5. Register Commands
+        // 7. Register Commands
         getCommand("island").setExecutor(new IslandCommand(this));
         getCommand("bal").setExecutor(new BalanceCommand(this));
         getCommand("rank").setExecutor(new RankCommand(this));
@@ -91,7 +105,7 @@ public class FoliaSkyblock extends JavaPlugin {
 
         getLogger().info("§a[✓] All commands registered");
 
-        // 6. Register Listeners
+        // 8. Register Listeners
         getServer().getPluginManager().registerEvents(new IslandProtectionListener(this), this);
         getServer().getPluginManager().registerEvents(new DimensionIslandListener(this), this);
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
@@ -104,14 +118,17 @@ public class FoliaSkyblock extends JavaPlugin {
     }
 
     private void createDefaultSpawnIsland() {
-        World overworld = Bukkit.getWorld("world");
+        String overworldName = getConfig().getString("worlds.overworld", "skyblock");
+        World overworld = Bukkit.getWorld(overworldName);
+
         if (overworld == null) {
-            getLogger().warning("§cDefault world 'world' not found!");
+            getLogger().warning("§cOverworld '" + overworldName + "' not found!");
             return;
         }
+
         Location spawnLoc = new Location(overworld, 0, 100, 0);
         overworld.setSpawnLocation(spawnLoc);
-        getLogger().info("§a[✓] Default spawn island created at (0, 0)");
+        getLogger().info("§a[✓] Default spawn island created at (0, 0) in " + overworldName);
     }
 
     @Override
@@ -131,5 +148,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public EconomyManager getEconomyManager() { return economyManager; }
     public GridManager getGridManager() { return gridManager; }
     public RankManager getRankManager() { return rankManager; }
-    public boolean isFolia() { return true; } // Folia detection
+    public WorldManager getWorldManager() { return worldManager; }
+    public boolean isFolia() { return true; }
 }

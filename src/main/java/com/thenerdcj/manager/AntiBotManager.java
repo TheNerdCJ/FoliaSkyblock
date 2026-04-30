@@ -1,7 +1,6 @@
-package com.thenerdcj.anticheat;
+package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
-import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;

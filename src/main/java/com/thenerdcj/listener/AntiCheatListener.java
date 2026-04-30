@@ -1,7 +1,7 @@
 package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.anticheat.AntiCheatManager;
+import com.thenerdcj.manager.AntiCheatManager;
 import com.thenerdcj.island.IslandManager;
 import org.bukkit.Location;
 import org.bukkit.Material;

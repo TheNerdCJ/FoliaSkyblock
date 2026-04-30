@@ -2,7 +2,7 @@ package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.DatabaseManager;
-import com.thenerdcj.economy.EconomyManager;
+import com.thenerdcj.manager.EconomyManager;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;

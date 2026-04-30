@@ -1,4 +1,4 @@
-package com.thenerdcj.economy;
+package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;

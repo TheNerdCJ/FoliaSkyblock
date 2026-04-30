@@ -1,4 +1,4 @@
-package com.thenerdcj.combat;
+package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
 import org.bukkit.entity.Player;

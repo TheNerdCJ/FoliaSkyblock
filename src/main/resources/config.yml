@@ -3,7 +3,7 @@
 # ================================================
 
 # World Settings
-world:
+worlds:
   name: "skyblock"
   nether-name: "skyblock_nether"
   end-name: "skyblock_end"
