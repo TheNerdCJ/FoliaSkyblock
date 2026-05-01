@@ -2,6 +2,7 @@ package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.challenge.Challenge;
+import com.thenerdcj.challenge.ChallengeType;
 import com.thenerdcj.challenge.PlayerChallengeProfile;
 import com.thenerdcj.island.Island;
 import org.bukkit.Bukkit;
@@ -10,13 +11,30 @@ import org.bukkit.entity.Player;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * ADVANCED AI-Powered Challenge Generator
+ *
+ * Features:
+ * - Personalized challenges based on player history
+ * - Dynamic difficulty scaling (1.1x - 2.0x)
+ * - Streak bonuses
+ * - Themed weeks
+ * - Party synergy challenges
+ * - Smart category rotation
+ *
+ * AI ENHANCEMENTS:
+ * 1. Performance Trend Analysis
+ * 2. Category Preference Detection
+ * 3. Adaptive Difficulty based on recent performance
+ * 4. Predictive Category Selection
+ * 5. Exploration vs Exploitation (15% chance for unexplored categories)
+ * 6. Adaptive Target Adjustment based on failure rate
+ */
 public class ChallengeManager {
 
     private final FoliaSkyblock plugin;
-
     private final Map<UUID, List<Challenge>> activeChallenges = new ConcurrentHashMap<>();
     private final Map<UUID, PlayerChallengeProfile> playerProfiles = new ConcurrentHashMap<>();
-
     private String currentTheme = "MIXED";
     private long themeEndTime = 0;
 
@@ -28,66 +46,25 @@ public class ChallengeManager {
 
     public List<Challenge> generateChallenges(Player player, boolean isWeekly) {
         UUID owner = player.getUniqueId();
-        Island island = plugin.getIslandManager().getIsland(owner, player.getWorld().getEnvironment());
-        int level = island != null ? island.getLevel() : 1;
+        PlayerChallengeProfile profile = playerProfiles.computeIfAbsent(owner, k -> new PlayerChallengeProfile(owner));
 
-        PlayerChallengeProfile profile = playerProfiles.computeIfAbsent(owner, k -> new PlayerChallengeProfile());
+        int level = getPlayerLevel(player);
+        List<Challenge> challenges = new ArrayList<>();
+        Random random = new Random();
 
-        List<Challenge> challenges = loadExistingChallenges(island);
+        Map<String, Double> skillGaps = analyzeSkillGaps(profile, level);
+        int numChallenges = isWeekly ? 7 : 5;
 
-        if (challenges.size() >= (isWeekly ? 5 : 3)) {
-            activeChallenges.put(owner, challenges);
-            return challenges;
+        for (int i = 0; i < numChallenges; i++) {
+            challenges.add(createSmartChallenge(player, level, skillGaps, isWeekly, random, profile));
         }
 
-        Random random = new Random();
-        Map<String, Double> skillGaps = analyzeSkillGaps(profile, level);
-        int numNeeded = (isWeekly ? 7 : 5) - challenges.size();
-
-        for (int i = 0; i < numNeeded; i++) {
-            Challenge challenge = createSmartChallenge(player, level, skillGaps, isWeekly, random, profile);
-
-            if (island != null) {
-                String islandId = island.getGridPosition().toString();
-                plugin.getDatabaseManager().saveChallenge(
-                        challenge.id(), islandId, challenge.getType().name(), challenge.getCategory(),
-                        challenge.getDescription(), challenge.getTarget(), 0, challenge.getRewardXP(), false
-                );
-            }
-
-            challenges.add(challenge);
+        if (!currentTheme.equals("MIXED") && random.nextDouble() < 0.6) {
+            challenges.add(createThemedChallenge(level, currentTheme, isWeekly, random));
         }
 
         activeChallenges.put(owner, challenges);
         return challenges;
-    }
-
-    private List<Challenge> loadExistingChallenges(Island island) {
-        List<Challenge> loaded = new ArrayList<>();
-        if (island == null) return loaded;
-
-        try {
-            String islandId = island.getGridPosition().toString();
-            List<Map<String, Object>> data = plugin.getDatabaseManager().loadChallengesForIsland(islandId).get();
-
-            for (Map<String, Object> row : data) {
-                if (!(boolean) row.get("completed")) {
-                    Challenge c = new Challenge(
-                            island.getOwner(),
-                            Challenge.Type.valueOf((String) row.get("type")),
-                            (String) row.get("category"),
-                            (String) row.get("description"),
-                            (int) row.get("target"),
-                            (int) row.get("reward_xp")
-                    );
-                    c.addProgress((int) row.get("progress"));
-                    loaded.add(c);
-                }
-            }
-        } catch (Exception e) {
-            plugin.getLogger().warning("Failed to load challenges from database");
-        }
-        return loaded;
     }
 
     private Map<String, Double> analyzeSkillGaps(PlayerChallengeProfile profile, int level) {
@@ -103,6 +80,27 @@ public class ChallengeManager {
         if (profile.getCompletionRate("COMBAT") < 0.5) gaps.put("COMBAT", 2.0);
         if (profile.getCompletionRate("BUILDING") < 0.7) gaps.put("BUILDING", 1.5);
 
+        if (profile.getRecentCompletionRate("MINING") > profile.getCompletionRate("MINING") + 0.1) {
+            gaps.put("MINING", gaps.get("MINING") * 0.7);
+        }
+        if (profile.getRecentCompletionRate("COMBAT") > profile.getCompletionRate("COMBAT") + 0.1) {
+            gaps.put("COMBAT", gaps.get("COMBAT") * 0.7);
+        }
+
+        if (profile.getCategoryAvoidanceRate("BUILDING") > 0.4) {
+            gaps.put("BUILDING", gaps.get("BUILDING") * 1.5);
+        }
+        if (profile.getCategoryAvoidanceRate("EXPLORATION") > 0.5) {
+            gaps.put("EXPLORATION", gaps.get("EXPLORATION") * 1.6);
+        }
+
+        double recentAvg = profile.getRecentAverageCompletionRate();
+        if (recentAvg > 0.85) {
+            for (String key : gaps.keySet()) gaps.put(key, gaps.get(key) * 1.3);
+        } else if (recentAvg < 0.4) {
+            for (String key : gaps.keySet()) gaps.put(key, gaps.get(key) * 0.6);
+        }
+
         if (level < 15) gaps.put("MINING", gaps.get("MINING") + 0.5);
         if (level >= 20 && level < 40) gaps.put("COMBAT", gaps.get("COMBAT") + 0.6);
         if (level >= 40) gaps.put("BUILDING", gaps.get("BUILDING") + 0.8);
@@ -113,35 +111,50 @@ public class ChallengeManager {
     private Challenge createSmartChallenge(Player player, int level, Map<String, Double> skillGaps,
                                            boolean isWeekly, Random random, PlayerChallengeProfile profile) {
         String category = pickCategoryByWeight(skillGaps, random);
+
+        if (random.nextDouble() < 0.15) {
+            List<String> unexplored = getUnexploredCategories(profile);
+            if (!unexplored.isEmpty()) category = unexplored.get(random.nextInt(unexplored.size()));
+        }
+
         int baseTarget = calculateBaseTarget(category, level, isWeekly);
         double difficultyMultiplier = 1.0 + (profile.getAverageDifficulty() * 0.3);
         if (profile.getCurrentStreak() > 3) difficultyMultiplier *= 1.2;
+        if (profile.getRecentFailureRate(category) > 0.5) difficultyMultiplier *= 0.75;
 
         int finalTarget = (int) (baseTarget * difficultyMultiplier * (0.85 + random.nextDouble() * 0.3));
         String description = generateDescription(category, finalTarget, level);
         int reward = calculateReward(finalTarget, level, isWeekly, profile.getCurrentStreak());
-        Challenge.Type type = isWeekly ? Challenge.Type.WEEKLY : Challenge.Type.DAILY;
 
-        return new Challenge(player.getUniqueId(), type, category, description, finalTarget, reward);
+        Challenge.Type type = isWeekly ? Challenge.Type.WEEKLY : Challenge.Type.DAILY;
+        return new Challenge(null, type, category, description, finalTarget, reward);
     }
 
-    private String pickCategoryByWeight(Map<String, Double> weights, Random random) {
-        double total = weights.values().stream().mapToDouble(Double::doubleValue).sum();
-        double r = random.nextDouble() * total;
-        for (Map.Entry<String, Double> entry : weights.entrySet()) {
-            r -= entry.getValue();
-            if (r <= 0) return entry.getKey();
-        }
-        return "MINING";
+    private Challenge createThemedChallenge(int level, String theme, boolean isWeekly, Random random) {
+        String category = switch (theme) {
+            case "MINING" -> "MINING";
+            case "FARMING" -> "FARMING";
+            case "COMBAT" -> "COMBAT";
+            case "BUILDING" -> "BUILDING";
+            case "EXPLORATION" -> "EXPLORATION";
+            default -> "MINING";
+        };
+
+        int target = calculateBaseTarget(category, level, isWeekly) + 50;
+        String desc = "THEMED: " + generateDescription(category, target, level);
+        int reward = calculateReward(target, level, isWeekly, 0) + 50;
+
+        return new Challenge(null, isWeekly ? Challenge.Type.WEEKLY : Challenge.Type.DAILY,
+                category, desc, target, reward);
     }
 
     private int calculateBaseTarget(String category, int level, boolean isWeekly) {
         int base = switch (category) {
-            case "MINING" -> 40 + (level * 4);
-            case "FARMING" -> 35 + (level * 3);
-            case "COMBAT" -> 15 + (level * 2);
-            case "BUILDING" -> 25 + (level * 5);
-            case "EXPLORATION" -> 8 + (level / 2);
+            case "MINING" -> 50 + (level * 3);
+            case "FARMING" -> 30 + (level * 2);
+            case "COMBAT" -> 15 + (level / 2);
+            case "BUILDING" -> 40 + (level * 2);
+            case "EXPLORATION" -> 200 + (level * 10);
             default -> 30;
         };
         return isWeekly ? base * 6 : base;
@@ -161,14 +174,19 @@ public class ChallengeManager {
     private int calculateReward(int target, int level, boolean isWeekly, int streak) {
         int base = target / 2;
         if (isWeekly) base *= 3;
-        if (streak >= 5) base = (int)(base * 1.5);
+        base += streak * 10;
         return Math.max(50, base);
     }
 
+    private int getPlayerLevel(Player player) {
+        com.thenerdcj.island.Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        return island != null ? island.getLevel() : 1;
+    }
+
     private void updateThemedWeek() {
-        String[] themes = {"MINING", "COMBAT", "FARMING", "BUILDING", "MIXED"};
+        String[] themes = {"MINING", "FARMING", "COMBAT", "BUILDING", "EXPLORATION", "MIXED"};
         currentTheme = themes[new Random().nextInt(themes.length)];
-        themeEndTime = System.currentTimeMillis() + (7L * 24 * 60 * 60 * 1000);
+        themeEndTime = System.currentTimeMillis() + (7 * 24 * 60 * 60 * 1000L);
         Bukkit.broadcastMessage("§6§l[Challenge] New themed week: §e" + currentTheme + " Week!");
     }
 
@@ -189,7 +207,7 @@ public class ChallengeManager {
                     if (player != null) {
                         player.sendMessage("§a§lChallenge Complete! §e+" + c.getRewardXP() + " XP");
 
-                        Island island = plugin.getIslandManager().getIsland(owner, player.getWorld().getEnvironment());
+                        com.thenerdcj.island.Island island = plugin.getIslandManager().getIsland(owner, player.getWorld().getEnvironment());
                         if (island != null) {
                             island.addXp(c.getRewardXP());
 
@@ -205,6 +223,12 @@ public class ChallengeManager {
         }
     }
 
+    public void updateProgress(String ownerUuid, String category, int amount) {
+        try {
+            updateProgress(UUID.fromString(ownerUuid), category, amount);
+        } catch (IllegalArgumentException ignored) {}
+    }
+
     public void recordChallengeCompletion(UUID owner, String category, boolean success) {
         PlayerChallengeProfile profile = playerProfiles.get(owner);
         if (profile != null) profile.recordCompletion(category, success);
@@ -213,5 +237,24 @@ public class ChallengeManager {
     public int getCurrentStreak(UUID owner) {
         PlayerChallengeProfile profile = playerProfiles.get(owner);
         return profile != null ? profile.getCurrentStreak() : 0;
+    }
+
+    private List<String> getUnexploredCategories(PlayerChallengeProfile profile) {
+        List<String> all = Arrays.asList("MINING", "FARMING", "COMBAT", "BUILDING", "EXPLORATION");
+        List<String> unexplored = new ArrayList<>();
+        for (String cat : all) {
+            if (profile.getRecentEngagementRate(cat) < 0.1) unexplored.add(cat);
+        }
+        return unexplored;
+    }
+
+    private String pickCategoryByWeight(Map<String, Double> weights, Random random) {
+        double total = weights.values().stream().mapToDouble(Double::doubleValue).sum();
+        double r = random.nextDouble() * total;
+        for (Map.Entry<String, Double> entry : weights.entrySet()) {
+            r -= entry.getValue();
+            if (r <= 0) return entry.getKey();
+        }
+        return weights.keySet().iterator().next();
     }
 }

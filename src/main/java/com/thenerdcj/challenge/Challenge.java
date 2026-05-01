@@ -4,6 +4,8 @@ import java.util.UUID;
 
 /**
  * Represents a single challenge (Daily, Weekly, or Special)
+ *
+ * Used by the AI-powered ChallengeManager for personalized challenges
  */
 public class Challenge {
 
@@ -35,6 +37,23 @@ public class Challenge {
         this.createdAt = System.currentTimeMillis();
         this.expiresAt = createdAt + (type == Type.WEEKLY ? 7L * 24 * 60 * 60 * 1000 : 24L * 60 * 60 * 1000);
         this.completed = false;
+    }
+
+    /**
+     * Alternative constructor for database-loaded challenges
+     */
+    public Challenge(String id, Type type, String category, String description, int target, int progress, int rewardXP, boolean completed) {
+        this.id = id;
+        this.owner = null; // Loaded from database, owner not needed
+        this.type = type;
+        this.category = category;
+        this.description = description;
+        this.target = target;
+        this.progress = progress;
+        this.rewardXP = rewardXP;
+        this.createdAt = System.currentTimeMillis();
+        this.expiresAt = createdAt + (type == Type.WEEKLY ? 7L * 24 * 60 * 60 * 1000 : 24L * 60 * 60 * 1000);
+        this.completed = completed;
     }
 
     public void addProgress(int amount) {
