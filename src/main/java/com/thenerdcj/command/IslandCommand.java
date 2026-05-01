@@ -118,7 +118,6 @@ public class IslandCommand implements CommandExecutor {
         if (args.length >= 2 && isDonor) {
             String biomeName = args[1].toUpperCase();
 
-            // Block Nether and End creation (progression-locked)
             if (biomeName.equals("NETHER_WASTES") || biomeName.equals("THE_END")) {
                 player.sendMessage("§cNether and End islands are §lprogression-locked§c!");
                 player.sendMessage("§7• Nether: Build a portal on your island");
@@ -133,7 +132,6 @@ public class IslandCommand implements CommandExecutor {
             plugin.getIslandManager().createIsland(player, biomeName, World.Environment.NORMAL);
             player.sendMessage("§aCreating your §e" + biomeName + "§a island...");
         } else if (isDonor) {
-            // Open GUI for donors who didn't specify a biome
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 com.thenerdcj.gui.BiomeSelectionGUI gui = new com.thenerdcj.gui.BiomeSelectionGUI(plugin);
                 gui.open(player);

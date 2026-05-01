@@ -9,16 +9,10 @@ import org.bukkit.entity.Player;
 import java.util.EnumMap;
 import java.util.Map;
 
-/**
- * Comprehensive, balanced Island XP system.
- * Inspired by Hypixel Skyblock, Skyblock.net, and other top Skyblock servers.
- * All values are carefully balanced to prevent XP farming while rewarding progression.
- */
 public class IslandXPManager {
 
     private final FoliaSkyblock plugin;
 
-    // ==================== XP TABLES ====================
     private final Map<Material, Double> miningXP = new EnumMap<>(Material.class);
     private final Map<Material, Double> farmingXP = new EnumMap<>(Material.class);
     private final Map<Material, Double> foragingXP = new EnumMap<>(Material.class);
@@ -31,7 +25,6 @@ public class IslandXPManager {
     }
 
     private void loadBalancedXPValues() {
-        // ==================== MINING (Ores + Stone) ====================
         miningXP.put(Material.STONE, 0.4);
         miningXP.put(Material.COBBLESTONE, 0.3);
         miningXP.put(Material.DEEPSLATE, 0.6);
@@ -47,7 +40,6 @@ public class IslandXPManager {
         miningXP.put(Material.NETHER_GOLD_ORE, 3.0);
         miningXP.put(Material.NETHER_QUARTZ_ORE, 2.5);
 
-        // ==================== FARMING (Crops) ====================
         farmingXP.put(Material.WHEAT, 0.8);
         farmingXP.put(Material.CARROTS, 0.9);
         farmingXP.put(Material.POTATOES, 0.9);
@@ -60,7 +52,6 @@ public class IslandXPManager {
         farmingXP.put(Material.RED_MUSHROOM, 1.2);
         farmingXP.put(Material.NETHER_WART, 1.8);
 
-        // ==================== FORAGING (Logs) ====================
         foragingXP.put(Material.OAK_LOG, 1.2);
         foragingXP.put(Material.BIRCH_LOG, 1.2);
         foragingXP.put(Material.SPRUCE_LOG, 1.2);
@@ -72,7 +63,6 @@ public class IslandXPManager {
         foragingXP.put(Material.CRIMSON_STEM, 1.5);
         foragingXP.put(Material.WARPED_STEM, 1.5);
 
-        // ==================== EXCAVATION (Dirt, Sand, Gravel) ====================
         excavationXP.put(Material.DIRT, 0.4);
         excavationXP.put(Material.SAND, 0.5);
         excavationXP.put(Material.GRAVEL, 0.6);
@@ -81,7 +71,6 @@ public class IslandXPManager {
         excavationXP.put(Material.SOUL_SOIL, 0.7);
         excavationXP.put(Material.RED_SAND, 0.6);
 
-        // ==================== COMBAT (Mobs) ====================
         combatXP.put(EntityType.ZOMBIE, 3.0);
         combatXP.put(EntityType.SKELETON, 3.5);
         combatXP.put(EntityType.SPIDER, 3.0);
@@ -105,8 +94,6 @@ public class IslandXPManager {
         combatXP.put(EntityType.ENDER_DRAGON, 100.0);
         combatXP.put(EntityType.WITHER, 80.0);
     }
-
-    // ==================== PUBLIC AWARD METHODS ====================
 
     public void awardMiningXP(Player player, Material material) {
         double xp = miningXP.getOrDefault(material, 0.3);
@@ -141,7 +128,15 @@ public class IslandXPManager {
         addXpToIsland(player, baseXp, actionName);
     }
 
-    // ==================== CORE XP METHOD ====================
+    /**
+     * Add XP from external sources (other Skyblock plugins, cross-server, etc.)
+     * This allows compatibility with other Skyblock servers/plugins.
+     */
+    public void addExternalXP(Player player, double xp, String source) {
+        if (player == null || xp <= 0) return;
+        addXpToIsland(player, xp, "External: " + source);
+    }
+
     private void addXpToIsland(Player player, double baseXp, String source) {
         if (player == null || baseXp <= 0) return;
 
@@ -155,13 +150,11 @@ public class IslandXPManager {
         int partySize = island.getMemberCount();
         island.addXp(baseXp, partySize);
 
-        // Optional action bar message
         if (plugin.getConfig().getBoolean("xp.show-gain-messages", true)) {
             player.sendActionBar("§a+" + String.format("%.1f", baseXp) + " XP §7(" + source + ")");
         }
     }
 
-    // ==================== GETTERS ====================
     public double getMiningXP(Material material) { return miningXP.getOrDefault(material, 0.3); }
     public double getFarmingXP(Material material) { return farmingXP.getOrDefault(material, 0.8); }
     public double getForagingXP(Material material) { return foragingXP.getOrDefault(material, 1.2); }
