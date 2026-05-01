@@ -3,6 +3,8 @@ package com.thenerdcj.command;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandRank;
+import com.thenerdcj.island.IslandUpgrade;
+import com.thenerdcj.island.IslandUpgradeRecommender;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.command.Command;
@@ -108,7 +110,7 @@ public class IslandCommand implements CommandExecutor {
         player.sendMessage("§e/island rank <player> <rank> §7- Set member rank (GUEST/HELPER/MODERATOR)");
         player.sendMessage("§e/island top §7- View top islands leaderboard");
         player.sendMessage("§e/island setspawn §7- Set your island spawn point");
-        player.sendMessage("§e/island upgrade [UPGRADE] §7- View or purchase island upgrades");
+        player.sendMessage("§e/island upgrade [UPGRADE] §7- View or purchase island upgrades (AI recommendations)");
         player.sendMessage("§e/island trade §7- Open the island trade shop (uses island balance)");
     }
 
@@ -225,20 +227,40 @@ public class IslandCommand implements CommandExecutor {
         }
 
         if (args.length < 2) {
-            player.sendMessage("§eAvailable Upgrades:");
-            for (com.thenerdcj.island.IslandUpgrade upgrade : com.thenerdcj.island.IslandUpgrade.values()) {
-                int currentLevel = plugin.getIslandUpgradeManager().getUpgradeLevel(island.getGridPosition(), upgrade);
-                int cost = upgrade.getCostForLevel(currentLevel);
-                player.sendMessage("§b" + upgrade.name() + " §7- " + upgrade.getDisplayName() +
-                        " §7(Level " + currentLevel + ") §6$" + cost);
+            // Show AI recommendations
+            player.sendMessage("§6§l╔══════════════════════════════════════╗");
+            player.sendMessage("§6§l║     §eIsland Upgrade Recommendations   §6§l║");
+            player.sendMessage("§6§l╚══════════════════════════════════════╝");
+
+            IslandUpgradeRecommender recommender = new IslandUpgradeRecommender(plugin);
+            List<IslandUpgradeRecommender.UpgradeRecommendation> recommendations =
+                    recommender.getRecommendations(player, island);
+
+            if (recommendations.isEmpty()) {
+                player.sendMessage("§7No recommendations available. All upgrades are maxed!");
+                return;
             }
-            player.sendMessage("§7Usage: §b/island upgrade <UPGRADE_NAME>");
+
+            for (IslandUpgradeRecommender.UpgradeRecommendation rec : recommendations) {
+                int cost = rec.upgrade.getCostForLevel(rec.currentLevel);
+                player.sendMessage(String.format(
+                        "§b%s §7(Level %d → %d) §6$%,d §7- %s",
+                        rec.upgrade.name(),
+                        rec.currentLevel,
+                        rec.recommendedLevel,
+                        cost,
+                        rec.reason
+                ));
+            }
+
+            player.sendMessage("§7Use §b/island upgrade <UPGRADE>§7 to purchase");
             return;
         }
 
+        // Purchase specific upgrade
         String upgradeName = args[1].toUpperCase();
         try {
-            com.thenerdcj.island.IslandUpgrade upgrade = com.thenerdcj.island.IslandUpgrade.valueOf(upgradeName);
+            IslandUpgrade upgrade = IslandUpgrade.valueOf(upgradeName);
             plugin.getIslandUpgradeManager().purchaseUpgrade(player, island, upgrade);
         } catch (IllegalArgumentException e) {
             player.sendMessage("§cInvalid upgrade! Use §b/island upgrade§c to see available options.");

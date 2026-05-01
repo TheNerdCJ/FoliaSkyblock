@@ -4,31 +4,23 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.manager.AntiCheatManager;
 import com.thenerdcj.manager.IslandManager;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.potion.PotionEffectType;
 
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * AntiCheatListener - Fully optimized for Folia 1.21+
- * Uses RegionScheduler + AsyncScheduler for maximum performance.
- */
 public class AntiCheatListener implements Listener {
 
     private final FoliaSkyblock plugin;
     private final AntiCheatManager antiCheatManager;
     private final IslandManager islandManager;
 
-    // Fast-break tracking (thread-safe)
     private final ConcurrentHashMap<UUID, Long> lastBreakTime = new ConcurrentHashMap<>();
 
     public AntiCheatListener(FoliaSkyblock plugin) {
@@ -37,7 +29,21 @@ public class AntiCheatListener implements Listener {
         this.islandManager = plugin.getIslandManager();
     }
 
-    // ====================== BLOCK BREAK (RegionScheduler) ======================
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlayerMove(PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+
+        if (player.hasPermission("foliasb.bypass.anticheat")) return;
+
+        player.getScheduler().run(plugin, scheduledTask -> {
+            if (!antiCheatManager.checkPlayer(player)) {
+                Location from = event.getFrom();
+                player.teleport(from);
+                player.sendMessage("§c[AntiCheat] Suspicious movement detected!");
+            }
+        }, null);
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent e) {
         Player player = e.getPlayer();
@@ -49,100 +55,61 @@ public class AntiCheatListener implements Listener {
 
             if (last != null) {
                 long delta = now - last;
-                double threshold = antiCheatManager.getConfig().getDouble("block.fastbreak.min-delay-ms", 180);
+                double threshold = 180.0;
 
-                // Efficiency tolerance
                 int efficiency = player.getInventory().getItemInMainHand()
                         .getEnchantmentLevel(org.bukkit.enchantments.Enchantment.EFFICIENCY);
-                if (efficiency > 0) threshold *= (1.0 - efficiency * 0.15);
+                if (efficiency > 0) threshold *= (1.0 - Math.min(efficiency * 0.15, 0.8));
+
+                if (antiCheatManager.getProfile(player.getUniqueId()) != null &&
+                        antiCheatManager.getProfile(player.getUniqueId()).hasHighEnchantments()) {
+                    threshold *= 0.5;
+                }
 
                 if (delta < threshold) {
-                    antiCheatManager.addViolation(player, "FastBreak", 3);
+                    e.setCancelled(true);
+                    player.sendMessage("§c[AntiCheat] Breaking blocks too fast!");
+                    return;
                 }
             }
+
             lastBreakTime.put(player.getUniqueId(), now);
 
-            // X-Ray check
-            if (antiCheatManager.getConfig().getBoolean("xray.enabled", true)) {
-                if (isValuableBlock(e.getBlock().getType())) {
-                    antiCheatManager.addViolation(player, "XRay (" + e.getBlock().getType().name() + ")", 4);
+            if (isOre(e.getBlock().getType())) {
+                if (antiCheatManager.getProfile(player.getUniqueId()) != null) {
+                    antiCheatManager.getProfile(player.getUniqueId()).recordOreMined();
                 }
             }
         });
     }
 
-    private boolean isValuableBlock(Material mat) {
-        return antiCheatManager.getConfig()
-                .getStringList("xray.valuable-blocks")
-                .contains(mat.name());
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBlockPlace(BlockPlaceEvent e) {
-        Player player = e.getPlayer();
-        Location loc = e.getBlock().getLocation();
-
-        plugin.getServer().getRegionScheduler().execute(plugin, loc, () -> {
-            antiCheatManager.addViolation(player, "FastPlace/Scaffold", 2);
-        });
-    }
-
-    // ====================== COMBAT (RegionScheduler) ======================
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageByEntityEvent e) {
         if (!(e.getDamager() instanceof Player player)) return;
-        if (!(e.getEntity() instanceof Player victim)) return;
 
-        Location loc = victim.getLocation();
+        if (player.hasPermission("foliasb.bypass.anticheat")) return;
 
-        plugin.getServer().getRegionScheduler().execute(plugin, loc, () -> {
-            double distance = player.getLocation().distance(victim.getLocation());
-            double maxReach = antiCheatManager.getConfig().getDouble("combat.reach.max-distance", 3.85);
+        if (antiCheatManager.getProfile(player.getUniqueId()) != null) {
+            antiCheatManager.getProfile(player.getUniqueId()).recordAttack();
+        }
 
-            if (distance > maxReach + 0.3) {
-                antiCheatManager.addViolation(player, "Reach (" + String.format("%.2f", distance) + ")", 4);
+        player.getScheduler().run(plugin, scheduledTask -> {
+            if (!antiCheatManager.checkPlayer(player)) {
+                e.setCancelled(true);
+                player.sendMessage("§c[AntiCheat] Suspicious combat detected!");
             }
-        });
+        }, null);
     }
 
-    // ====================== MOVEMENT (AsyncScheduler) ======================
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onPlayerMove(PlayerMoveEvent e) {
-        Player player = e.getPlayer();
-        if (player.isFlying() || player.getAllowFlight() || player.isOnGround()) return;
-
-        Location from = e.getFrom();
-        Location to = e.getTo();
-
-        // Heavy calculations run async
-        plugin.getServer().getAsyncScheduler().runNow(plugin, task -> {
-            double deltaX = to.getX() - from.getX();
-            double deltaZ = to.getZ() - from.getZ();
-            double speed = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
-
-            double baseThreshold = antiCheatManager.getConfig().getDouble("movement.speed.threshold", 0.68);
-            double speedThreshold = baseThreshold;
-
-            // Speed potion tolerance
-            if (player.hasPotionEffect(PotionEffectType.SPEED)) {
-                int amp = player.getPotionEffect(PotionEffectType.SPEED).getAmplifier();
-                speedThreshold += amp * 0.15;
-            }
-
-            if (speed > speedThreshold) {
-                antiCheatManager.addViolation(player, "SpeedHack", 3);
-            }
-
-            // Fly check
-            if (!player.hasPotionEffect(PotionEffectType.LEVITATION)) {
-                if (to.getY() > from.getY() + antiCheatManager.getConfig().getDouble("movement.fly.threshold", 0.42)) {
-                    antiCheatManager.addViolation(player, "FlyHack", 4);
-                }
-            }
-        });
-    }
-
-    public AntiCheatManager getAntiCheatManager() {
-        return antiCheatManager;
+    private boolean isOre(org.bukkit.Material material) {
+        return material == org.bukkit.Material.COAL_ORE ||
+                material == org.bukkit.Material.IRON_ORE ||
+                material == org.bukkit.Material.GOLD_ORE ||
+                material == org.bukkit.Material.DIAMOND_ORE ||
+                material == org.bukkit.Material.EMERALD_ORE ||
+                material == org.bukkit.Material.REDSTONE_ORE ||
+                material == org.bukkit.Material.LAPIS_ORE ||
+                material == org.bukkit.Material.NETHERITE_SCRAP ||
+                material == org.bukkit.Material.ANCIENT_DEBRIS;
     }
 }
