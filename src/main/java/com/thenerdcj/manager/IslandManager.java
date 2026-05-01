@@ -6,10 +6,7 @@ import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.generator.IslandGenerator;
 import com.thenerdcj.island.IslandRank;
-import org.bukkit.Location;
-import org.bukkit.NamespacedKey;
-import org.bukkit.Registry;
-import org.bukkit.World;
+import org.bukkit.*;
 import org.bukkit.block.Biome;
 import org.bukkit.entity.Player;
 
@@ -129,6 +126,24 @@ public class IslandManager {
             return center != null ? center : player.getWorld().getSpawnLocation();
         }
         return player.getWorld().getSpawnLocation();
+    }
+    public void teleportToIsland(Player player, UUID targetUuid) {
+        Island island = getIsland(targetUuid, player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cThat player doesn't have an island in this dimension!");
+            return;
+        }
+
+        // Calculate spawn location (center of island)
+        int centerX = island.getGridPosition().x() * 100 + 50;
+        int centerZ = island.getGridPosition().z() * 100 + 50;
+
+        org.bukkit.Location spawn = new org.bukkit.Location(
+                player.getWorld(), centerX, 100, centerZ
+        );
+
+        player.teleport(spawn);
+        player.sendMessage("§aTeleported to §e" + Bukkit.getOfflinePlayer(targetUuid).getName() + "'s§a island!");
     }
 
     // ====================== RESET ISLAND ======================

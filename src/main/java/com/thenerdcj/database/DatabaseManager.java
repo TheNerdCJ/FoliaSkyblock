@@ -1,6 +1,7 @@
 package com.thenerdcj.database;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.database.GridPosition;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -53,7 +54,8 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_ranks (uuid TEXT PRIMARY KEY, rank_id TEXT DEFAULT 'member', upvotes INTEGER DEFAULT 0)",
                 "CREATE TABLE IF NOT EXISTS player_votes (voter_uuid TEXT, target_uuid TEXT, PRIMARY KEY (voter_uuid, target_uuid))",
                 "CREATE TABLE IF NOT EXISTS muted_players (uuid TEXT PRIMARY KEY, muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMP, muted_by TEXT, reason TEXT)",
-                "CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, island_id TEXT, type TEXT, category TEXT, description TEXT, target INTEGER, progress INTEGER DEFAULT 0, reward_xp INTEGER, completed BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                "CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, island_id TEXT, type TEXT, category TEXT, description TEXT, target INTEGER, progress INTEGER DEFAULT 0, reward_xp INTEGER, completed BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE TABLE IF NOT EXISTS island_upgrades (island_id TEXT, upgrade_name TEXT, level INTEGER DEFAULT 0, PRIMARY KEY (island_id, upgrade_name))"
         };
 
         try (Connection conn = dataSource.getConnection();
@@ -67,6 +69,7 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_muted_players_expires ON muted_players(expires_at)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_player_balances_balance ON player_balances(balance DESC)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_island_balances_balance ON island_balances(balance DESC)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_island_upgrades_island ON island_upgrades(island_id)");
 
             plugin.getLogger().info("§aAll tables and indexes created with HikariCP.");
         } catch (SQLException e) {
@@ -112,7 +115,7 @@ public class DatabaseManager {
     }
 
     // ====================== ISLAND BALANCE ======================
-    public CompletableFuture<Double> getIslandBalance(GridPosition pos) {
+    public CompletableFuture<Double> getIslandBalance(com.thenerdcj.database.GridPosition pos) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
@@ -128,7 +131,7 @@ public class DatabaseManager {
         }, executor);
     }
 
-    public CompletableFuture<Boolean> setIslandBalance(GridPosition pos, double balance) {
+    public CompletableFuture<Boolean> setIslandBalance(com.thenerdcj.database.GridPosition pos, double balance) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
@@ -142,11 +145,11 @@ public class DatabaseManager {
         }, executor);
     }
 
-    public CompletableFuture<Boolean> addIslandBalance(GridPosition pos, double amount) {
+    public CompletableFuture<Boolean> addIslandBalance(com.thenerdcj.database.GridPosition pos, double amount) {
         return getIslandBalance(pos).thenCompose(current -> setIslandBalance(pos, current + amount));
     }
 
-    public CompletableFuture<Boolean> removeIslandBalance(GridPosition pos, double amount) {
+    public CompletableFuture<Boolean> removeIslandBalance(com.thenerdcj.database.GridPosition pos, double amount) {
         return getIslandBalance(pos).thenCompose(current -> setIslandBalance(pos, Math.max(0, current - amount)));
     }
 
@@ -361,6 +364,50 @@ public class DatabaseManager {
                 }
             } catch (SQLException e) { e.printStackTrace(); }
             return challenges;
+        }, executor);
+    }
+
+    // ====================== ISLAND UPGRADES ======================
+    public CompletableFuture<Boolean> saveIslandUpgrade(String islandId, String upgradeName, int level) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO island_upgrades (island_id, upgrade_name, level) VALUES (?, ?, ?)")) {
+                ps.setString(1, islandId);
+                ps.setString(2, upgradeName);
+                ps.setInt(3, level);
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); return false; }
+        }, executor);
+    }
+
+    public CompletableFuture<Map<String, Integer>> loadIslandUpgrades(String islandId) {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<String, Integer> upgrades = new HashMap<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement("SELECT upgrade_name, level FROM island_upgrades WHERE island_id = ?")) {
+                ps.setString(1, islandId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        upgrades.put(rs.getString("upgrade_name"), rs.getInt("level"));
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return upgrades;
+        }, executor);
+    }
+
+    public CompletableFuture<Integer> getIslandUpgradeLevel(String islandId, String upgradeName) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement("SELECT level FROM island_upgrades WHERE island_id = ? AND upgrade_name = ?")) {
+                ps.setString(1, islandId);
+                ps.setString(2, upgradeName);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) return rs.getInt("level");
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return 0;
         }, executor);
     }
 
