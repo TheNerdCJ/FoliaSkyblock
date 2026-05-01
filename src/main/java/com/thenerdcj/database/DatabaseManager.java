@@ -1,30 +1,20 @@
 package com.thenerdcj.database;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.island.Island;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * DatabaseManager with Balance Caching for maximum performance
- */
 public class DatabaseManager {
 
     private final FoliaSkyblock plugin;
     private HikariDataSource dataSource;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
-
-    // ====================== BALANCE CACHE ======================
-    private final ConcurrentHashMap<UUID, Double> balanceCache = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<UUID, Long> cacheTimestamps = new ConcurrentHashMap<>();
-    private static final long CACHE_TTL_MS = 30000; // 30 seconds cache TTL
 
     public DatabaseManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -62,7 +52,8 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_balances (uuid TEXT PRIMARY KEY, balance REAL DEFAULT 0.0)",
                 "CREATE TABLE IF NOT EXISTS player_ranks (uuid TEXT PRIMARY KEY, rank_id TEXT DEFAULT 'member', upvotes INTEGER DEFAULT 0)",
                 "CREATE TABLE IF NOT EXISTS player_votes (voter_uuid TEXT, target_uuid TEXT, PRIMARY KEY (voter_uuid, target_uuid))",
-                "CREATE TABLE IF NOT EXISTS muted_players (uuid TEXT PRIMARY KEY, muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMP, muted_by TEXT, reason TEXT)"
+                "CREATE TABLE IF NOT EXISTS muted_players (uuid TEXT PRIMARY KEY, muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMP, muted_by TEXT, reason TEXT)",
+                "CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, island_id TEXT, type TEXT, category TEXT, description TEXT, target INTEGER, progress INTEGER DEFAULT 0, reward_xp INTEGER, completed BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
         };
 
         try (Connection conn = dataSource.getConnection();
@@ -87,89 +78,53 @@ public class DatabaseManager {
         return dataSource.getConnection();
     }
 
-    // ====================== BALANCE CACHE METHODS ======================
-
-    private boolean isCacheValid(UUID uuid) {
-        Long timestamp = cacheTimestamps.get(uuid);
-        if (timestamp == null) return false;
-        return (System.currentTimeMillis() - timestamp) < CACHE_TTL_MS;
-    }
-
-    private void invalidateCache(UUID uuid) {
-        balanceCache.remove(uuid);
-        cacheTimestamps.remove(uuid);
-    }
-
-    // ====================== PLAYER BALANCE (WITH CACHE) ======================
-
+    // ====================== PLAYER BALANCE ======================
     public CompletableFuture<Double> getPlayerBalance(UUID uuid) {
-        // Check cache first
-        if (isCacheValid(uuid)) {
-            Double cached = balanceCache.get(uuid);
-            if (cached != null) {
-                return CompletableFuture.completedFuture(cached);
-            }
-        }
-
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement("SELECT balance FROM player_balances WHERE uuid = ?")) {
                 ps.setString(1, uuid.toString());
                 try (ResultSet rs = ps.executeQuery()) {
-                    double balance = rs.next() ? rs.getDouble("balance") : 0.0;
-
-                    // Update cache
-                    balanceCache.put(uuid, balance);
-                    cacheTimestamps.put(uuid, System.currentTimeMillis());
-
-                    return balance;
+                    if (rs.next()) return rs.getDouble("balance");
                 }
-            } catch (SQLException e) { e.printStackTrace(); return 0.0; }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return 0.0;
         }, executor);
     }
 
     public CompletableFuture<Boolean> setPlayerBalance(UUID uuid, double balance) {
-        // Invalidate cache
-        invalidateCache(uuid);
-
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO player_balances (uuid, balance) VALUES (?, ?)")) {
+                 PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO player_balances (uuid, balance) VALUES (?, ?)")) {
                 ps.setString(1, uuid.toString());
                 ps.setDouble(2, balance);
-
-                // Update cache immediately
-                balanceCache.put(uuid, balance);
-                cacheTimestamps.put(uuid, System.currentTimeMillis());
-
                 return ps.executeUpdate() > 0;
             } catch (SQLException e) { e.printStackTrace(); return false; }
         }, executor);
     }
 
     public CompletableFuture<Boolean> addPlayerBalance(UUID uuid, double amount) {
-        return getPlayerBalance(uuid).thenCompose(current ->
-                setPlayerBalance(uuid, current + amount));
+        return getPlayerBalance(uuid).thenCompose(current -> setPlayerBalance(uuid, current + amount));
     }
 
     public CompletableFuture<Boolean> removePlayerBalance(UUID uuid, double amount) {
-        return getPlayerBalance(uuid).thenCompose(current ->
-                setPlayerBalance(uuid, Math.max(0, current - amount)));
+        return getPlayerBalance(uuid).thenCompose(current -> setPlayerBalance(uuid, Math.max(0, current - amount)));
     }
 
     // ====================== ISLAND BALANCE ======================
-
     public CompletableFuture<Double> getIslandBalance(GridPosition pos) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                          "SELECT balance FROM island_balances WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
-                ps.setInt(1, pos.x()); ps.setInt(2, pos.z()); ps.setString(3, "NORMAL");
+                ps.setInt(1, pos.x());
+                ps.setInt(2, pos.z());
+                ps.setString(3, pos.dimension().name());
                 try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? rs.getDouble("balance") : 0.0;
+                    if (rs.next()) return rs.getDouble("balance");
                 }
-            } catch (SQLException e) { e.printStackTrace(); return 0.0; }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return 0.0;
         }, executor);
     }
 
@@ -178,44 +133,24 @@ public class DatabaseManager {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                          "INSERT OR REPLACE INTO island_balances (grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?)")) {
-                ps.setInt(1, pos.x()); ps.setInt(2, pos.z()); ps.setString(3, "NORMAL"); ps.setDouble(4, balance);
+                ps.setInt(1, pos.x());
+                ps.setInt(2, pos.z());
+                ps.setString(3, pos.dimension().name());
+                ps.setDouble(4, balance);
                 return ps.executeUpdate() > 0;
             } catch (SQLException e) { e.printStackTrace(); return false; }
         }, executor);
     }
 
     public CompletableFuture<Boolean> addIslandBalance(GridPosition pos, double amount) {
-        return getIslandBalance(pos).thenCompose(current ->
-                setIslandBalance(pos, current + amount));
+        return getIslandBalance(pos).thenCompose(current -> setIslandBalance(pos, current + amount));
     }
 
     public CompletableFuture<Boolean> removeIslandBalance(GridPosition pos, double amount) {
-        return getIslandBalance(pos).thenCompose(current ->
-                setIslandBalance(pos, Math.max(0, current - amount)));
+        return getIslandBalance(pos).thenCompose(current -> setIslandBalance(pos, Math.max(0, current - amount)));
     }
 
-    // ====================== GET ISLAND BY OWNER ======================
-
-    public CompletableFuture<Island> getIslandByOwner(UUID ownerUuid, org.bukkit.World.Environment dimension) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT grid_x, grid_z, biome_name FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-                ps.setString(1, ownerUuid.toString());
-                ps.setString(2, dimension.name());
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        GridPosition pos = new GridPosition(rs.getInt("grid_x"), rs.getInt("grid_z"));
-                        return new Island(pos, ownerUuid, rs.getString("biome_name"), dimension);
-                    }
-                }
-            } catch (SQLException e) { e.printStackTrace(); }
-            return null;
-        }, executor);
-    }
-
-    // ====================== SAVE / DELETE ISLAND ======================
-
+    // ====================== ISLAND SYSTEM ======================
     public CompletableFuture<Boolean> saveIsland(int gridX, int gridZ, UUID ownerUuid, String biome, org.bukkit.World.Environment dimension) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
@@ -231,49 +166,56 @@ public class DatabaseManager {
         }, executor);
     }
 
-    public CompletableFuture<Boolean> deleteIsland(UUID ownerUuid, org.bukkit.World.Environment dimension) {
+    public CompletableFuture<com.thenerdcj.island.Island> getIslandByOwner(UUID owner, org.bukkit.World.Environment dimension) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "DELETE FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-                ps.setString(1, ownerUuid.toString());
+                 PreparedStatement ps = conn.prepareStatement("SELECT * FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
+                ps.setString(1, owner.toString());
                 ps.setString(2, dimension.name());
-                return ps.executeUpdate() > 0;
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return new com.thenerdcj.island.Island(
+                                new GridPosition(rs.getInt("grid_x"), rs.getInt("grid_z"), dimension),
+                                owner,
+                                rs.getString("biome_name"),
+                                dimension
+                        );
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return null;
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> deleteIsland(UUID owner, org.bukkit.World.Environment dimension) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection()) {
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
+                    ps.setString(1, owner.toString());
+                    ps.setString(2, dimension.name());
+                    ps.executeUpdate();
+                }
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM island_members WHERE dimension = ? AND member_uuid = ?")) {
+                    ps.setString(1, dimension.name());
+                    ps.setString(2, owner.toString());
+                    ps.executeUpdate();
+                }
+                return true;
             } catch (SQLException e) { e.printStackTrace(); return false; }
         }, executor);
     }
 
-    // ====================== TOP ISLANDS ======================
-
-    public CompletableFuture<List<TopIslandEntry>> getTopIslands(int limit) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<TopIslandEntry> top = new ArrayList<>();
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT grid_x, grid_z, owner_uuid, biome_name FROM islands ORDER BY level DESC LIMIT ?")) {
-                ps.setInt(1, limit);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        GridPosition pos = new GridPosition(rs.getInt("grid_x"), rs.getInt("grid_z"));
-                        top.add(new TopIslandEntry(pos, UUID.fromString(rs.getString("owner_uuid")), rs.getString("biome_name"), 0));
-                    }
-                }
-            } catch (SQLException e) { e.printStackTrace(); }
-            return top;
-        }, executor);
-    }
-
     // ====================== RANK SYSTEM ======================
-
     public CompletableFuture<String> getCurrentRankId(UUID uuid) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement("SELECT rank_id FROM player_ranks WHERE uuid = ?")) {
                 ps.setString(1, uuid.toString());
                 try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? rs.getString("rank_id") : "member";
+                    if (rs.next()) return rs.getString("rank_id");
                 }
-            } catch (SQLException e) { e.printStackTrace(); return "member"; }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return "member";
         }, executor);
     }
 
@@ -283,18 +225,19 @@ public class DatabaseManager {
                  PreparedStatement ps = conn.prepareStatement("SELECT upvotes FROM player_ranks WHERE uuid = ?")) {
                 ps.setString(1, uuid.toString());
                 try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? rs.getInt("upvotes") : 0;
+                    if (rs.next()) return rs.getInt("upvotes");
                 }
-            } catch (SQLException e) { e.printStackTrace(); return 0; }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return 0;
         }, executor);
     }
 
     public CompletableFuture<Boolean> setRank(UUID uuid, String rankId) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO player_ranks (uuid, rank_id) VALUES (?, ?)")) {
-                ps.setString(1, uuid.toString()); ps.setString(2, rankId);
+                 PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO player_ranks (uuid, rank_id) VALUES (?, ?)")) {
+                ps.setString(1, uuid.toString());
+                ps.setString(2, rankId);
                 return ps.executeUpdate() > 0;
             } catch (SQLException e) { e.printStackTrace(); return false; }
         }, executor);
@@ -303,27 +246,45 @@ public class DatabaseManager {
     public CompletableFuture<Boolean> voteForPlayer(UUID voter, UUID target) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection()) {
-                try (PreparedStatement ps = conn.prepareStatement(
-                        "INSERT OR IGNORE INTO player_votes (voter_uuid, target_uuid) VALUES (?, ?)")) {
-                    ps.setString(1, voter.toString()); ps.setString(2, target.toString()); ps.executeUpdate();
+                try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO player_votes (voter_uuid, target_uuid) VALUES (?, ?)")) {
+                    ps.setString(1, voter.toString());
+                    ps.setString(2, target.toString());
+                    ps.executeUpdate();
                 }
-                try (PreparedStatement ps = conn.prepareStatement(
-                        "UPDATE player_ranks SET upvotes = upvotes + 1 WHERE uuid = ?")) {
-                    ps.setString(1, target.toString()); ps.executeUpdate();
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE player_ranks SET upvotes = upvotes + 1 WHERE uuid = ?")) {
+                    ps.setString(1, target.toString());
+                    ps.executeUpdate();
                 }
                 return true;
             } catch (SQLException e) { e.printStackTrace(); return false; }
         }, executor);
     }
 
-    // ====================== MUTE SYSTEM ======================
+    // ====================== TOP BALANCES ======================
+    public CompletableFuture<List<TopBalanceEntry>> getTopBalances(int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<TopBalanceEntry> top = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement("SELECT uuid, balance FROM player_balances ORDER BY balance DESC LIMIT ?")) {
+                ps.setInt(1, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        top.add(new TopBalanceEntry(UUID.fromString(rs.getString("uuid")), rs.getDouble("balance")));
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return top;
+        }, executor);
+    }
 
+    public record TopBalanceEntry(UUID uuid, double balance) {}
+
+    // ====================== MUTE SYSTEM ======================
     public CompletableFuture<Set<UUID>> loadMutedPlayers() {
         return CompletableFuture.supplyAsync(() -> {
             Set<UUID> muted = new HashSet<>();
             try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT uuid FROM muted_players WHERE expires_at IS NULL OR expires_at > ?")) {
+                 PreparedStatement ps = conn.prepareStatement("SELECT uuid FROM muted_players WHERE expires_at = 0 OR expires_at > ?")) {
                 ps.setLong(1, System.currentTimeMillis());
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) muted.add(UUID.fromString(rs.getString("uuid")));
@@ -338,16 +299,17 @@ public class DatabaseManager {
             try (Connection conn = getConnection()) {
                 if (muted) {
                     long expiresAt = durationSeconds > 0 ? System.currentTimeMillis() + (durationSeconds * 1000L) : 0;
-                    try (PreparedStatement ps = conn.prepareStatement(
-                            "INSERT OR REPLACE INTO muted_players (uuid, muted_at, expires_at, muted_by, reason) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)")) {
-                        ps.setString(1, uuid.toString()); ps.setLong(2, expiresAt);
+                    try (PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO muted_players (uuid, muted_at, expires_at, muted_by, reason) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)")) {
+                        ps.setString(1, uuid.toString());
+                        ps.setLong(2, expiresAt);
                         ps.setString(3, mutedBy != null ? mutedBy.toString() : "console");
                         ps.setString(4, reason != null ? reason : "");
                         ps.executeUpdate();
                     }
                 } else {
                     try (PreparedStatement ps = conn.prepareStatement("DELETE FROM muted_players WHERE uuid = ?")) {
-                        ps.setString(1, uuid.toString()); ps.executeUpdate();
+                        ps.setString(1, uuid.toString());
+                        ps.executeUpdate();
                     }
                 }
                 return true;
@@ -355,30 +317,54 @@ public class DatabaseManager {
         }, executor);
     }
 
-    // ====================== TOP BALANCES ======================
-
-    public CompletableFuture<List<TopBalanceEntry>> getTopBalances(int limit) {
+    // ====================== CHALLENGE SYSTEM (Persistent) ======================
+    public CompletableFuture<Boolean> saveChallenge(String id, String islandId, String type, String category,
+                                                    String description, int target, int progress, int rewardXP, boolean completed) {
         return CompletableFuture.supplyAsync(() -> {
-            List<TopBalanceEntry> top = new ArrayList<>();
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
-                         "SELECT uuid, balance FROM player_balances ORDER BY balance DESC LIMIT ?")) {
-                ps.setInt(1, limit);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        top.add(new TopBalanceEntry(UUID.fromString(rs.getString("uuid")), rs.getDouble("balance")));
-                    }
-                }
-            } catch (SQLException e) { e.printStackTrace(); }
-            return top;
+                         "INSERT OR REPLACE INTO challenges (id, island_id, type, category, description, target, progress, reward_xp, completed) " +
+                                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, id);
+                ps.setString(2, islandId);
+                ps.setString(3, type);
+                ps.setString(4, category);
+                ps.setString(5, description);
+                ps.setInt(6, target);
+                ps.setInt(7, progress);
+                ps.setInt(8, rewardXP);
+                ps.setBoolean(9, completed);
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); return false; }
         }, executor);
     }
 
-    public record TopBalanceEntry(UUID uuid, double balance) {}
-    public record TopIslandEntry(GridPosition pos, UUID ownerUuid, String biome, double balance) {}
+    public CompletableFuture<List<Map<String, Object>>> loadChallengesForIsland(String islandId) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Map<String, Object>> challenges = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement("SELECT * FROM challenges WHERE island_id = ?")) {
+                ps.setString(1, islandId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        Map<String, Object> data = new HashMap<>();
+                        data.put("id", rs.getString("id"));
+                        data.put("type", rs.getString("type"));
+                        data.put("category", rs.getString("category"));
+                        data.put("description", rs.getString("description"));
+                        data.put("target", rs.getInt("target"));
+                        data.put("progress", rs.getInt("progress"));
+                        data.put("reward_xp", rs.getInt("reward_xp"));
+                        data.put("completed", rs.getBoolean("completed"));
+                        challenges.add(data);
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return challenges;
+        }, executor);
+    }
 
     // ====================== SHUTDOWN ======================
-
     public void close() {
         executor.shutdown();
         if (dataSource != null && !dataSource.isClosed()) {

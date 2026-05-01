@@ -1,11 +1,10 @@
-package com.thenerdcj.island;
+package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.util.Vector;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;

@@ -22,6 +22,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * - Dimension-aware generation (Overworld, Nether, End)
  * - Starter chest with biome-appropriate items
  * - Trees, ores, and special features
+ * - Full biome-specific terrain generation (dunes, hills, ponds, etc.)
  */
 public class IslandGenerator {
 
@@ -34,14 +35,6 @@ public class IslandGenerator {
 
     // ==================== MAIN GENERATION METHOD ====================
 
-    /**
-     * Generates a complete island at the given location.
-     *
-     * @param island The island object (contains grid position and owner)
-     * @param player The player creating the island
-     * @param chosenBiome Optional biome chosen by donor (null = random)
-     * @param isDonor Whether the player has donor perks (can choose biome)
-     */
     public void generateIsland(Island island, Player player, Biome chosenBiome, boolean isDonor) {
         World world = getWorldForDimension(island.getDimension());
         if (world == null) {
@@ -51,19 +44,15 @@ public class IslandGenerator {
 
         Location center = island.getCenter(world);
 
-        // Determine final biome
         Biome finalBiome = determineFinalBiome(chosenBiome, isDonor, island.getDimension());
+        island.setBiome(finalBiome.getKey().getKey());
 
-        // Store the chosen biome in the island object
-        island.setBiome(finalBiome.name());
-
-        // Generate the island structure (run on correct region thread for Folia)
         plugin.getServer().getRegionScheduler().execute(plugin, center, () -> {
             generateIslandStructure(center, finalBiome, island.getDimension());
             placeStarterChest(center, finalBiome, player);
             setBiomeInChunk(center, finalBiome);
 
-            plugin.getLogger().info("§aGenerated " + finalBiome.name() + " island for " + player.getName());
+            plugin.getLogger().info("§aGenerated " + finalBiome.getKey().getKey() + " island for " + player.getName());
         });
     }
 
@@ -71,13 +60,10 @@ public class IslandGenerator {
 
     private Biome determineFinalBiome(Biome chosenBiome, boolean isDonor, World.Environment dimension) {
         if (isDonor && chosenBiome != null) {
-            // Donor gets their chosen biome (if valid for dimension)
             if (isValidBiomeForDimension(chosenBiome, dimension)) {
                 return chosenBiome;
             }
         }
-
-        // Normal player or invalid donor choice → random biome
         return getRandomBiomeForDimension(dimension);
     }
 
@@ -100,7 +86,7 @@ public class IslandGenerator {
         return allowed.get(random.nextInt(allowed.size()));
     }
 
-    // ==================== ISLAND STRUCTURE GENERATION ====================
+    // ==================== BIOME-SPECIFIC TERRAIN GENERATION ====================
 
     private void generateIslandStructure(Location center, Biome biome, World.Environment dimension) {
         BiomeTemplate template = BiomeTemplate.getTemplate(biome);
@@ -111,77 +97,109 @@ public class IslandGenerator {
         int centerZ = center.getBlockZ();
         World world = center.getWorld();
 
-        // Generate base platform (elliptical shape)
-        for (int x = -radius; x <= radius; x++) {
-            for (int z = -radius; z <= radius; z++) {
-                double distance = Math.sqrt(x * x + z * z);
+        generateBiomeTerrain(world, centerX, centerY, centerZ, radius, template, biome);
 
-                if (distance <= radius) {
-                    int y = centerY;
-
-                    Block base = world.getBlockAt(centerX + x, y, centerZ + z);
-                    base.setType(template.getBaseBlock());
-
-                    if (distance <= radius - 1) {
-                        Block surface = world.getBlockAt(centerX + x, y + 1, centerZ + z);
-                        surface.setType(template.getSurfaceBlock());
-                    }
-
-                    if (distance <= radius - 2 && random.nextDouble() < 0.3) {
-                        Block extra = world.getBlockAt(centerX + x, y + 2, centerZ + z);
-                        extra.setType(template.getSurfaceBlock());
-                    }
-                }
-            }
-        }
-
-        // Add special dimension features
         if (dimension == World.Environment.NETHER) {
             addNetherFeatures(world, centerX, centerY, centerZ, radius, template);
         } else if (dimension == World.Environment.THE_END) {
             addEndFeatures(world, centerX, centerY, centerZ, radius, template);
         } else {
-            addOverworldFeatures(world, centerX, centerY, centerZ, radius, template);
+            addOverworldFeatures(world, centerX, centerY, centerZ, radius, template, biome);
         }
 
-        // Add ores
         addOres(world, centerX, centerY, centerZ, radius, template);
 
-        // Add trees
         if (template.getTreeLog() != null && random.nextDouble() < template.getTreeChance()) {
             addTree(world, centerX + random.nextInt(5) - 2, centerY + 2, centerZ + random.nextInt(5) - 2, template);
         }
+
+        addBiomeSpecialFeatures(world, centerX, centerY, centerZ, radius, template, biome);
     }
 
-    private void addOverworldFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
-        for (int i = 0; i < 12; i++) {
+    private void generateBiomeTerrain(World world, int cx, int cy, int cz, int radius, BiomeTemplate template, Biome biome) {
+        String biomeName = biome.getKey().getKey().toUpperCase();
+
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                double distance = Math.sqrt(x * x + z * z);
+
+                if (distance <= radius) {
+                    int baseY = cy;
+                    int heightVariation = getBiomeHeightVariation(biomeName, x, z, distance, radius);
+
+                    for (int y = baseY - 2; y <= baseY + heightVariation; y++) {
+                        Block block = world.getBlockAt(cx + x, y, cz + z);
+                        block.setType(template.getBaseBlock());
+                    }
+
+                    Block surface = world.getBlockAt(cx + x, baseY + heightVariation + 1, cz + z);
+                    surface.setType(template.getSurfaceBlock());
+
+                    if (heightVariation > 0 && random.nextDouble() < 0.4) {
+                        Block extra = world.getBlockAt(cx + x, baseY + heightVariation + 2, cz + z);
+                        extra.setType(template.getSurfaceBlock());
+                    }
+                }
+            }
+        }
+    }
+
+    private int getBiomeHeightVariation(String biomeName, int x, int z, double distance, int radius) {
+        return switch (biomeName) {
+            case "DESERT" -> (int) Math.max(0, Math.sin(x * 0.5) * Math.cos(z * 0.5) * 2 + (radius - distance) * 0.3);
+            case "JUNGLE" -> (int) Math.max(0, (Math.sin(x * 0.3) + Math.cos(z * 0.3)) * 1.5 + random.nextInt(2));
+            case "TAIGA" -> random.nextInt(2);
+            case "FOREST" -> random.nextInt(3);
+            case "NETHER_WASTES" -> random.nextInt(4);
+            case "THE_END" -> random.nextInt(2);
+            default -> random.nextInt(2);
+        };
+    }
+
+    // ==================== OVERWORLD FEATURES ====================
+
+    private void addOverworldFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template, Biome biome) {
+        String biomeName = biome.getKey().getKey().toUpperCase();
+
+        int featureCount = switch (biomeName) {
+            case "JUNGLE" -> 20;
+            case "FOREST" -> 15;
+            case "PLAINS" -> 12;
+            case "TAIGA" -> 10;
+            case "DESERT" -> 6;
+            default -> 8;
+        };
+
+        for (int i = 0; i < featureCount; i++) {
             int x = cx + random.nextInt(radius * 2) - radius;
             int z = cz + random.nextInt(radius * 2) - radius;
             Block block = world.getBlockAt(x, cy + 2, z);
 
             if (block.getType() == template.getSurfaceBlock()) {
-                if (random.nextDouble() < 0.6) {
-                    block.setType(Material.SHORT_GRASS);
+                if (biomeName.equals("DESERT")) {
+                    if (random.nextDouble() < 0.3) block.setType(Material.CACTUS);
+                } else if (biomeName.equals("JUNGLE") || biomeName.equals("FOREST")) {
+                    block.setType(random.nextDouble() < 0.5 ? Material.SHORT_GRASS : Material.FERN);
                 } else {
-                    block.setType(Material.DANDELION);
+                    block.setType(random.nextDouble() < 0.6 ? Material.SHORT_GRASS : Material.DANDELION);
                 }
             }
         }
+
+        if ((biomeName.equals("FOREST") || biomeName.equals("JUNGLE")) && random.nextDouble() < 0.7) {
+            addTree(world, cx + random.nextInt(5) - 2, cy + 2, cz + random.nextInt(5) - 2, template);
+        }
     }
+
+    // ==================== DIMENSION FEATURES ====================
 
     private void addNetherFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
         for (int i = 0; i < 8; i++) {
             int x = cx + random.nextInt(radius * 2) - radius;
             int z = cz + random.nextInt(radius * 2) - radius;
             Block block = world.getBlockAt(x, cy + 1, z);
-
-            if (random.nextDouble() < 0.5) {
-                block.setType(Material.SOUL_SAND);
-            } else {
-                block.setType(Material.FIRE);
-            }
+            block.setType(random.nextDouble() < 0.5 ? Material.SOUL_SAND : Material.FIRE);
         }
-
         for (int i = 0; i < 3; i++) {
             int x = cx + random.nextInt(radius) - radius / 2;
             int z = cz + random.nextInt(radius) - radius / 2;
@@ -197,6 +215,8 @@ public class IslandGenerator {
             world.getBlockAt(x, cy + 2, z).setType(Material.CHORUS_FLOWER);
         }
     }
+
+    // ==================== ORES & TREES ====================
 
     private void addOres(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
         int oreCount = (int) (radius * template.getOreChance() * 2);
@@ -230,6 +250,163 @@ public class IslandGenerator {
                     world.getBlockAt(x + lx, y + ly, z + lz).setType(template.getTreeLeaves());
                 }
             }
+        }
+    }
+
+    // ==================== BIOME-SPECIFIC SPECIAL FEATURES ====================
+
+    private void addBiomeSpecialFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template, Biome biome) {
+        String biomeName = biome.getKey().getKey().toUpperCase();
+
+        switch (biomeName) {
+            case "PLAINS" -> addPlainsFeatures(world, cx, cy, cz, radius, template);
+            case "DESERT" -> addDesertFeatures(world, cx, cy, cz, radius, template);
+            case "JUNGLE" -> addJungleFeatures(world, cx, cy, cz, radius, template);
+            case "FOREST" -> addForestFeatures(world, cx, cy, cz, radius, template);
+            case "TAIGA" -> addTaigaFeatures(world, cx, cy, cz, radius, template);
+            case "NETHER_WASTES" -> addNetherSpecialFeatures(world, cx, cy, cz, radius, template);
+            case "THE_END" -> addEndSpecialFeatures(world, cx, cy, cz, radius, template);
+        }
+    }
+
+    private void addPlainsFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
+        if (random.nextDouble() < 0.4) {
+            int pondX = cx + random.nextInt(4) - 2;
+            int pondZ = cz + random.nextInt(4) - 2;
+            world.getBlockAt(pondX, cy + 1, pondZ).setType(Material.WATER);
+            world.getBlockAt(pondX + 1, cy + 1, pondZ).setType(Material.WATER);
+            world.getBlockAt(pondX, cy + 1, pondZ + 1).setType(Material.WATER);
+        }
+        if (random.nextDouble() < 0.3) {
+            for (int i = 0; i < 3; i++) {
+                int x = cx + random.nextInt(5) - 2;
+                int z = cz + random.nextInt(5) - 2;
+                if (world.getBlockAt(x, cy + 2, z).getType() == template.getSurfaceBlock()) {
+                    world.getBlockAt(x, cy + 2, z).setType(Material.PUMPKIN);
+                }
+            }
+        }
+        if (random.nextDouble() < 0.2) {
+            int x = cx + random.nextInt(4) - 2;
+            int z = cz + random.nextInt(4) - 2;
+            world.getBlockAt(x, cy + 2, z).setType(Material.HAY_BLOCK);
+        }
+    }
+
+    private void addDesertFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
+        for (int i = 0; i < 5; i++) {
+            int x = cx + random.nextInt(radius * 2) - radius;
+            int z = cz + random.nextInt(radius * 2) - radius;
+            if (world.getBlockAt(x, cy + 2, z).getType() == Material.SAND) {
+                world.getBlockAt(x, cy + 2, z).setType(Material.DEAD_BUSH);
+            }
+        }
+        if (random.nextDouble() < 0.25) {
+            int wellX = cx + random.nextInt(3) - 1;
+            int wellZ = cz + random.nextInt(3) - 1;
+            world.getBlockAt(wellX, cy + 2, wellZ).setType(Material.COBBLESTONE);
+            world.getBlockAt(wellX + 1, cy + 2, wellZ).setType(Material.COBBLESTONE);
+            world.getBlockAt(wellX, cy + 2, wellZ + 1).setType(Material.COBBLESTONE);
+            world.getBlockAt(wellX + 1, cy + 2, wellZ + 1).setType(Material.COBBLESTONE);
+            world.getBlockAt(wellX, cy + 1, wellZ).setType(Material.WATER);
+        }
+        for (int i = 0; i < 4; i++) {
+            int x = cx + random.nextInt(radius) - radius / 2;
+            int z = cz + random.nextInt(radius) - radius / 2;
+            if (world.getBlockAt(x, cy + 2, z).getType() == Material.SAND) {
+                world.getBlockAt(x, cy + 2, z).setType(Material.CACTUS);
+                if (random.nextDouble() < 0.3) world.getBlockAt(x, cy + 3, z).setType(Material.CACTUS);
+            }
+        }
+    }
+
+    private void addJungleFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
+        for (int i = 0; i < 8; i++) {
+            int x = cx + random.nextInt(radius * 2) - radius;
+            int z = cz + random.nextInt(radius * 2) - radius;
+            Block block = world.getBlockAt(x, cy + 3, z);
+            if (block.getType() == template.getTreeLeaves()) {
+                world.getBlockAt(x, cy + 2, z).setType(Material.VINE);
+            }
+        }
+        if (random.nextDouble() < 0.4) {
+            int x = cx + random.nextInt(4) - 2;
+            int z = cz + random.nextInt(4) - 2;
+            if (world.getBlockAt(x, cy + 2, z).getType() == template.getTreeLog()) {
+                world.getBlockAt(x, cy + 2, z).setType(Material.COCOA);
+            }
+        }
+        if (random.nextDouble() < 0.3) {
+            for (int i = 0; i < 3; i++) {
+                int x = cx + random.nextInt(4) - 2;
+                int z = cz + random.nextInt(4) - 2;
+                if (world.getBlockAt(x, cy + 2, z).getType() == template.getSurfaceBlock()) {
+                    world.getBlockAt(x, cy + 2, z).setType(Material.MELON);
+                }
+            }
+        }
+    }
+
+    private void addForestFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
+        for (int i = 0; i < 4; i++) {
+            int x = cx + random.nextInt(radius) - radius / 2;
+            int z = cz + random.nextInt(radius) - radius / 2;
+            if (world.getBlockAt(x, cy + 2, z).getType() == template.getSurfaceBlock()) {
+                world.getBlockAt(x, cy + 2, z).setType(random.nextBoolean() ? Material.BROWN_MUSHROOM : Material.RED_MUSHROOM);
+            }
+        }
+        for (int i = 0; i < 6; i++) {
+            int x = cx + random.nextInt(radius * 2) - radius;
+            int z = cz + random.nextInt(radius * 2) - radius;
+            if (world.getBlockAt(x, cy + 2, z).getType() == template.getSurfaceBlock()) {
+                world.getBlockAt(x, cy + 2, z).setType(Material.POPPY);
+            }
+        }
+    }
+
+    private void addTaigaFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
+        for (int i = 0; i < 10; i++) {
+            int x = cx + random.nextInt(radius * 2) - radius;
+            int z = cz + random.nextInt(radius * 2) - radius;
+            if (world.getBlockAt(x, cy + 2, z).getType() == template.getSurfaceBlock()) {
+                world.getBlockAt(x, cy + 3, z).setType(Material.SNOW);
+            }
+        }
+        if (random.nextDouble() < 0.3) {
+            for (int i = 0; i < 3; i++) {
+                int x = cx + random.nextInt(4) - 2;
+                int z = cz + random.nextInt(4) - 2;
+                if (world.getBlockAt(x, cy + 2, z).getType() == template.getSurfaceBlock()) {
+                    world.getBlockAt(x, cy + 2, z).setType(Material.SWEET_BERRY_BUSH);
+                }
+            }
+        }
+    }
+
+    private void addNetherSpecialFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
+        for (int i = 0; i < 3; i++) {
+            int x = cx + random.nextInt(radius) - radius / 2;
+            int z = cz + random.nextInt(radius) - radius / 2;
+            world.getBlockAt(x, cy + 4, z).setType(Material.GLOWSTONE);
+        }
+        if (random.nextDouble() < 0.4) {
+            int x = cx + random.nextInt(3) - 1;
+            int z = cz + random.nextInt(3) - 1;
+            world.getBlockAt(x, cy + 2, z).setType(Material.SOUL_SAND);
+            world.getBlockAt(x, cy + 3, z).setType(Material.NETHER_WART);
+        }
+    }
+
+    private void addEndSpecialFeatures(World world, int cx, int cy, int cz, int radius, BiomeTemplate template) {
+        for (int i = 0; i < 5; i++) {
+            int x = cx + random.nextInt(radius) - radius / 2;
+            int z = cz + random.nextInt(radius) - radius / 2;
+            world.getBlockAt(x, cy + 2, z).setType(Material.CHORUS_FLOWER);
+        }
+        if (random.nextDouble() < 0.3) {
+            int x = cx + random.nextInt(3) - 1;
+            int z = cz + random.nextInt(3) - 1;
+            world.getBlockAt(x, cy + 2, z).setType(Material.END_STONE_BRICKS);
         }
     }
 
@@ -304,6 +481,5 @@ public class IslandGenerator {
 
     public void openBiomeSelectionGUI(Player player, Island island) {
         player.sendMessage("§eDonor biome selection GUI coming soon!");
-        player.sendMessage("§7For now, your island was generated with a random biome.");
     }
 }

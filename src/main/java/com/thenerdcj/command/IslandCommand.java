@@ -77,6 +77,8 @@ public class IslandCommand implements CommandExecutor {
             case "setspawn":
                 handleSetSpawn(player);
                 break;
+            case "trade":
+                plugin.getTradeGUI().openTradeGUI(player);
 
             default:
                 player.sendMessage("§cUnknown subcommand. Use §b/island§c for help.");

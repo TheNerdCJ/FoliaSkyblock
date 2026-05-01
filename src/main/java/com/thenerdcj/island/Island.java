@@ -50,6 +50,7 @@ public class Island {
     public int getMemberCount() { return members.size(); }
 
     public boolean isOwner(UUID uuid) { return ownerUuid.equals(uuid); }
+    public UUID getOwner() { return ownerUuid; }
     public boolean isMember(UUID uuid) { return members.containsKey(uuid); }
     public IslandRank getRank(UUID uuid) { return members.getOrDefault(uuid, IslandRank.GUEST); }
 

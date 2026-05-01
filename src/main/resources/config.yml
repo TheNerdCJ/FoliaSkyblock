@@ -12,7 +12,11 @@ worlds:
 island:
   base-y: 80
   spawn-protection-radius: 150
+  dimension_requirements:
+    nether: 20
+    end: 50
   # Default starter items are handled in IslandManager.java
+
 
 # Grid System
 grid:
