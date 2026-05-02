@@ -89,6 +89,10 @@ public class IslandCommand implements CommandExecutor {
                 handleTrade(player);
                 break;
 
+            case "settings":
+                handleSettings(player);
+                break;
+
             default:
                 player.sendMessage("§cUnknown subcommand. Use §b/island§c for help.");
                 break;
@@ -112,6 +116,7 @@ public class IslandCommand implements CommandExecutor {
         player.sendMessage("§e/island setspawn §7- Set your island spawn point");
         player.sendMessage("§e/island upgrade [UPGRADE] §7- View or purchase island upgrades (AI recommendations)");
         player.sendMessage("§e/island trade §7- Open the island trade shop (uses island balance)");
+        player.sendMessage("§e/island settings §7- Open island settings GUI (PvP, visitors, etc.)");
     }
 
     private void handleCreate(Player player, String[] args) {
@@ -227,7 +232,6 @@ public class IslandCommand implements CommandExecutor {
         }
 
         if (args.length < 2) {
-            // Show AI recommendations
             player.sendMessage("§6§l╔══════════════════════════════════════╗");
             player.sendMessage("§6§l║     §eIsland Upgrade Recommendations   §6§l║");
             player.sendMessage("§6§l╚══════════════════════════════════════╝");
@@ -257,7 +261,6 @@ public class IslandCommand implements CommandExecutor {
             return;
         }
 
-        // Purchase specific upgrade
         String upgradeName = args[1].toUpperCase();
         try {
             IslandUpgrade upgrade = IslandUpgrade.valueOf(upgradeName);
@@ -269,5 +272,24 @@ public class IslandCommand implements CommandExecutor {
 
     private void handleTrade(Player player) {
         plugin.getTradeGUI().openTradeGUI(player);
+    }
+
+    private void handleSettings(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
+            return;
+        }
+
+        if (!island.isOwner(player.getUniqueId())) {
+            player.sendMessage("§cOnly the island owner can access settings.");
+            return;
+        }
+
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            com.thenerdcj.gui.IslandSettingsGUI gui = new com.thenerdcj.gui.IslandSettingsGUI(plugin);
+            gui.open(player, island);
+        });
     }
 }

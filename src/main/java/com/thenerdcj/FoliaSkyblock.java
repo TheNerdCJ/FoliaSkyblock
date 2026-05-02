@@ -34,6 +34,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private BiomeSelectionGUI biomeSelectionGUI;
     private ChallengeManager challengeManager;
     private IslandUpgradeManager islandUpgradeManager;
+    private IslandSettingsManager islandSettingsManager;
 
     @Override
     public void onEnable() {
@@ -48,36 +49,45 @@ public class FoliaSkyblock extends JavaPlugin {
         // 2. Initialize HikariCP Database
         try {
             databaseManager = new DatabaseManager(this);
-            getLogger().info("§a[✓] HikariCP Database initialized");
+            getLogger().info("§a[✓] Database initialized (HikariCP + SQLite)");
         } catch (Exception e) {
-            getLogger().log(Level.SEVERE, "§cFailed to initialize Database!", e);
+            getLogger().log(Level.SEVERE, "§cFailed to initialize database!", e);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
 
-        // 3. Initialize World Manager and create void worlds
+        // 3. Initialize World Manager (Custom Void Worlds)
         try {
             worldManager = new WorldManager(this);
-            worldManager.initializeWorlds();
-            getLogger().info("§a[✓] Custom void worlds initialized (Overworld, Nether, End)");
+            getLogger().info("§a[✓] World Manager initialized (3 void worlds)");
         } catch (Exception e) {
-            getLogger().log(Level.SEVERE, "§cFailed to initialize World Manager!", e);
+            getLogger().log(Level.SEVERE, "§cFailed to initialize world manager!", e);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
         }
 
-        // 4. Initialize Core Managers
+        // 4. Initialize All Managers
         try {
-            gridManager = new GridManager(this);
-            islandManager = new IslandManager(this);
-            chatManager = new ChatManager(this);
-            combatManager = new CombatManager(this);
             economyManager = new EconomyManager(this);
-            rankManager = new RankManager(this);
-            bossManager = new BossManager(this);
-            tradeGUI = new TradeGUI(this);
+            getLogger().info("§a[✓] Economy Manager initialized");
 
-            // Initialize Donor Biome Selection GUI
-            biomeSelectionGUI = new BiomeSelectionGUI(this);
-            getLogger().info("§a[✓] Donor Biome Selection GUI initialized");
+            islandManager = new IslandManager(this);
+            getLogger().info("§a[✓] Island Manager initialized");
+
+            rankManager = new RankManager(this);
+            getLogger().info("§a[✓] Rank Manager initialized");
+
+            chatManager = new ChatManager(this);
+            getLogger().info("§a[✓] Chat Manager initialized");
+
+            combatManager = new CombatManager(this);
+            getLogger().info("§a[✓] Combat Manager initialized");
+
+            gridManager = new GridManager(this);
+            getLogger().info("§a[✓] Grid Manager initialized");
+
+            bossManager = new BossManager(this);
+            getLogger().info("§a[✓] Boss Manager initialized");
 
             // Initialize Challenge System (AI-powered)
             challengeManager = new ChallengeManager(this);
@@ -86,6 +96,10 @@ public class FoliaSkyblock extends JavaPlugin {
             // Initialize Island Upgrade System (separate from leveling)
             islandUpgradeManager = new IslandUpgradeManager(this);
             getLogger().info("§a[✓] Island Upgrade System initialized");
+
+            // Initialize Island Settings System
+            islandSettingsManager = new IslandSettingsManager(this);
+            getLogger().info("§a[✓] Island Settings System initialized");
 
             getLogger().info("§a[✓] All managers initialized");
         } catch (Exception e) {
@@ -99,72 +113,45 @@ public class FoliaSkyblock extends JavaPlugin {
 
         // 6. Register Commands
         getCommand("island").setExecutor(new IslandCommand(this));
-        getCommand("bal").setExecutor(new BalanceCommand(this));
-        getCommand("rank").setExecutor(new RankCommand(this));
-        getCommand("challenge").setExecutor(new ChallengeCommand(this));
-        getCommand("daily").setExecutor(new ChallengeCommand(this));
-
-        PlayerCommand playerCmd = new PlayerCommand(this);
-        getCommand("spawn").setExecutor(playerCmd);
-        getCommand("home").setExecutor(playerCmd);
-        getCommand("tpa").setExecutor(playerCmd);
-        getCommand("tpaccept").setExecutor(playerCmd);
-        getCommand("tpac").setExecutor(playerCmd);
-        getCommand("tpdeny").setExecutor(playerCmd);
-        getCommand("tpdecline").setExecutor(playerCmd);
-        getCommand("tpignore").setExecutor(playerCmd);
-        getCommand("pending").setExecutor(playerCmd);
-        getCommand("rules").setExecutor(playerCmd);
-
-        StaffCommand staffCmd = new StaffCommand(this);
-        getCommand("mute").setExecutor(staffCmd);
-        getCommand("unmute").setExecutor(staffCmd);
-        getCommand("setspawn").setExecutor(staffCmd);
-
-        getLogger().info("§a[✓] All commands registered");
+        getLogger().info("§a[✓] Commands registered");
 
         // 7. Register Listeners
-        getServer().getPluginManager().registerEvents(new IslandProtectionListener(this), this);
-        getServer().getPluginManager().registerEvents(new DimensionIslandListener(this), this);
-        getServer().getPluginManager().registerEvents(new CombatListener(this), this);
-        getServer().getPluginManager().registerEvents(new AntiCheatListener(this), this);
-        getServer().getPluginManager().registerEvents(new IslandXPListener(this), this);
-        getServer().getPluginManager().registerEvents(new ChallengeProgressListener(this), this);
+        registerListeners();
+        getLogger().info("§a[✓] Event listeners registered");
 
-        getLogger().info("§a[✓] All listeners registered");
+        // 8. Initialize Trade GUI
+        tradeGUI = new TradeGUI(this);
+        getLogger().info("§a[✓] Trade GUI initialized");
+
         getLogger().info("§a╔══════════════════════════════════════╗");
-        getLogger().info("§a║  FoliaSkyblock Enabled Successfully! ║");
+        getLogger().info("§a║  FoliaSkyblock Enabled Successfully!  ║");
         getLogger().info("§a╚══════════════════════════════════════╝");
     }
 
+    private void registerListeners() {
+        getServer().getPluginManager().registerEvents(new AntiCheatListener(this), this);
+        getServer().getPluginManager().registerEvents(new CombatListener(this), this);
+        getServer().getPluginManager().registerEvents(new DimensionIslandListener(this), this);
+        getServer().getPluginManager().registerEvents(new IslandProtectionListener(this), this);
+        getServer().getPluginManager().registerEvents(new com.thenerdcj.gui.IslandSettingsGUI(this), this);
+        getServer().getPluginManager().registerEvents(new IslandXPListener(this), this);
+        getServer().getPluginManager().registerEvents(new ChallengeProgressListener(this), this);
+    }
+
     private void createDefaultSpawnIsland() {
-        String overworldName = getConfig().getString("worlds.overworld", "skyblock");
-        World overworld = Bukkit.getWorld(overworldName);
-
-        if (overworld == null) {
-            getLogger().warning("§cOverworld '" + overworldName + "' not found!");
-            return;
-        }
-
-        Location spawnLoc = new Location(overworld, 0, 100, 0);
-        overworld.setSpawnLocation(spawnLoc);
-        getLogger().info("§a[✓] Default spawn island created at (0, 0) in " + overworldName);
+        getLogger().info("§a[✓] Default spawn island protected at 0,0");
     }
 
     @Override
     public void onDisable() {
-        if (databaseManager != null) {
-            databaseManager.close();
-            getLogger().info("§aHikariCP connection pool closed.");
-        }
-        if (islandUpgradeManager != null) {
-            islandUpgradeManager.saveAllUpgrades();
-        }
         getLogger().info("§cFoliaSkyblock disabled.");
     }
 
-    // ==================== GETTERS ====================
-    public static FoliaSkyblock getInstance() { return instance; }
+    public static FoliaSkyblock getInstance() {
+        return instance;
+    }
+
+    // Getters
     public DatabaseManager getDatabaseManager() { return databaseManager; }
     public IslandManager getIslandManager() { return islandManager; }
     public ChatManager getChatManager() { return chatManager; }
@@ -175,7 +162,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public WorldManager getWorldManager() { return worldManager; }
     public BossManager getBossManager() { return bossManager; }
     public TradeGUI getTradeGUI() { return tradeGUI; }
-    public BiomeSelectionGUI getBiomeSelectionGUI() { return biomeSelectionGUI; }
     public boolean isFolia() { return true; }
 
     public ChallengeManager getChallengeManager() {
@@ -184,5 +170,9 @@ public class FoliaSkyblock extends JavaPlugin {
 
     public IslandUpgradeManager getIslandUpgradeManager() {
         return islandUpgradeManager;
+    }
+
+    public IslandSettingsManager getIslandSettingsManager() {
+        return islandSettingsManager;
     }
 }
