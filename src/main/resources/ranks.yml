@@ -1,78 +1,106 @@
-# =============================================
-# FoliaSkyblock Ranks Configuration
-# Add as many ranks as you want!
-# =============================================
+# ===========================================
+# FoliaSkyblock - Fully Expandable Rank System
+# ===========================================
+# Add new ranks by simply adding new sections!
+# No code changes required!
 
-ranks:
-  # Staff Ranks
+default-ranks:
   member:
-    prefix: "§7Member"
-    priority: 0
-    permissions:
-      - "foliaskyblock.command.tpa"
-      - "foliaskyblock.command.bal"
-      - "foliaskyblock.command.island"
+    display-name: "Member"
+    level: 0
+    chat-prefix: "&7[Member]"
+    permission: "foliasb.rank.member"
+    perks: []
 
-  helper:
-    prefix: "§aHelper"
-    priority: 10
-    permissions:
-      - "foliaskyblock.command.tpa"
-      - "foliaskyblock.command.bal"
-      - "foliaskyblock.command.island"
-      - "foliaskyblock.keepinventory"
-      - "foliaskyblock.fly.island"
-
-  moderator:
-    prefix: "§9Moderator"
-    priority: 30
-    permissions:
-      - "foliaskyblock.command.*"
-      - "foliaskyblock.moderate.*"
-
-  admin:
-    prefix: "§cAdmin"
-    priority: 100
-    permissions:
-      - "*"
-
-  # Donor Ranks
   vip:
-    prefix: "§6VIP"
-    priority: 5
-    permissions:
-      - "foliaskyblock.fly.island"
-      - "foliaskyblock.shop.discount"
+    display-name: "VIP"
+    level: 1
+    chat-prefix: "&a[VIP]"
+    permission: "foliasb.rank.vip"
+    inherits: ["member"]
+    perks:
+      - "Extra island slot"
+      - "Colored chat"
+    requirements:
+      playtime-hours: 50
 
   mvp:
-    prefix: "§bMVP"
-    priority: 15
-    permissions:
-      - "foliaskyblock.fly.island"
-      - "foliaskyblock.shop.discount"
-      - "foliaskyblock.joinmessage.custom"
+    display-name: "MVP"
+    level: 2
+    chat-prefix: "&b[MVP]"
+    permission: "foliasb.rank.mvp"
+    inherits: ["vip"]
+    perks:
+      - "All VIP perks"
+      - "Priority queue"
+    requirements:
+      playtime-hours: 200
 
-  elite:
-    prefix: "§dElite"
-    priority: 25
-    permissions:
-      - "foliaskyblock.fly.island"
-      - "foliaskyblock.shop.discount"
-      - "foliaskyblock.joinmessage.custom"
-      - "foliaskyblock.rewards.double"
+donor-ranks:
+  donor:
+    display-name: "Donor"
+    level: 10
+    chat-prefix: "&6[Donor]"
+    permission: "foliasb.rank.donor"
+    price: 4.99
+    perks:
+      - "Extra island slot"
+      - "Colored chat"
+      - "Donor kit"
+
+  supporter:
+    display-name: "Supporter"
+    level: 11
+    chat-prefix: "&d[Supporter]"
+    permission: "foliasb.rank.supporter"
+    price: 9.99
+    inherits: ["donor"]
+    perks:
+      - "All Donor perks"
+      - "Biome selection"
 
   legend:
-    prefix: "§eLegend"
-    priority: 40
-    permissions:
-      - "foliaskyblock.fly.island"
-      - "foliaskyblock.shop.discount"
-      - "foliaskyblock.joinmessage.custom"
-      - "foliaskyblock.rewards.double"
-      - "foliaskyblock.viparea.access"
-# Voting & Auto-Promotion
+    display-name: "Legend"
+    level: 12
+    chat-prefix: "&5[Legend]"
+    permission: "foliasb.rank.legend"
+    price: 19.99
+    inherits: ["supporter"]
+    perks:
+      - "All Supporter perks"
+      - "Custom biome anytime"
+
+staff-ranks:
+  helper:
+    display-name: "Helper"
+    level: 20
+    chat-prefix: "&9[Helper]"
+    permission: "foliasb.rank.helper"
+    votes-required: 50
+    description: "Entry-level staff"
+
+  moderator:
+    display-name: "Moderator"
+    level: 21
+    chat-prefix: "&c[Mod]"
+    permission: "foliasb.rank.moderator"
+    votes-required: 150
+    inherits: ["helper"]
+    description: "Full moderation powers"
+
+  admin:
+    display-name: "Admin"
+    level: 22
+    chat-prefix: "&4[Admin]"
+    permission: "foliasb.rank.admin"
+    votes-required: 500
+    inherits: ["moderator"]
+    description: "Highest staff rank"
+
+# ===========================================
+# VOTING SETTINGS
+# ===========================================
 voting:
-	min-upvotes-helper: 10
-    min-upvotes-moderator: 25
-    vote-cooldown-seconds: 3600
-    vote-expiration-days: 90
+  max-votes-per-month: 10
+  vote-cooldown-days: 30
+  staff-retention-months: 2

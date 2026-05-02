@@ -4,14 +4,21 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandUpgrade;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Manages island upgrades purchased with island balance.
+ * Separate from the leveling system.
+ */
 public class IslandUpgradeManager {
 
     private final FoliaSkyblock plugin;
+
+    // Cache: Island ID -> Map<Upgrade, Level>
     private final Map<String, Map<IslandUpgrade, Integer>> upgradeCache = new ConcurrentHashMap<>();
 
     public IslandUpgradeManager(FoliaSkyblock plugin) {
@@ -31,7 +38,7 @@ public class IslandUpgradeManager {
         }
 
         try {
-            Map<String, Integer> dbUpgrades = plugin.getDatabaseManager().loadIslandUpgrades(islandId).join();
+            Map<String, Integer> dbUpgrades = plugin.getDatabaseManager().loadIslandUpgrades(islandId);
             Map<IslandUpgrade, Integer> cachedUpgrades = new HashMap<>();
 
             for (Map.Entry<String, Integer> entry : dbUpgrades.entrySet()) {
@@ -61,33 +68,19 @@ public class IslandUpgradeManager {
 
         double balance = plugin.getEconomyManager().getIslandBalance(pos).join();
         if (balance < cost) {
-            player.sendMessage("§cYour island needs §6$" + cost + "§c to purchase this upgrade!");
-            player.sendMessage("§7Current balance: §6$" + String.format("%.2f", balance));
+            player.sendMessage("§cNot enough island balance! Need §e$" + cost);
             return false;
         }
 
-        plugin.getEconomyManager().removeIslandBalance(pos, cost).join();
+        plugin.getEconomyManager().removeIslandBalance(pos, cost);
 
-        int newLevel = currentLevel + 1;
-        upgradeCache
-                .computeIfAbsent(pos.toString(), k -> new HashMap<>())
-                .put(upgrade, newLevel);
+        Map<IslandUpgrade, Integer> islandUpgrades = upgradeCache.computeIfAbsent(pos.toString(), k -> new HashMap<>());
+        islandUpgrades.put(upgrade, currentLevel + 1);
 
-        String islandId = pos.toString();
-        plugin.getDatabaseManager().saveIslandUpgrade(islandId, upgrade.name(), newLevel).join();
+        plugin.getDatabaseManager().saveIslandUpgrade(pos.toString(), upgrade.name(), currentLevel + 1);
 
-        player.sendMessage("§a§lUpgrade Purchased! §e" + upgrade.getDisplayName() + " §7(Level " + newLevel + ")");
-        player.sendMessage("§7Island balance remaining: §6$" + String.format("%.2f", balance - cost));
-
+        player.sendMessage("§a§lUpgrade Purchased! §e" + upgrade.getDisplayName() + " §7(Level " + (currentLevel + 1) + ")");
         return true;
-    }
-
-    public Map<IslandUpgrade, Integer> getAllUpgrades(GridPosition pos) {
-        return upgradeCache.getOrDefault(pos.toString(), new HashMap<>());
-    }
-
-    public boolean hasUpgradeLevel(GridPosition pos, IslandUpgrade upgrade, int minLevel) {
-        return getUpgradeLevel(pos, upgrade) >= minLevel;
     }
 
     public void saveAllUpgrades() {
@@ -95,11 +88,7 @@ public class IslandUpgradeManager {
         for (Map.Entry<String, Map<IslandUpgrade, Integer>> entry : upgradeCache.entrySet()) {
             String islandId = entry.getKey();
             for (Map.Entry<IslandUpgrade, Integer> upgradeEntry : entry.getValue().entrySet()) {
-                plugin.getDatabaseManager().saveIslandUpgrade(
-                        islandId,
-                        upgradeEntry.getKey().name(),
-                        upgradeEntry.getValue()
-                ).join();
+                plugin.getDatabaseManager().saveIslandUpgrade(islandId, upgradeEntry.getKey().name(), upgradeEntry.getValue());
                 saved++;
             }
         }

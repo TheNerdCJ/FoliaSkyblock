@@ -37,4 +37,8 @@ public enum IslandUpgrade {
     public int getCostForLevel(int currentLevel) {
         return (int) (baseCost * Math.pow(1.5, currentLevel));
     }
+
+    // Methods expected by IslandUpgradeGUI
+    public double getCost() { return baseCost; }
+    public int getMaxLevel() { return 5; }
 }

@@ -76,6 +76,10 @@ public class Island {
         }
     }
 
+    public void addXp(double amount) {
+        addXp(amount, 1);
+    }
+
     private double getRequiredXpForLevel(int targetLevel) {
         return BASE_XP_PER_LEVEL * targetLevel * targetLevel;
     }

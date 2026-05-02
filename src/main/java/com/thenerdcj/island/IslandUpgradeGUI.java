@@ -32,12 +32,10 @@ public class IslandUpgradeGUI implements Listener {
     public void open(Player player, Island island) {
         Inventory gui = Bukkit.createInventory(null, 54, "§6§lIsland Upgrades §7(" + island.getLevel() + ")");
 
-        // Header
         gui.setItem(4, createItem(Material.NETHER_STAR, "§6§lIsland Upgrades",
                 "§7Upgrade your island with special perks",
                 "§7Island Balance: §e$" + String.format("%.0f", getIslandBalance(island))));
 
-        // Upgrade items
         int slot = 10;
         for (IslandUpgrade upgrade : IslandUpgrade.values()) {
             if (slot > 44) break;
@@ -48,9 +46,7 @@ public class IslandUpgradeGUI implements Listener {
 
             Material material = getUpgradeMaterial(upgrade);
             String name = "§e§l" + upgrade.getDisplayName();
-            if (currentLevel > 0) {
-                name += " §7[" + currentLevel + "/" + upgrade.getMaxLevel() + "]";
-            }
+            if (currentLevel > 0) name += " §7[" + currentLevel + "/" + upgrade.getMaxLevel() + "]";
 
             List<String> lore = new ArrayList<>();
             lore.add("§7" + upgrade.getDescription());
@@ -59,46 +55,29 @@ public class IslandUpgradeGUI implements Listener {
             lore.add("§7Cost: §e$" + String.format("%.0f", upgrade.getCost()));
             lore.add("");
 
-            if (canPurchase) {
-                lore.add("§a§lClick to Purchase!");
-            } else if (currentLevel >= upgrade.getMaxLevel()) {
-                lore.add("§c§lMAX LEVEL REACHED");
-            } else {
-                lore.add("§c§lCannot Afford");
-                lore.add("§7Need: §c$" + String.format("%.0f", upgrade.getCost() - getIslandBalance(island)));
-            }
+            if (canPurchase) lore.add("§a§lClick to Purchase!");
+            else if (currentLevel >= upgrade.getMaxLevel()) lore.add("§c§lMAX LEVEL REACHED");
+            else { lore.add("§c§lCannot Afford"); lore.add("§7Need: §c$" + String.format("%.0f", upgrade.getCost() - getIslandBalance(island))); }
 
             gui.setItem(slot++, createItem(material, name, lore.toArray(new String[0])));
         }
 
-        // Close button
         gui.setItem(49, createItem(Material.BARRIER, "§c§lClose", "§7Click to close"));
-
         player.openInventory(gui);
     }
 
-    private double getIslandBalance(Island island) {
-        // This would normally fetch from database
-        // For now, return a placeholder
-        return 10000.0;
-    }
-
-    private int getUpgradeLevel(Island island, IslandUpgrade upgrade) {
-        // This would normally fetch from database
-        // For now, return 0
-        return 0;
-    }
+    private double getIslandBalance(Island island) { return 10000.0; }
+    private int getUpgradeLevel(Island island, IslandUpgrade upgrade) { return 0; }
 
     private Material getUpgradeMaterial(IslandUpgrade upgrade) {
         return switch (upgrade) {
-            case ORE_GENERATOR -> Material.DIAMOND_PICKAXE;
+            case ISLAND_SIZE -> Material.DIAMOND_PICKAXE;
             case CROP_GROWTH -> Material.WHEAT;
-            case MOB_SPAWNER -> Material.SPAWNER;
-            case VAULT_SIZE -> Material.CHEST;
-            case BUILD_SPEED -> Material.GOLDEN_PICKAXE;
-            case NETHER_ACCESS -> Material.NETHERRACK;
-            case END_ACCESS -> Material.ENDER_PEARL;
-            case COMBAT_XP -> Material.DIAMOND_SWORD;
+            case SPAWNER_RATE -> Material.SPAWNER;
+            case VAULT_SLOTS -> Material.CHEST;
+            case AUTO_SELLER -> Material.GOLDEN_PICKAXE;
+            case MOB_CAP -> Material.NETHERRACK;
+            case HOPPER_LIMIT -> Material.ENDER_PEARL;
             default -> Material.PAPER;
         };
     }
@@ -119,28 +98,18 @@ public class IslandUpgradeGUI implements Listener {
 
         Player player = (Player) event.getWhoClicked();
         ItemStack clicked = event.getCurrentItem();
-
         if (clicked == null || clicked.getType() == Material.AIR) return;
 
         String itemName = clicked.getItemMeta().getDisplayName();
+        if (itemName.contains("Close")) { player.closeInventory(); return; }
 
-        if (itemName.contains("Close")) {
-            player.closeInventory();
-            return;
-        }
-
-        // Find which upgrade was clicked
         for (IslandUpgrade upgrade : IslandUpgrade.values()) {
             if (itemName.contains(upgrade.getDisplayName())) {
                 Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
                 if (island != null) {
-                    plugin.getIslandUpgradeManager().purchaseUpgrade(island, upgrade.name(), player);
+                    plugin.getIslandUpgradeManager().purchaseUpgrade(player, island, upgrade);
                     player.closeInventory();
-
-                    // Reopen GUI after purchase
-                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                        open(player, island);
-                    }, 20L);
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> open(player, island), 20L);
                 }
                 return;
             }
