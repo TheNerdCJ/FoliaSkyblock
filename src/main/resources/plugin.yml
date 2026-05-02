@@ -82,10 +82,6 @@ commands:
     description: View your daily island challenges
     usage: /<command>
 
-  trade:
-    description: Open the island trading GUI
-    usage: /<command>
-
   rules:
     description: View server rules
     usage: /<command>

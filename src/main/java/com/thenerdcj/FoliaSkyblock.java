@@ -147,6 +147,32 @@ public class FoliaSkyblock extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ChallengeProgressListener(this), this);
         getServer().getPluginManager().registerEvents(new IslandBankGUI(this), this);
     }
+    private void registerCommands() {
+        // Main island command (handles most subcommands)
+        getCommand("island").setExecutor(new IslandCommand(this));
+        // Balance commands
+        getCommand("bal").setExecutor(new BalanceCommand(this));
+        getCommand("balance").setExecutor(new BalanceCommand(this));
+        // Spawn commands
+        getCommand("spawn").setExecutor(new PlayerCommand(this));
+        getCommand("setspawn").setExecutor(new StaffCommand(this));
+        // Home command
+        getCommand("home").setExecutor(new PlayerCommand(this));
+        // TPA commands
+        getCommand("tpa").setExecutor(new PlayerCommand(this));
+        getCommand("tpaccept").setExecutor(new PlayerCommand(this));
+        getCommand("tpdeny").setExecutor(new PlayerCommand(this));
+        // Rank command
+        getCommand("rank").setExecutor(new RankCommand(this));
+        // Staff commands
+        getCommand("staff").setExecutor(new StaffCommand(this));
+        getCommand("mute").setExecutor(new StaffCommand(this));
+        getCommand("unmute").setExecutor(new StaffCommand(this));
+        // Challenge command
+        getCommand("challenge").setExecutor(new ChallengeCommand(this));
+        // Rules command
+        getCommand("rules").setExecutor(new PlayerCommand(this));
+    }
 
     private void createDefaultSpawnIsland() {
         getLogger().info("§a[✓] Default spawn island protected at 0,0");
