@@ -156,3 +156,10 @@ permissions:
     default: true
     children:
       foliasb.donor: false
+
+  foliaskyblock.island.warp:
+    description: Use island warps
+    default: true
+  foliaskyblock.island.setwarp:
+    description: Set island warp location
+    default: true

@@ -38,6 +38,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private IslandSettingsManager islandSettingsManager;
     private IslandBankManager islandBankManager;
     private QuestManager questManager;
+    private IslandWarpManager islandWarpManager;
 
     @Override
     public void onEnable() {
@@ -210,4 +211,5 @@ public class FoliaSkyblock extends JavaPlugin {
     }
     public IslandBankManager getIslandBankManager() {return islandBankManager;}
     public QuestManager getQuestManager() {return questManager;}
+    public IslandWarpManager getIslandWarpManager() {return islandWarpManager;}
 }

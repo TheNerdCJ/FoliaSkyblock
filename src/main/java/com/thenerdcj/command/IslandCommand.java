@@ -99,6 +99,14 @@ public class IslandCommand implements CommandExecutor {
             case "quests":
                 handleQuests(player);
                 break;
+            case "warp":
+                if (args.length > 1) handleWarp(player, args[1]);
+                else player.sendMessage("§cUsage: /island warp <player>");
+                break;
+
+            case "setwarp":
+                handleSetWarp(player);
+                break;
             default:
                 player.sendMessage("§cUnknown subcommand. Use §b/island§c for help.");
                 break;
@@ -125,6 +133,8 @@ public class IslandCommand implements CommandExecutor {
         player.sendMessage("§e/island settings §7- Open island settings GUI (PvP, visitors, etc.)");
         player.sendMessage("§e/island bank §7- Open island bank (deposit/withdraw money)");
         player.sendMessage("§e/island quests §7- Open quest log (daily/weekly missions)");
+        player.sendMessage("§e/island warp <player> §7- Teleport to another player's island warp");
+        player.sendMessage("§e/island setwarp §7- Set your island's warp location");
     }
 
     private void handleCreate(Player player, String[] args) {
@@ -324,6 +334,53 @@ public class IslandCommand implements CommandExecutor {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             com.thenerdcj.gui.QuestLogGUI gui = new com.thenerdcj.gui.QuestLogGUI(plugin);
             gui.open(player, island.getGridPosition().toString());
+        });
+    }
+    private void handleWarp(Player player, String targetName) {
+        org.bukkit.entity.Player target = Bukkit.getPlayer(targetName);
+        if (target == null) {
+            player.sendMessage("§cPlayer not found or not online.");
+            return;
+        }
+
+        Island targetIsland = plugin.getIslandManager().getIsland(target.getUniqueId(), target.getWorld().getEnvironment());
+        if (targetIsland == null) {
+            player.sendMessage("§cThat player doesn't have an island.");
+            return;
+        }
+
+        plugin.getIslandWarpManager().getWarp(targetIsland.getGridPosition()).thenAccept(warp -> {
+            if (!warp.isEnabled() || warp.getWarpLocation() == null) {
+                player.sendMessage("§cThat island doesn't have a warp set.");
+                return;
+            }
+
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                player.teleport(warp.getWarpLocation());
+                player.sendMessage("§aTeleported to §e" + target.getName() + "§a's island warp!");
+            });
+        });
+    }
+
+    private void handleSetWarp(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
+            return;
+        }
+
+        if (!island.isOwner(player.getUniqueId())) {
+            player.sendMessage("§cOnly the island owner can set the warp.");
+            return;
+        }
+
+        plugin.getIslandWarpManager().setWarp(island.getGridPosition(), player.getLocation()).thenAccept(success -> {
+            if (success) {
+                player.sendMessage("§aIsland warp set to your current location!");
+            } else {
+                player.sendMessage("§cFailed to set warp. Please try again.");
+            }
         });
     }
 }
