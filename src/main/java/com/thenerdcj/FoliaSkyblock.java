@@ -39,6 +39,8 @@ public class FoliaSkyblock extends JavaPlugin {
     private IslandBankManager islandBankManager;
     private QuestManager questManager;
     private IslandWarpManager islandWarpManager;
+    private IslandRatingManager islandRatingManager;
+    private IslandChatManager islandChatManager;
 
     @Override
     public void onEnable() {
@@ -110,6 +112,12 @@ public class FoliaSkyblock extends JavaPlugin {
 
             questManager = new QuestManager(this);
             getLogger().info("§a[✓] Quest System initialized (Daily/Weekly missions)");
+
+            islandRatingManager = new IslandRatingManager(this);
+            getLogger().info("§a[✓] Island Rating System initialized");
+
+            islandChatManager = new IslandChatManager(this);
+            getLogger().info("§a[✓] Island Chat System initialized");
 
             getLogger().info("§a[✓] All managers initialized");
         } catch (Exception e) {
@@ -212,4 +220,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandBankManager getIslandBankManager() {return islandBankManager;}
     public QuestManager getQuestManager() {return questManager;}
     public IslandWarpManager getIslandWarpManager() {return islandWarpManager;}
+    public IslandRatingManager getIslandRatingManager() {return islandRatingManager;}
+    public IslandChatManager getIslandChatManager() {return islandChatManager;}
 }

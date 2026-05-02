@@ -64,29 +64,28 @@ public class IslandWarpManager {
                 stmt.setString(3, pos.getDimension().name());
                 ResultSet rs = stmt.executeQuery();
 
-                IslandWarp warp = new IslandWarp(pos);
                 if (rs.next()) {
-                    String worldName = rs.getString("world");
-                    if (worldName != null && Bukkit.getWorld(worldName) != null) {
+                    IslandWarp warp = new IslandWarp(pos);
+                    org.bukkit.World world = Bukkit.getWorld(rs.getString("world"));
+                    if (world != null) {
                         Location loc = new Location(
-                                Bukkit.getWorld(worldName),
+                                world,
                                 rs.getDouble("x"),
                                 rs.getDouble("y"),
                                 rs.getDouble("z"),
-                                rs.getFloat("yaw"),
-                                rs.getFloat("pitch")
+                                (float) rs.getDouble("yaw"),
+                                (float) rs.getDouble("pitch")
                         );
                         warp.setWarpLocation(loc);
                         warp.setEnabled(rs.getBoolean("enabled"));
                     }
+                    warpCache.put(pos, warp);
+                    return warp;
                 }
-
-                warpCache.put(pos, warp);
-                return warp;
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to load island warp: " + e.getMessage());
-                return new IslandWarp(pos);
             }
+            return new IslandWarp(pos);
         });
     }
 
@@ -94,31 +93,17 @@ public class IslandWarpManager {
         GridPosition pos = warp.getGridPosition();
         return CompletableFuture.runAsync(() -> {
             try (Connection conn = databaseManager.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement("""
-                     INSERT OR REPLACE INTO island_warps 
-                     (grid_x, grid_z, dimension, world, x, y, z, yaw, pitch, enabled)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                     """)) {
+                 PreparedStatement stmt = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO island_warps (grid_x, grid_z, dimension, world, x, y, z, yaw, pitch, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 stmt.setInt(1, pos.getX());
                 stmt.setInt(2, pos.getZ());
                 stmt.setString(3, pos.getDimension().name());
-
-                if (warp.getWarpLocation() != null) {
-                    Location loc = warp.getWarpLocation();
-                    stmt.setString(4, loc.getWorld().getName());
-                    stmt.setDouble(5, loc.getX());
-                    stmt.setDouble(6, loc.getY());
-                    stmt.setDouble(7, loc.getZ());
-                    stmt.setFloat(8, loc.getYaw());
-                    stmt.setFloat(9, loc.getPitch());
-                } else {
-                    stmt.setNull(4, java.sql.Types.VARCHAR);
-                    stmt.setNull(5, java.sql.Types.DOUBLE);
-                    stmt.setNull(6, java.sql.Types.DOUBLE);
-                    stmt.setNull(7, java.sql.Types.DOUBLE);
-                    stmt.setNull(8, java.sql.Types.FLOAT);
-                    stmt.setNull(9, java.sql.Types.FLOAT);
-                }
+                stmt.setString(4, warp.getWarpLocation() != null ? warp.getWarpLocation().getWorld().getName() : "world");
+                stmt.setDouble(5, warp.getWarpLocation() != null ? warp.getWarpLocation().getX() : 0);
+                stmt.setDouble(6, warp.getWarpLocation() != null ? warp.getWarpLocation().getY() : 64);
+                stmt.setDouble(7, warp.getWarpLocation() != null ? warp.getWarpLocation().getZ() : 0);
+                stmt.setDouble(8, warp.getWarpLocation() != null ? warp.getWarpLocation().getYaw() : 0);
+                stmt.setDouble(9, warp.getWarpLocation() != null ? warp.getWarpLocation().getPitch() : 0);
                 stmt.setBoolean(10, warp.isEnabled());
                 stmt.executeUpdate();
                 warpCache.put(pos, warp);
@@ -146,6 +131,47 @@ public class IslandWarpManager {
     public boolean hasWarp(GridPosition pos) {
         IslandWarp warp = warpCache.get(pos);
         return warp != null && warp.isEnabled();
+    }
+
+    /**
+     * Get all public warps for the browse GUI
+     */
+    public CompletableFuture<Map<GridPosition, IslandWarp>> getAllPublicWarps() {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<GridPosition, IslandWarp> publicWarps = new java.util.concurrent.ConcurrentHashMap<>();
+            try (Connection conn = databaseManager.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(
+                         "SELECT * FROM island_warps WHERE enabled = 1")) {
+                ResultSet rs = stmt.executeQuery();
+
+                while (rs.next()) {
+                    GridPosition pos = new GridPosition(
+                            rs.getInt("grid_x"),
+                            rs.getInt("grid_z"),
+                            org.bukkit.World.Environment.valueOf(rs.getString("dimension"))
+                    );
+
+                    IslandWarp warp = new IslandWarp(pos);
+                    org.bukkit.World world = Bukkit.getWorld(rs.getString("world"));
+                    if (world != null) {
+                        org.bukkit.Location loc = new org.bukkit.Location(
+                                world,
+                                rs.getDouble("x"),
+                                rs.getDouble("y"),
+                                rs.getDouble("z"),
+                                (float) rs.getDouble("yaw"),
+                                (float) rs.getDouble("pitch")
+                        );
+                        warp.setWarpLocation(loc);
+                        warp.setEnabled(rs.getBoolean("enabled"));
+                        publicWarps.put(pos, warp);
+                    }
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to load all public warps: " + e.getMessage());
+            }
+            return publicWarps;
+        });
     }
 
     private void cleanupCache() {

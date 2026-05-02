@@ -48,7 +48,7 @@ public class IslandChatManager {
         String formattedMessage = "§b[Island] §e" + sender.getName() + "§7: §f" + message;
 
         // Send to all online island members
-        for (UUID memberId : island.getMembers()) {
+        for (UUID memberId : island.getMembers().keySet()) {
             Player member = Bukkit.getPlayer(memberId);
             if (member != null && member.isOnline()) {
                 member.sendMessage(formattedMessage);

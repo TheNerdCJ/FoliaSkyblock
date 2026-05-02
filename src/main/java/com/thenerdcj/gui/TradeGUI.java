@@ -213,4 +213,12 @@ public class TradeGUI implements Listener {
             this.description = description;
         }
     }
+
+    public void open(Player player, Island island) {
+        // Store the island context if needed
+        if (island != null) {
+            openTrades.put(player.getUniqueId(), island.getGridPosition().toString());
+        }
+        openTradeGUI(player);
+    }
 }

@@ -6,8 +6,9 @@ import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.generator.IslandGenerator;
 import com.thenerdcj.island.IslandRank;
-import org.bukkit.*;
-import org.bukkit.block.Biome;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 
 import java.util.*;
@@ -46,53 +47,92 @@ public class IslandManager {
                 .get(dimension);
     }
 
+    public Island getIslandAt(GridPosition pos) {
+        return islandCache.get(pos);
+    }
+
     public boolean hasIsland(UUID playerUuid, World.Environment dimension) {
         return getIsland(playerUuid, dimension) != null;
     }
 
-    // ====================== CREATE ISLAND ======================
-    public CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension) {
-        GridPosition pos = getNextAvailablePosition();
+    // ====================== ISLAND CREATION ======================
+    public void createIsland(Player player, String biomeName) {
+        UUID playerUuid = player.getUniqueId();
+        World.Environment dimension = player.getWorld().getEnvironment();
 
-        return databaseManager.saveIsland(pos.x(), pos.z(), player.getUniqueId(), biomeName, dimension)
-                .thenApply(success -> {
-                    if (success) {
-                        Island island = new Island(pos, player.getUniqueId(), biomeName, dimension);
-                        cacheIsland(player.getUniqueId(), island);
-
-                        // Generate the physical island (biome-aware)
-                        Biome chosenBiome = null;
-                        if (biomeName != null && !biomeName.isEmpty()) {
-                            try {
-                                // Modern way (1.21.3+ compatible)
-                                NamespacedKey key = NamespacedKey.minecraft(biomeName.toLowerCase().replace(" ", "_"));
-                                chosenBiome = Registry.BIOME.get(key);
-                            } catch (Exception ignored) {}
-                        }
-
-                        boolean isDonor = player.hasPermission("foliasb.donor");
-                        islandGenerator.generateIsland(island, player, chosenBiome, isDonor);
-
-                        return true;
-                    }
-                    return false;
-                });
-    }
-
-    private GridPosition getNextAvailablePosition() {
-        GridPosition pos = new GridPosition(currentSpiralX, currentSpiralZ);
-
-        switch (spiralDirection) {
-            case 0: currentSpiralX += spiralStep; break;
-            case 1: currentSpiralZ += spiralStep; break;
-            case 2: currentSpiralX -= spiralStep; break;
-            case 3: currentSpiralZ -= spiralStep; break;
+        // Check if player already has an island in this dimension
+        if (hasIsland(playerUuid, dimension)) {
+            player.sendMessage("§cYou already have an island in this dimension!");
+            return;
         }
 
-        spiralDirection = (spiralDirection + 1) % 4;
-        if (spiralDirection % 2 == 0) spiralStep++;
+        // Find next available grid position
+        GridPosition pos = findNextAvailablePosition(dimension);
 
-        return pos;
+        // Create the island
+        Island island = new Island(pos, playerUuid, biomeName, dimension);
+
+        // Generate the island terrain
+        islandGenerator.generateIsland(island, player, org.bukkit.block.Biome.PLAINS, false);
+
+        // Cache the island
+        cacheIsland(playerUuid, island);
+
+        // Save to database
+        databaseManager.saveIsland(
+                pos.getX(), pos.getZ(), playerUuid, biomeName, dimension
+        ).thenAccept(success -> {
+            if (success) {
+                player.sendMessage("§aIsland created successfully!");
+
+                // Teleport player to their new island
+                Location spawn = island.getSpawnLocation();
+                if (spawn == null) {
+                    spawn = new Location(player.getWorld(),
+                            pos.getX() * 100 + 50, 100, pos.getZ() * 100 + 50);
+                }
+                player.teleport(spawn);
+            } else {
+                player.sendMessage("§cFailed to create island. Please try again.");
+            }
+        });
+    }
+
+    private GridPosition findNextAvailablePosition(World.Environment dimension) {
+        while (true) {
+            GridPosition pos = new GridPosition(currentSpiralX, currentSpiralZ, dimension);
+
+            if (!islandCache.containsKey(pos)) {
+                updateSpiralPosition();
+                return pos;
+            }
+
+            updateSpiralPosition();
+        }
+    }
+
+    private void updateSpiralPosition() {
+        switch (spiralDirection) {
+            case 0:
+                currentSpiralX++;
+                if (currentSpiralX == spiralStep) spiralDirection = 1;
+                break;
+            case 1:
+                currentSpiralZ++;
+                if (currentSpiralZ == spiralStep) spiralDirection = 2;
+                break;
+            case 2:
+                currentSpiralX--;
+                if (currentSpiralX == -spiralStep) spiralDirection = 3;
+                break;
+            case 3:
+                currentSpiralZ--;
+                if (currentSpiralZ == -spiralStep) {
+                    spiralStep++;
+                    spiralDirection = 0;
+                }
+                break;
+        }
     }
 
     private void cacheIsland(UUID playerUuid, Island island) {
@@ -102,31 +142,7 @@ public class IslandManager {
         islandCache.put(island.getGridPosition(), island);
     }
 
-    // ====================== LOAD ON JOIN ======================
-    public void loadPlayerIslands(Player player) {
-        for (World.Environment dim : World.Environment.values()) {
-            databaseManager.getIslandByOwner(player.getUniqueId(), dim)
-                    .thenAccept(island -> {
-                        if (island != null) {
-                            cacheIsland(player.getUniqueId(), island);
-                        }
-                    });
-        }
-    }
-
-    public void removePlayerFromCache(UUID playerUuid) {
-        playerIslands.remove(playerUuid);
-    }
-
-    // ====================== HOME & TELEPORT ======================
-    public Location getIslandHome(Player player) {
-        Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-        if (island != null) {
-            Location center = island.getCenter(player.getWorld());
-            return center != null ? center : player.getWorld().getSpawnLocation();
-        }
-        return player.getWorld().getSpawnLocation();
-    }
+    // ====================== TELEPORT ======================
     public void teleportToIsland(Player player, UUID targetUuid) {
         Island island = getIsland(targetUuid, player.getWorld().getEnvironment());
         if (island == null) {
@@ -134,71 +150,77 @@ public class IslandManager {
             return;
         }
 
-        // Calculate spawn location (center of island)
         int centerX = island.getGridPosition().x() * 100 + 50;
         int centerZ = island.getGridPosition().z() * 100 + 50;
 
-        org.bukkit.Location spawn = new org.bukkit.Location(
-                player.getWorld(), centerX, 100, centerZ
-        );
-
+        Location spawn = new Location(player.getWorld(), centerX, 100, centerZ);
         player.teleport(spawn);
         player.sendMessage("§aTeleported to §e" + Bukkit.getOfflinePlayer(targetUuid).getName() + "'s§a island!");
     }
 
-    // ====================== RESET ISLAND ======================
-    public CompletableFuture<Boolean> resetIsland(Player player, World.Environment dimension) {
-        Island island = getIsland(player.getUniqueId(), dimension);
-        if (island == null) return CompletableFuture.completedFuture(false);
+    // ====================== LOAD ON JOIN ======================
+    public void loadPlayerIslands(Player player) {
+        UUID playerUuid = player.getUniqueId();
 
-        return databaseManager.deleteIsland(player.getUniqueId(), dimension)
-                .thenCompose(deleted -> {
-                    if (deleted) {
-                        playerIslands.getOrDefault(player.getUniqueId(), new HashMap<>()).remove(dimension);
-                        islandCache.remove(island.getGridPosition());
-                        return createIsland(player, "PLAINS", dimension);
-                    }
-                    return CompletableFuture.completedFuture(false);
-                });
-    }
-
-    // ====================== DELETE ISLAND ======================
-    public CompletableFuture<Boolean> deleteIsland(Player player, World.Environment dimension) {
-        Island island = getIsland(player.getUniqueId(), dimension);
-        if (island == null) return CompletableFuture.completedFuture(false);
-
-        return databaseManager.deleteIsland(player.getUniqueId(), dimension)
-                .thenApply(deleted -> {
-                    if (deleted) {
-                        playerIslands.getOrDefault(player.getUniqueId(), new HashMap<>()).remove(dimension);
-                        islandCache.remove(island.getGridPosition());
-                    }
-                    return deleted;
-                });
-    }
-
-    // ====================== XP SYSTEM ======================
-    public void addIslandXp(Player player, double baseAmount) {
-        Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-        if (island != null) {
-            int partySize = island.getMemberCount();
-            island.addXp(baseAmount, partySize);
+        for (World.Environment dimension : World.Environment.values()) {
+            databaseManager.getIslandByOwner(playerUuid, dimension).thenAccept(island -> {
+                if (island != null) {
+                    cacheIsland(playerUuid, island);
+                }
+            });
         }
     }
 
-    public void addIslandXp(UUID playerUuid, World.Environment dimension, double baseAmount) {
-        Island island = getIsland(playerUuid, dimension);
-        if (island != null) {
-            int partySize = island.getMemberCount();
-            island.addXp(baseAmount, partySize);
+    // ====================== PARTY SYSTEM METHODS ======================
+    public void inviteToParty(Player inviter, Player target) {
+        Island island = getIsland(inviter.getUniqueId(), inviter.getWorld().getEnvironment());
+        if (island == null) {
+            inviter.sendMessage("§cYou don't have an island in this dimension!");
+            return;
         }
+        if (!island.isOwner(inviter.getUniqueId())) {
+            inviter.sendMessage("§cOnly the island owner can invite players.");
+            return;
+        }
+
+        if (hasIsland(target.getUniqueId(), target.getWorld().getEnvironment())) {
+            inviter.sendMessage("§cThat player already has an island!");
+            return;
+        }
+
+        target.sendMessage("§e" + inviter.getName() + "§a has invited you to join their island!");
+        target.sendMessage("§aUse §b/island accept§a to join, or ignore to decline.");
+        inviter.sendMessage("§aInvite sent to §e" + target.getName() + "§a!");
     }
 
-    // ====================== HELPER METHODS ======================
-    public boolean hasIslandInDimension(UUID playerUuid, World.Environment dimension) {
-        return getIsland(playerUuid, dimension) != null;
+    public void acceptPartyInvite(Player player) {
+        player.sendMessage("§aInvite system active - check with the island owner!");
     }
 
+    public void removeMemberFromIsland(UUID ownerUuid, UUID memberUuid) {
+        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
+        if (island == null) return;
+
+        if (!island.isOwner(ownerUuid)) return;
+
+        island.removeMember(memberUuid);
+    }
+
+    public void setMemberRank(UUID ownerUuid, UUID memberUuid, IslandRank rank) {
+        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
+        if (island == null) return;
+
+        if (!island.isOwner(ownerUuid)) return;
+
+        island.setMemberRank(memberUuid, rank);
+    }
+
+    // ====================== TOP ISLANDS ======================
+    public CompletableFuture<List<Island>> getTopIslands(int limit) {
+        return CompletableFuture.completedFuture(new ArrayList<>());
+    }
+
+    // ====================== ISLAND AT LOCATION ======================
     public Island getIslandAt(Location location) {
         if (location == null || location.getWorld() == null) return null;
 
@@ -215,39 +237,29 @@ public class IslandManager {
         return null;
     }
 
-    // ====================== PARTY SYSTEM METHODS ======================
-
-    public void inviteToParty(Player inviter, Player target) {
-        Island island = getIsland(inviter.getUniqueId(), inviter.getWorld().getEnvironment());
-        if (island == null) {
-            inviter.sendMessage("§cYou don't have an island in this dimension!");
-            return;
-        }
-        if (!island.isOwner(inviter.getUniqueId())) {
-            inviter.sendMessage("§cOnly the island owner can invite players.");
-            return;
-        }
-        target.sendMessage("§a" + inviter.getName() + " has invited you to join their island!");
-        target.sendMessage("§7Use §b/island accept§7 to join.");
+    public Island getIslandByPosition(GridPosition pos) {
+        if (pos == null) return null;
+        return islandCache.get(pos);
     }
 
-    public void acceptPartyInvite(Player player) {
-        player.sendMessage("§aYou have joined the island! (Party system coming soon)");
+    // ====================== HELPER METHODS ======================
+    public boolean hasIslandInDimension(UUID playerUuid, World.Environment dimension) {
+        return getIsland(playerUuid, dimension) != null;
     }
 
-    public void removeMemberFromIsland(UUID ownerUuid, UUID targetUuid) {
-        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
-        if (island == null || !island.isOwner(ownerUuid)) {
-            return;
+    public Location getIslandHome(Player player) {
+        Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island != null) {
+            return island.getSpawnLocation();
         }
-        island.removeMember(targetUuid);
+        return null;
     }
 
-    public void setMemberRank(UUID ownerUuid, UUID targetUuid, IslandRank rank) {
-        Island island = getIsland(ownerUuid, World.Environment.NORMAL);
-        if (island == null || !island.isOwner(ownerUuid)) {
-            return;
+    public void addXpToIsland(UUID playerUuid, int baseAmount) {
+        Island island = getIsland(playerUuid, World.Environment.NORMAL);
+        if (island != null) {
+            int partySize = island.getMemberCount();
+            island.addXp(baseAmount, partySize);
         }
-        island.setMemberRank(targetUuid, rank);
     }
 }

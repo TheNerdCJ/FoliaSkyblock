@@ -1,11 +1,9 @@
 package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.island.Island;
-import com.thenerdcj.island.IslandRank;
-import com.thenerdcj.island.IslandUpgrade;
-import com.thenerdcj.island.IslandUpgradeRecommender;
+import com.thenerdcj.island.*;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -69,8 +67,13 @@ public class IslandCommand implements CommandExecutor {
                 else player.sendMessage("§cUsage: /island kick <player>");
                 break;
 
+            case "leave":
+                handleLeave(player);
+                break;
+
             case "rank":
-                handleRank(player, args);
+                if (args.length > 2) handleRank(player, args[1], args[2]);
+                else player.sendMessage("§cUsage: /island rank <player> <rank>");
                 break;
 
             case "top":
@@ -92,13 +95,15 @@ public class IslandCommand implements CommandExecutor {
             case "settings":
                 handleSettings(player);
                 break;
+
             case "bank":
                 handleBank(player);
                 break;
 
-            case "quests":
-                handleQuests(player);
+            case "browse":
+                handleBrowse(player);
                 break;
+
             case "warp":
                 if (args.length > 1) handleWarp(player, args[1]);
                 else player.sendMessage("§cUsage: /island warp <player>");
@@ -107,6 +112,11 @@ public class IslandCommand implements CommandExecutor {
             case "setwarp":
                 handleSetWarp(player);
                 break;
+
+            case "chat":
+                handleChat(player);
+                break;
+
             default:
                 player.sendMessage("§cUnknown subcommand. Use §b/island§c for help.");
                 break;
@@ -132,9 +142,11 @@ public class IslandCommand implements CommandExecutor {
         player.sendMessage("§e/island trade §7- Open the island trade shop (uses island balance)");
         player.sendMessage("§e/island settings §7- Open island settings GUI (PvP, visitors, etc.)");
         player.sendMessage("§e/island bank §7- Open island bank (deposit/withdraw money)");
+        player.sendMessage("§e/island browse §7- Browse public islands (sorted by popularity)");
         player.sendMessage("§e/island quests §7- Open quest log (daily/weekly missions)");
         player.sendMessage("§e/island warp <player> §7- Teleport to another player's island warp");
         player.sendMessage("§e/island setwarp §7- Set your island's warp location");
+        player.sendMessage("§e/island chat §7- Toggle island-only chat");
     }
 
     private void handleCreate(Player player, String[] args) {
@@ -150,42 +162,69 @@ public class IslandCommand implements CommandExecutor {
                 return;
             }
 
-            if (!ALLOWED_BIOMES.contains(biomeName)) {
-                player.sendMessage("§cInvalid biome. Allowed: §e" + String.join(", ", ALLOWED_BIOMES));
-                return;
-            }
-            plugin.getIslandManager().createIsland(player, biomeName, World.Environment.NORMAL);
-            player.sendMessage("§aCreating your §e" + biomeName + "§a island...");
-        } else if (isDonor) {
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                com.thenerdcj.gui.BiomeSelectionGUI gui = new com.thenerdcj.gui.BiomeSelectionGUI(plugin);
-                gui.open(player);
-            });
+            plugin.getIslandManager().createIsland(player, biomeName);
         } else {
-            plugin.getIslandManager().createIsland(player, "PLAINS", World.Environment.NORMAL);
-            player.sendMessage("§aCreating your island...");
+            plugin.getIslandManager().createIsland(player, "PLAINS");
         }
     }
 
     private void handleHome(Player player) {
-        plugin.getIslandManager().teleportToIsland(player, player.getUniqueId());
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
+            return;
+        }
+
+        Location spawn = island.getSpawnLocation();
+        if (spawn == null) {
+            spawn = new Location(player.getWorld(), 0, 64, 0);
+        }
+
+        player.teleport(spawn);
+        player.sendMessage("§aTeleported to your island!");
     }
 
     private void handleTeleport(Player player, String targetName) {
         Player target = Bukkit.getPlayer(targetName);
         if (target == null) {
-            player.sendMessage("§cPlayer not found!");
+            player.sendMessage("§cPlayer not found or not online.");
             return;
         }
-        plugin.getIslandManager().teleportToIsland(player, target.getUniqueId());
+
+        Island targetIsland = plugin.getIslandManager().getIsland(target.getUniqueId(), target.getWorld().getEnvironment());
+        if (targetIsland == null) {
+            player.sendMessage("§cThat player doesn't have an island.");
+            return;
+        }
+
+        Location spawn = targetIsland.getSpawnLocation();
+        if (spawn == null) {
+            spawn = new Location(target.getWorld(), 0, 64, 0);
+        }
+
+        player.teleport(spawn);
+        player.sendMessage("§aTeleported to §e" + target.getName() + "§a's island!");
     }
 
     private void handleInvite(Player player, String targetName) {
         Player target = Bukkit.getPlayer(targetName);
         if (target == null) {
-            player.sendMessage("§cPlayer not found!");
+            player.sendMessage("§cPlayer not found or not online.");
             return;
         }
+
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
+            return;
+        }
+
+        if (!island.isOwner(player.getUniqueId())) {
+            player.sendMessage("§cOnly the island owner can invite players.");
+            return;
+        }
+
         plugin.getIslandManager().inviteToParty(player, target);
     }
 
@@ -196,100 +235,130 @@ public class IslandCommand implements CommandExecutor {
     private void handleKick(Player player, String targetName) {
         Player target = Bukkit.getPlayer(targetName);
         if (target == null) {
-            player.sendMessage("§cPlayer not found!");
+            player.sendMessage("§cPlayer not found or not online.");
             return;
         }
+
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island!");
+            return;
+        }
+
+        if (!island.isOwner(player.getUniqueId())) {
+            player.sendMessage("§cOnly the island owner can kick players.");
+            return;
+        }
+
         plugin.getIslandManager().removeMemberFromIsland(player.getUniqueId(), target.getUniqueId());
+        player.sendMessage("§aKicked §e" + target.getName() + "§a from your island.");
     }
 
-    private void handleRank(Player player, String[] args) {
-        if (args.length < 3) {
-            player.sendMessage("§cUsage: /island rank <player> <GUEST|HELPER|MODERATOR>");
+    private void handleLeave(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou are not in an island!");
             return;
         }
-        Player target = Bukkit.getPlayer(args[1]);
+
+        if (island.isOwner(player.getUniqueId())) {
+            player.sendMessage("§cYou cannot leave your own island! Use §b/island delete§c instead.");
+            return;
+        }
+
+        plugin.getIslandManager().removeMemberFromIsland(island.getOwnerUuid(), player.getUniqueId());
+        player.sendMessage("§aYou have left the island.");
+    }
+
+    private void handleRank(Player player, String targetName, String rankName) {
+        Player target = Bukkit.getPlayer(targetName);
         if (target == null) {
-            player.sendMessage("§cPlayer not found!");
+            player.sendMessage("§cPlayer not found or not online.");
             return;
         }
-        try {
-            IslandRank rank = IslandRank.valueOf(args[2].toUpperCase());
-            plugin.getIslandManager().setMemberRank(player.getUniqueId(), target.getUniqueId(), rank);
-        } catch (IllegalArgumentException e) {
-            player.sendMessage("§cInvalid rank! Use: GUEST, HELPER, MODERATOR");
+
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island!");
+            return;
         }
+
+        if (!island.isOwner(player.getUniqueId())) {
+            player.sendMessage("§cOnly the island owner can change ranks.");
+            return;
+        }
+
+        IslandRank rank;
+        try {
+            rank = IslandRank.valueOf(rankName.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            player.sendMessage("§cInvalid rank! Use: GUEST, HELPER, MODERATOR, OWNER");
+            return;
+        }
+
+        plugin.getIslandManager().setMemberRank(player.getUniqueId(), target.getUniqueId(), rank);
+        player.sendMessage("§aSet §e" + target.getName() + "§a's rank to §b" + rank.name() + "§a.");
     }
 
     private void handleTop(Player player) {
-        player.sendMessage("§6§lTop Islands:");
-        player.sendMessage("§71. §eExampleIsland §7- Level 45");
-        player.sendMessage("§72. §eAnotherIsland §7- Level 38");
+        plugin.getIslandManager().getTopIslands(10).thenAccept(topIslands -> {
+            player.sendMessage("§6╔══════════════════════════════════════╗");
+            player.sendMessage("§6║          §eTop 10 Islands              §6║");
+            player.sendMessage("§6╚══════════════════════════════════════╝");
+
+            int rank = 1;
+            for (Island island : topIslands) {
+                String ownerName = Bukkit.getOfflinePlayer(island.getOwnerUuid()).getName();
+                player.sendMessage("§e#" + rank + " §f" + ownerName + " §7- Level " + island.getLevel());
+                rank++;
+            }
+        });
     }
 
     private void handleSetSpawn(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension.");
+            player.sendMessage("§cYou don't have an island!");
             return;
         }
 
         if (!island.isOwner(player.getUniqueId())) {
-            player.sendMessage("§cOnly the island owner can set the spawn point.");
+            player.sendMessage("§cOnly the island owner can set spawn.");
             return;
         }
 
+        island.setSpawnLocation(player.getLocation());
         player.sendMessage("§aIsland spawn point set to your current location!");
     }
 
     private void handleUpgrade(Player player, String[] args) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-
         if (island == null) {
             player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
             return;
         }
 
-        if (args.length < 2) {
-            player.sendMessage("§6§l╔══════════════════════════════════════╗");
-            player.sendMessage("§6§l║     §eIsland Upgrade Recommendations   §6§l║");
-            player.sendMessage("§6§l╚══════════════════════════════════════╝");
-
-            IslandUpgradeRecommender recommender = new IslandUpgradeRecommender(plugin);
-            List<IslandUpgradeRecommender.UpgradeRecommendation> recommendations =
-                    recommender.getRecommendations(player, island);
-
-            if (recommendations.isEmpty()) {
-                player.sendMessage("§7No recommendations available. All upgrades are maxed!");
-                return;
-            }
-
-            for (IslandUpgradeRecommender.UpgradeRecommendation rec : recommendations) {
-                int cost = rec.upgrade.getCostForLevel(rec.currentLevel);
-                player.sendMessage(String.format(
-                        "§b%s §7(Level %d → %d) §6$%,d §7- %s",
-                        rec.upgrade.name(),
-                        rec.currentLevel,
-                        rec.recommendedLevel,
-                        cost,
-                        rec.reason
-                ));
-            }
-
-            player.sendMessage("§7Use §b/island upgrade <UPGRADE>§7 to purchase");
-            return;
-        }
-
-        String upgradeName = args[1].toUpperCase();
-        try {
-            IslandUpgrade upgrade = IslandUpgrade.valueOf(upgradeName);
-            plugin.getIslandUpgradeManager().purchaseUpgrade(player, island, upgrade);
-        } catch (IllegalArgumentException e) {
-            player.sendMessage("§cInvalid upgrade! Use §b/island upgrade§c to see available options.");
+        if (args.length > 1) {
+            String upgradeName = args[1].toUpperCase();
+            plugin.getIslandUpgradeManager().purchaseUpgrade(island, upgradeName, player);
+        } else {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                IslandUpgradeGUI gui = new IslandUpgradeGUI(plugin);
+                gui.open(player, island);
+            });
         }
     }
 
     private void handleTrade(Player player) {
-        plugin.getTradeGUI().openTradeGUI(player);
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
+            return;
+        }
+
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            plugin.getTradeGUI().open(player, island);
+        });
     }
 
     private void handleSettings(Player player) {
@@ -310,6 +379,7 @@ public class IslandCommand implements CommandExecutor {
             gui.open(player, island);
         });
     }
+
     private void handleBank(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
 
@@ -323,21 +393,16 @@ public class IslandCommand implements CommandExecutor {
             gui.open(player, island);
         });
     }
-    private void handleQuests(Player player) {
-        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
 
-        if (island == null) {
-            player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
-            return;
-        }
-
+    private void handleBrowse(Player player) {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
-            com.thenerdcj.gui.QuestLogGUI gui = new com.thenerdcj.gui.QuestLogGUI(plugin);
-            gui.open(player, island.getGridPosition().toString());
+            com.thenerdcj.gui.IslandBrowseGUI gui = new com.thenerdcj.gui.IslandBrowseGUI(plugin);
+            gui.open(player, 0);
         });
     }
+
     private void handleWarp(Player player, String targetName) {
-        org.bukkit.entity.Player target = Bukkit.getPlayer(targetName);
+        Player target = Bukkit.getPlayer(targetName);
         if (target == null) {
             player.sendMessage("§cPlayer not found or not online.");
             return;
@@ -382,5 +447,16 @@ public class IslandCommand implements CommandExecutor {
                 player.sendMessage("§cFailed to set warp. Please try again.");
             }
         });
+    }
+
+    private void handleChat(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
+            return;
+        }
+
+        plugin.getIslandChatManager().toggleIslandChat(player);
     }
 }
