@@ -92,7 +92,13 @@ public class IslandCommand implements CommandExecutor {
             case "settings":
                 handleSettings(player);
                 break;
+            case "bank":
+                handleBank(player);
+                break;
 
+            case "quests":
+                handleQuests(player);
+                break;
             default:
                 player.sendMessage("§cUnknown subcommand. Use §b/island§c for help.");
                 break;
@@ -117,6 +123,8 @@ public class IslandCommand implements CommandExecutor {
         player.sendMessage("§e/island upgrade [UPGRADE] §7- View or purchase island upgrades (AI recommendations)");
         player.sendMessage("§e/island trade §7- Open the island trade shop (uses island balance)");
         player.sendMessage("§e/island settings §7- Open island settings GUI (PvP, visitors, etc.)");
+        player.sendMessage("§e/island bank §7- Open island bank (deposit/withdraw money)");
+        player.sendMessage("§e/island quests §7- Open quest log (daily/weekly missions)");
     }
 
     private void handleCreate(Player player, String[] args) {
@@ -290,6 +298,32 @@ public class IslandCommand implements CommandExecutor {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             com.thenerdcj.gui.IslandSettingsGUI gui = new com.thenerdcj.gui.IslandSettingsGUI(plugin);
             gui.open(player, island);
+        });
+    }
+    private void handleBank(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
+            return;
+        }
+
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            com.thenerdcj.gui.IslandBankGUI gui = new com.thenerdcj.gui.IslandBankGUI(plugin);
+            gui.open(player, island);
+        });
+    }
+    private void handleQuests(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island! Use §b/island create§c first.");
+            return;
+        }
+
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            com.thenerdcj.gui.QuestLogGUI gui = new com.thenerdcj.gui.QuestLogGUI(plugin);
+            gui.open(player, island.getGridPosition().toString());
         });
     }
 }

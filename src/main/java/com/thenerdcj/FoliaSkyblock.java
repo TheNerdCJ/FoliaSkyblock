@@ -3,6 +3,7 @@ package com.thenerdcj;
 import com.thenerdcj.command.*;
 import com.thenerdcj.command.ChallengeCommand;
 import com.thenerdcj.database.DatabaseManager;
+import com.thenerdcj.gui.IslandBankGUI;
 import com.thenerdcj.listener.*;
 import com.thenerdcj.listener.IslandXPListener;
 import com.thenerdcj.listener.ChallengeProgressListener;
@@ -35,6 +36,8 @@ public class FoliaSkyblock extends JavaPlugin {
     private ChallengeManager challengeManager;
     private IslandUpgradeManager islandUpgradeManager;
     private IslandSettingsManager islandSettingsManager;
+    private IslandBankManager islandBankManager;
+    private QuestManager questManager;
 
     @Override
     public void onEnable() {
@@ -101,6 +104,12 @@ public class FoliaSkyblock extends JavaPlugin {
             islandSettingsManager = new IslandSettingsManager(this);
             getLogger().info("§a[✓] Island Settings System initialized");
 
+            islandBankManager = new IslandBankManager(this);
+            getLogger().info("§a[✓] Island Bank System initialized");
+
+            questManager = new QuestManager(this);
+            getLogger().info("§a[✓] Quest System initialized (Daily/Weekly missions)");
+
             getLogger().info("§a[✓] All managers initialized");
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "§cFailed to initialize managers!", e);
@@ -136,6 +145,7 @@ public class FoliaSkyblock extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new com.thenerdcj.gui.IslandSettingsGUI(this), this);
         getServer().getPluginManager().registerEvents(new IslandXPListener(this), this);
         getServer().getPluginManager().registerEvents(new ChallengeProgressListener(this), this);
+        getServer().getPluginManager().registerEvents(new IslandBankGUI(this), this);
     }
 
     private void createDefaultSpawnIsland() {
@@ -163,16 +173,15 @@ public class FoliaSkyblock extends JavaPlugin {
     public BossManager getBossManager() { return bossManager; }
     public TradeGUI getTradeGUI() { return tradeGUI; }
     public boolean isFolia() { return true; }
-
     public ChallengeManager getChallengeManager() {
         return challengeManager;
     }
-
     public IslandUpgradeManager getIslandUpgradeManager() {
         return islandUpgradeManager;
     }
-
     public IslandSettingsManager getIslandSettingsManager() {
         return islandSettingsManager;
     }
+    public IslandBankManager getIslandBankManager() {return islandBankManager;}
+    public QuestManager getQuestManager() {return questManager;}
 }
