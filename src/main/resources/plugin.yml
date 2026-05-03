@@ -86,6 +86,16 @@ commands:
     description: View server rules
     usage: /<command>
 
+  auction:
+    description: Auction House commands
+    usage: /auction [create|bid|list]
+    permission: foliasb.auction
+
+  bazaar:
+    description: Bazaar trading commands
+    usage: /bazaar [buy|sell|orders|createbuy|createsell]
+    permission: foliasb.bazaar
+
 permissions:
   # Donor permissions
   foliasb.donor:

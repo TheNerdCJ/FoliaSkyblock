@@ -1,5 +1,7 @@
 package com.thenerdcj;
 
+import com.thenerdcj.auction.AuctionManager;
+import com.thenerdcj.bazaar.BazaarManager;
 import com.thenerdcj.command.*;
 import com.thenerdcj.command.ChallengeCommand;
 import com.thenerdcj.database.DatabaseManager;
@@ -41,6 +43,8 @@ public class FoliaSkyblock extends JavaPlugin {
     private IslandWarpManager islandWarpManager;
     private IslandRatingManager islandRatingManager;
     private IslandChatManager islandChatManager;
+    private AuctionManager auctionManager;
+    private BazaarManager bazaarManager;
 
     @Override
     public void onEnable() {
@@ -88,6 +92,14 @@ public class FoliaSkyblock extends JavaPlugin {
 
             combatManager = new CombatManager(this);
             getLogger().info("§a[✓] Combat Manager initialized");
+
+            // Initialize Auction System
+            auctionManager = new AuctionManager(this);
+            getLogger().info("§a[✓] Auction System initialized");
+
+            // Initialize Bazaar System
+            bazaarManager = new BazaarManager(this);
+            getLogger().info("§a[✓] Bazaar System initialized");
 
             gridManager = new GridManager(this);
             getLogger().info("§a[✓] Grid Manager initialized");
@@ -181,6 +193,8 @@ public class FoliaSkyblock extends JavaPlugin {
         getCommand("challenge").setExecutor(new ChallengeCommand(this));
         // Rules command
         getCommand("rules").setExecutor(new PlayerCommand(this));
+        getCommand("auction").setExecutor(new AuctionCommand(this));
+        getCommand("bazaar").setExecutor(new BazaarCommand(this));
     }
 
     private void createDefaultSpawnIsland() {
@@ -222,4 +236,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandWarpManager getIslandWarpManager() {return islandWarpManager;}
     public IslandRatingManager getIslandRatingManager() {return islandRatingManager;}
     public IslandChatManager getIslandChatManager() {return islandChatManager;}
+    public AuctionManager getAuctionManager() {return auctionManager;}
+    public BazaarManager getBazaarManager() {return bazaarManager;}
 }

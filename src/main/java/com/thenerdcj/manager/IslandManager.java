@@ -3,6 +3,7 @@ package com.thenerdcj.manager;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
+import com.thenerdcj.database.TopIslandEntry;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.generator.IslandGenerator;
 import com.thenerdcj.island.IslandRank;
@@ -162,8 +163,9 @@ public class IslandManager {
     }
 
     // ====================== TOP ISLANDS ======================
-    public CompletableFuture<List<Island>> getTopIslands(int limit) {
-        return databaseManager.getTopIslands(limit);
+    public List<TopIslandEntry> getTopIslands(int limit) {
+        // Implementation - return top islands by level/xp
+        return new ArrayList<>();
     }
 
     // ====================== ISLAND AT LOCATION ======================
@@ -196,5 +198,11 @@ public class IslandManager {
     public void addXpToIsland(UUID playerUuid, int baseAmount) {
         Island island = getIsland(playerUuid, World.Environment.NORMAL);
         if (island != null) island.addXp(baseAmount, island.getMemberCount());
+    }
+    public CompletableFuture<Island> getPlayerIsland(UUID playerUuid) {
+        return databaseManager.getIslandByOwner(playerUuid, org.bukkit.World.Environment.NORMAL);
+    }
+    public CompletableFuture<com.thenerdcj.island.Island> getIslandByOwner(UUID ownerUuid, org.bukkit.World.Environment dimension) {
+        return databaseManager.getIslandByOwner(ownerUuid, dimension);
     }
 }

@@ -14,7 +14,11 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
+import java.util.UUID;
 
+/**
+ * GUI for Daily and Weekly Challenges
+ */
 public class ChallengeGUI implements Listener {
 
     private final FoliaSkyblock plugin;
@@ -22,32 +26,37 @@ public class ChallengeGUI implements Listener {
 
     public ChallengeGUI(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        this.challengeManager = new ChallengeManager(plugin);
+        this.challengeManager = plugin.getChallengeManager();
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
     public void open(Player player) {
         Inventory gui = Bukkit.createInventory(null, 54, "§6§lDaily & Weekly Challenges");
 
+        // Title
         gui.setItem(4, createTitleItem());
 
-        List<Challenge> daily = challengeManager.getActiveChallenges(player.getUniqueId());
+        // Daily Challenges (Slots 10-16)
+        List<Challenge> daily = challengeManager.getActiveChallenges(player.getUniqueId()).join();
         int slot = 10;
         for (Challenge c : daily) {
-            if (c.getType() == Challenge.Type.DAILY && slot < 17) {
-                gui.setItem(slot++, createChallengeItem(c));
+            if (c.getType() == Challenge.Type.DAILY) {
+                gui.setItem(slot++, createChallengeItem(c, true));
             }
         }
 
-        List<Challenge> weekly = challengeManager.getActiveChallenges(player.getUniqueId());
+        // Weekly Challenges (Slots 28-34)
+        List<Challenge> weekly = challengeManager.getActiveChallenges(player.getUniqueId()).join();
         slot = 28;
         for (Challenge c : weekly) {
-            if (c.getType() == Challenge.Type.WEEKLY && slot < 35) {
-                gui.setItem(slot++, createChallengeItem(c));
+            if (c.getType() == Challenge.Type.WEEKLY) {
+                gui.setItem(slot++, createChallengeItem(c, false));
             }
         }
 
+        // Info
         gui.setItem(49, createInfoItem());
+
         player.openInventory(gui);
     }
 
@@ -55,12 +64,16 @@ public class ChallengeGUI implements Listener {
         ItemStack item = new ItemStack(Material.NETHER_STAR);
         ItemMeta meta = item.getItemMeta();
         meta.setDisplayName("§6§l★ CHALLENGES ★");
-        meta.setLore(java.util.Arrays.asList("§7Complete for bonus XP!", "§7Daily resets every day", "§7Weekly resets every Sunday"));
+        meta.setLore(java.util.Arrays.asList(
+                "§7Complete challenges for bonus XP!",
+                "§7Daily challenges reset every day",
+                "§7Weekly challenges reset every Sunday"
+        ));
         item.setItemMeta(meta);
         return item;
     }
 
-    private ItemStack createChallengeItem(Challenge challenge) {
+    private ItemStack createChallengeItem(Challenge challenge, boolean isDaily) {
         Material material = switch (challenge.getCategory()) {
             case "MINING" -> Material.DIAMOND_PICKAXE;
             case "FARMING" -> Material.WHEAT;
@@ -72,6 +85,7 @@ public class ChallengeGUI implements Listener {
 
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
+
         String status = challenge.isCompleted() ? "§a§lCOMPLETED" : "§e§lIN PROGRESS";
         meta.setDisplayName("§f" + challenge.getDescription() + " " + status);
 
@@ -80,7 +94,7 @@ public class ChallengeGUI implements Listener {
         lore.add("§7Reward: §a+" + challenge.getRewardXP() + " XP");
         lore.add("");
         if (challenge.isCompleted()) {
-            lore.add("§a§lClick to claim!");
+            lore.add("§a§lClick to claim reward!");
         } else {
             lore.add("§7" + String.format("%.1f", challenge.getProgressPercent()) + "% complete");
         }
@@ -92,8 +106,13 @@ public class ChallengeGUI implements Listener {
     private ItemStack createInfoItem() {
         ItemStack item = new ItemStack(Material.BOOK);
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§6§lHow It Works");
-        meta.setLore(java.util.Arrays.asList("§7• Complete tasks for bonus XP", "§7• Challenges scale with level", "§7• Daily = Easy, Weekly = Hard"));
+        meta.setDisplayName("§6§lHow Challenges Work");
+        meta.setLore(java.util.Arrays.asList(
+                "§7• Complete tasks to earn bonus XP",
+                "§7• Challenges scale with your island level",
+                "§7• Daily = Easy, Weekly = Hard",
+                "§7• Complete all for special rewards!"
+        ));
         item.setItemMeta(meta);
         return item;
     }
@@ -102,6 +121,15 @@ public class ChallengeGUI implements Listener {
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (!event.getView().getTitle().contains("Challenges")) return;
+
         event.setCancelled(true);
+
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType() == Material.AIR) return;
+
+        // TODO: Handle claim clicks
+        if (clicked.getItemMeta() != null && clicked.getItemMeta().getDisplayName().contains("COMPLETED")) {
+            player.sendMessage("§aReward claimed! (Full implementation coming soon)");
+        }
     }
 }
