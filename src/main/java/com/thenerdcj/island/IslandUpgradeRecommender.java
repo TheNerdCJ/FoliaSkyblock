@@ -1,4 +1,5 @@
 package com.thenerdcj.island;
+
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.DatabaseManager;
 import org.bukkit.entity.Player;
@@ -166,36 +167,38 @@ public class IslandUpgradeRecommender {
             score *= 0.5;
         }
 
-        return Math.min(1.0, score);
+        // Bonus for balanced progression
+        if (currentLevel < 3) {
+            score += 0.2; // Encourage getting basics first
+        }
+
+        // Clamp to 0-1
+        return Math.max(0.0, Math.min(1.0, score));
     }
 
     private double getPlaystyleMatchScore(IslandUpgrade upgrade, Playstyle playstyle) {
         return switch (playstyle) {
             case MINER -> switch (upgrade) {
-                case ORE_GENERATOR, MOB_SPAWNER -> 0.9;
-                case ISLAND_SIZE, VAULT_SLOTS -> 0.7;
-                default -> 0.4;
+                case HOPPER_LIMIT, SPAWNER_RATE -> 0.9;
+                case VAULT_SLOTS, AUTO_SELLER -> 0.7;
+                default -> 0.3;
             };
             case BUILDER -> switch (upgrade) {
-                case ISLAND_SIZE, BUILD_SPEED -> 0.9;
-                case VAULT_SLOTS -> 0.8;
+                case ISLAND_SIZE, HOPPER_LIMIT -> 0.9;
+                case VAULT_SLOTS, AUTO_SELLER -> 0.6;
                 default -> 0.3;
             };
             case FIGHTER -> switch (upgrade) {
-                case MOB_SPAWNER, COMBAT_XP -> 0.9;
-                case ISLAND_SIZE -> 0.7;
-                default -> 0.4;
+                case SPAWNER_RATE, MOB_CAP -> 0.9;
+                case HOPPER_LIMIT, VAULT_SLOTS -> 0.5;
+                default -> 0.3;
             };
             case FARMER -> switch (upgrade) {
-                case CROP_GROWTH, AUTO_SELLER -> 0.9;
-                case VAULT_SLOTS -> 0.8;
-                default -> 0.4;
+                case CROP_GROWTH, AUTO_SELLER, HOPPER_LIMIT -> 0.9;
+                case VAULT_SLOTS, ISLAND_SIZE -> 0.5;
+                default -> 0.3;
             };
-            case BALANCED -> switch (upgrade) {
-                case ISLAND_SIZE, VAULT_SLOTS, COMBAT_XP -> 0.8;
-                case ORE_GENERATOR, CROP_GROWTH, MOB_SPAWNER -> 0.7;
-                default -> 0.6;
-            };
+            case BALANCED -> 0.6;
         };
     }
 

@@ -59,4 +59,11 @@ public class EconomyManager {
     public CompletableFuture<Double> getPlayerBalance(UUID uuid) {
         return getBalance(uuid);
     }
+    public CompletableFuture<Boolean> addPlayerBalance(UUID uuid, double amount) {
+        return addBalance(uuid, amount);
+    }
+
+    public CompletableFuture<Boolean> removePlayerBalance(UUID uuid, double amount) {
+        return removeBalance(uuid, amount);
+    }
 }
