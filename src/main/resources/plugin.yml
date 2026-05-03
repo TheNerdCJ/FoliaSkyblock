@@ -48,8 +48,6 @@ commands:
 
   home:
     description: Teleport to your island home
-    usage: /<command>
-    aliases: [is home]
 
   tpa:
     description: Request to teleport to a player
@@ -58,16 +56,6 @@ commands:
   tpaccept:
     description: Accept a teleport request
     usage: /<command>
-    aliases: [tpac]
-
-  tpdeny:
-    description: Deny a teleport request
-    usage: /<command>
-    aliases: [tpdecline]
-
-  tpignore:
-    description: Ignore teleport requests from a player
-    usage: /<command> <player>
 
   pending:
     description: List your pending teleport requests
@@ -79,86 +67,28 @@ commands:
     aliases: [challenges, daily]
 
   daily:
-    description: View your daily island challenges
+    description: View your daily challenges
     usage: /<command>
+
+  trade:
+    description: Open the island trading GUI
+    usage: /<command>
+
+  enchant:
+    description: Open the custom enchanting table (no level limits!)
+    usage: /<command>
+    aliases: [ench, etable]
 
   rules:
     description: View server rules
     usage: /<command>
 
   auction:
-    description: Auction House commands
-    usage: /auction [create|bid|list]
-    permission: foliasb.auction
+    description: Open the auction house
+    usage: /<command>
+    aliases: [ah]
 
   bazaar:
-    description: Bazaar trading commands
-    usage: /bazaar [buy|sell|orders|createbuy|createsell]
-    permission: foliasb.bazaar
-
-permissions:
-  # Donor permissions
-  foliasb.donor:
-    description: Access to donor features (biome selection, etc.)
-    default: false
-
-  foliasb.create.biome:
-    description: Allows choosing biome when creating island
-    default: false
-    children:
-      foliasb.donor: true
-
-  # Staff permissions
-  foliasb.staff:
-    description: Base staff permission
-    default: op
-
-  foliasb.staff.mute:
-    description: Allows muting/unmuting players
-    default: op
-    children:
-      foliasb.staff: true
-
-  foliasb.staff.kick:
-    description: Allows kicking players from islands
-    default: op
-    children:
-      foliasb.staff: true
-
-  # Admin permissions
-  foliasb.admin:
-    description: Full admin access
-    default: op
-
-  foliasb.admin.setspawn:
-    description: Allows setting server spawn
-    default: op
-    children:
-      foliasb.admin: true
-
-  foliasb.admin.editspawn:
-    description: Allows editing blocks in spawn protection zone (0,0)
-    default: op
-    children:
-      foliasb.admin: true
-
-  foliasb.admin.bypass:
-    description: Bypass all island protections
-    default: op
-    children:
-      foliasb.admin: true
-
-  # Default permissions for all players
-  foliasb.default:
-    description: Basic permissions given to all players
-    default: true
-    children:
-      foliasb.donor: false
-
-  foliaskyblock.island.warp:
-    description: Use island warps
-    default: true
-
-  foliaskyblock.island.setwarp:
-    description: Set island warp location
-    default: true
+    description: Open the bazaar (instant trading)
+    usage: /<command>
+    aliases: [bz]

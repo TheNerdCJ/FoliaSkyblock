@@ -1,222 +1,144 @@
 name: FoliaSkyblock
 version: 1.0.0
 main: com.thenerdcj.FoliaSkyblock
-api-version: '1.21'
-folia-supported: true
+api-version: 1.21
 author: TheNerdCJ
-description: High-performance Skyblock plugin for Folia 1.21+ with custom islands, parties, economy, ranks, and anti-cheat
-
-bootstrapper: com.thenerdcj.FoliaSkyblock
-loader: com.thenerdcj.FoliaSkyblock
+description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, and economy.
 
 commands:
   island:
-    description: Main island command
-    aliases: [is, skyblock]
-    usage: /island <create|home|reset|delete|party|trade|top|help>
-    permission: foliaskyblock.command.island
+    description: Main island command with create, home, invite, etc.
+    usage: /<command> [create|home|tp|invite|accept|kick|rank|top|setspawn]
+    aliases: [is, skyblock, sb]
 
-  spawn:
-    description: Teleport to spawn
-    usage: /spawn
+  bal:
+    description: Check your player balance
+    usage: /<command>
+    aliases: [balance, money, coins]
+
+  rank:
+    description: Check your player rank and voting
+    usage: /<command> [vote|top]
+
+  mute:
+    description: Mute a player (staff)
+    usage: /<command> <player> [duration] [reason]
+    permission: foliasb.staff.mute
+
+  unmute:
+    description: Unmute a player (staff)
+    usage: /<command> <player>
+    permission: foliasb.staff.mute
+
+  staff:
+    description: Staff panel and tools
+    usage: /<command>
+    permission: foliasb.staff
 
   setspawn:
-    description: Set the server spawn location (Admin only)
-    usage: /setspawn
-    permission: foliaskyblock.admin.setspawn
+    description: Set the server spawn location (admin)
+    usage: /<command>
+    permission: foliasb.admin.setspawn
+    aliases: [spawnset]
+
+  spawn:
+    description: Teleport to server spawn
+    usage: /<command>
+    aliases: [lobby]
+
+  home:
+    description: Teleport to your island home
 
   tpa:
-    description: Request to teleport to another player
-    usage: /tpa <player>
+    description: Request to teleport to a player
+    usage: /<command> <player>
 
   tpaccept:
     description: Accept a teleport request
-    aliases: [tpac]
-    usage: /tpaccept
-
-  tpdeny:
-    description: Deny a teleport request
-    aliases: [tpdecline]
-    usage: /tpdeny
-
-  tpignore:
-    description: Ignore all teleport requests
-    usage: /tpignore
+    usage: /<command>
 
   pending:
-    description: View your pending teleport requests
-    usage: /pending
+    description: List your pending teleport requests
+    usage: /<command>
+
+  challenge:
+    description: View your daily and weekly challenges
+    usage: /<command>
+    aliases: [challenges, daily]
+
+  daily:
+    description: View your daily challenges
+    usage: /<command>
+
+  trade:
+    description: Open the island trading GUI
+    usage: /<command>
+
+  enchant:
+    description: Open the custom enchanting table (no level limits!)
+    usage: /<command>
+    aliases: [ench, etable]
 
   rules:
-    description: View the server rules
-    usage: /rules
-
-  bal:
-    description: Check your balance (player + island balance)
-    usage: /bal [player]
-
-  mute:
-    description: Mute a player (Admin)
-    usage: /mute <player> [time]
-    permission: foliaskyblock.admin.mute
-
-  unmute:
-    description: Unmute a player (Admin)
-    usage: /unmute <player>
-    permission: foliaskyblock.admin.mute
-
-  rank:
-    description: Rank and voting system
-    aliases: [ranks]
-    usage: /rank <vote|check|top>
-    permission: foliaskyblock.command.rank
+    description: View server rules
+    usage: /<command>
 
   auction:
-    description: Auction House - Buy and sell items with other players
+    description: Open the auction house
+    usage: /<command>
     aliases: [ah]
-    usage: /auction <create|bid|list>
-    permission: foliaskyblock.command.auction
 
   bazaar:
-    description: Bazaar - Instant buy/sell and create orders
+    description: Open the bazaar (instant trading)
+    usage: /<command>
     aliases: [bz]
-    usage: /bazaar <buy|sell|orders|createbuy|createsell>
-    permission: foliaskyblock.command.bazaar
 
 permissions:
-  # Command Permissions
-  foliaskyblock.command.island:
-    description: Allows use of /island and all subcommands
-    default: true
+  # Donor permissions
+  foliasb.donor:
+    description: Access to donor features (biome selection, etc.)
+    default: false
 
-  foliaskyblock.command.island.create:
-    description: Allows creating a new island
-    default: true
+  foliasb.create.biome:
+    description: Allows choosing biome when creating island
+    default: false
+    children:
+      foliasb.donor: true
 
-  foliaskyblock.command.island.home:
-    description: Allows teleporting to your island
-    default: true
+  # Staff permissions
+  foliasb.staff:
+    description: Base staff permission
+    default: op
 
-  foliaskyblock.command.island.reset:
-    description: Allows resetting your island
-    default: true
-
-  foliaskyblock.command.island.delete:
-    description: Allows deleting your island
-    default: true
-
-  foliaskyblock.command.island.party:
-    description: Allows using party commands (invite, kick, rank, etc.)
-    default: true
-
-  foliaskyblock.command.island.trade:
-    description: Allows using the island trade system
-    default: true
-
-  foliaskyblock.command.island.top:
-    description: Allows viewing the top islands leaderboard
-    default: true
-
-  foliaskyblock.command.rank:
-    description: Allows using the rank and voting system
-    default: true
-
-  foliaskyblock.command.rank.vote:
-    description: Allows voting to increase your rank
-    default: true
-
-  foliaskyblock.command.auction:
-    description: Allows use of the Auction House
-    default: true
-
-  foliaskyblock.command.auction.create:
-    description: Allows creating auctions
-    default: true
-
-  foliaskyblock.command.auction.bid:
-    description: Allows bidding on auctions
-    default: true
-
-  foliaskyblock.command.bazaar:
-    description: Allows use of the Bazaar trading system
-    default: true
-
-  foliaskyblock.command.bazaar.buy:
-    description: Allows instant buying from Bazaar
-    default: true
-
-  foliaskyblock.command.bazaar.sell:
-    description: Allows instant selling to Bazaar
-    default: true
-
-  foliaskyblock.command.bazaar.orders:
-    description: Allows viewing and creating buy/sell orders
-    default: true
-
-  # Admin Permissions
-  foliaskyblock.admin:
-    description: Full administrator access
+  foliasb.staff.mute:
+    description: Allows muting/unmuting players
     default: op
     children:
-      foliaskyblock.admin.setspawn: true
-      foliaskyblock.admin.mute: true
-      foliaskyblock.admin.bypass: true
-      foliaskyblock.admin.reload: true
+      foliasb.staff: true
 
-  foliaskyblock.admin.setspawn:
-    description: Allows setting the global spawn location
+  foliasb.staff.kick:
+    description: Allows kicking players from islands
+    default: op
+    children:
+      foliasb.staff: true
+
+  # Admin permissions
+  foliasb.admin:
+    description: Full admin access
     default: op
 
-  foliaskyblock.admin.mute:
-    description: Allows muting and unmuting players
+  foliasb.admin.setspawn:
+    description: Allows setting server spawn
     default: op
+    children:
+      foliasb.admin: true
 
-  foliaskyblock.admin.bypass:
-    description: Bypass all island protection, cooldowns, and restrictions
+  foliasb.admin.editspawn:
+    description: Allows editing blocks in spawn protection zone (0,0)
     default: op
+    children:
+      foliasb.admin: true
 
-  foliaskyblock.admin.reload:
-    description: Allows reloading the plugin configuration
-    default: op
-
-  # Island Action Permissions
-  foliaskyblock.island.build:
-    description: Can build on islands they have access to
-    default: true
-
-  foliaskyblock.island.break:
-    description: Can break blocks on islands they have access to
-    default: true
-
-  foliaskyblock.island.interact:
-    description: Can interact with blocks, chests, and entities on islands
-    default: true
-
-  foliaskyblock.island.invite:
-    description: Can invite players to their island party
-    default: true
-
-  foliaskyblock.island.kick:
-    description: Can kick members from their island
-    default: true
-
-  foliaskyblock.island.setrank:
-    description: Can change the rank of island members
-    default: true
-
-  foliaskyblock.island.transfer:
-    description: Can transfer island ownership to another player
-    default: op
-
-  # Bypass Permissions
-  foliaskyblock.bypass.protection:
-    description: Bypass island protection systems
-    default: op
-
-  foliaskyblock.bypass.cooldown:
-    description: Bypass all command cooldowns
-    default: op
-
-  foliaskyblock.anticheat.bypass:
-    description: Bypass the anti-cheat system
+  foliasb.admin.bypass:
+    description: Bypass all island protections
     default: op

@@ -3,9 +3,12 @@ package com.thenerdcj;
 import com.thenerdcj.auction.AuctionManager;
 import com.thenerdcj.bazaar.BazaarManager;
 import com.thenerdcj.command.*;
+import com.thenerdcj.command.AuctionCommand;
+import com.thenerdcj.command.BazaarCommand;
 import com.thenerdcj.command.ChallengeCommand;
 import com.thenerdcj.database.DatabaseManager;
-import com.thenerdcj.gui.IslandBankGUI;
+import com.thenerdcj.enchant.EnchantmentManager;
+import com.thenerdcj.gui.EnchantingTableGUI;
 import com.thenerdcj.listener.*;
 import com.thenerdcj.listener.IslandXPListener;
 import com.thenerdcj.listener.ChallengeProgressListener;
@@ -38,13 +41,15 @@ public class FoliaSkyblock extends JavaPlugin {
     private ChallengeManager challengeManager;
     private IslandUpgradeManager islandUpgradeManager;
     private IslandSettingsManager islandSettingsManager;
-    private IslandBankManager islandBankManager;
     private QuestManager questManager;
     private IslandWarpManager islandWarpManager;
-    private IslandRatingManager islandRatingManager;
     private IslandChatManager islandChatManager;
+    private IslandRatingManager islandRatingManager;
+    private IslandBankManager islandBankManager;
     private AuctionManager auctionManager;
     private BazaarManager bazaarManager;
+    private EnchantmentManager enchantmentManager;
+    private EnchantingTableGUI enchantingTableGUI;
 
     @Override
     public void onEnable() {
@@ -93,14 +98,6 @@ public class FoliaSkyblock extends JavaPlugin {
             combatManager = new CombatManager(this);
             getLogger().info("§a[✓] Combat Manager initialized");
 
-            // Initialize Auction System
-            auctionManager = new AuctionManager(this);
-            getLogger().info("§a[✓] Auction System initialized");
-
-            // Initialize Bazaar System
-            bazaarManager = new BazaarManager(this);
-            getLogger().info("§a[✓] Bazaar System initialized");
-
             gridManager = new GridManager(this);
             getLogger().info("§a[✓] Grid Manager initialized");
 
@@ -119,17 +116,37 @@ public class FoliaSkyblock extends JavaPlugin {
             islandSettingsManager = new IslandSettingsManager(this);
             getLogger().info("§a[✓] Island Settings System initialized");
 
+            // Initialize Island Bank System
             islandBankManager = new IslandBankManager(this);
             getLogger().info("§a[✓] Island Bank System initialized");
 
-            questManager = new QuestManager(this);
-            getLogger().info("§a[✓] Quest System initialized (Daily/Weekly missions)");
-
+            // Initialize Island Rating System
             islandRatingManager = new IslandRatingManager(this);
             getLogger().info("§a[✓] Island Rating System initialized");
 
+            // Initialize Quest System (ties into Challenge system)
+            questManager = new QuestManager(this);
+            getLogger().info("§a[✓] Quest System initialized (Daily/Weekly missions)");
+
+            // Initialize Island Warp System
+            islandWarpManager = new IslandWarpManager(this);
+            getLogger().info("§a[✓] Island Warp System initialized");
+
+            // Initialize Island Chat System
             islandChatManager = new IslandChatManager(this);
             getLogger().info("§a[✓] Island Chat System initialized");
+
+            // Initialize Auction System
+            auctionManager = new AuctionManager(this);
+            getLogger().info("§a[✓] Auction System initialized");
+
+            // Initialize Bazaar System
+            bazaarManager = new BazaarManager(this);
+            getLogger().info("§a[✓] Bazaar System initialized");
+
+            // Initialize Enchantment System
+            enchantmentManager = new EnchantmentManager(this);
+            getLogger().info("§a[✓] Enchantment Manager initialized");
 
             getLogger().info("§a[✓] All managers initialized");
         } catch (Exception e) {
@@ -143,6 +160,9 @@ public class FoliaSkyblock extends JavaPlugin {
 
         // 6. Register Commands
         getCommand("island").setExecutor(new IslandCommand(this));
+        getCommand("auction").setExecutor(new AuctionCommand(this));
+        getCommand("bazaar").setExecutor(new BazaarCommand(this));
+        getCommand("enchant").setExecutor(new com.thenerdcj.command.EnchantCommand(this));
         getLogger().info("§a[✓] Commands registered");
 
         // 7. Register Listeners
@@ -152,6 +172,10 @@ public class FoliaSkyblock extends JavaPlugin {
         // 8. Initialize Trade GUI
         tradeGUI = new TradeGUI(this);
         getLogger().info("§a[✓] Trade GUI initialized");
+
+        // 9. Initialize Enchanting Table GUI
+        enchantingTableGUI = new com.thenerdcj.gui.EnchantingTableGUI(this);
+        getLogger().info("§a[✓] Enchanting Table GUI initialized");
 
         getLogger().info("§a╔══════════════════════════════════════╗");
         getLogger().info("§a║  FoliaSkyblock Enabled Successfully!  ║");
@@ -166,35 +190,7 @@ public class FoliaSkyblock extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new com.thenerdcj.gui.IslandSettingsGUI(this), this);
         getServer().getPluginManager().registerEvents(new IslandXPListener(this), this);
         getServer().getPluginManager().registerEvents(new ChallengeProgressListener(this), this);
-        getServer().getPluginManager().registerEvents(new IslandBankGUI(this), this);
-    }
-    private void registerCommands() {
-        // Main island command (handles most subcommands)
-        getCommand("island").setExecutor(new IslandCommand(this));
-        // Balance commands
-        getCommand("bal").setExecutor(new BalanceCommand(this));
-        getCommand("balance").setExecutor(new BalanceCommand(this));
-        // Spawn commands
-        getCommand("spawn").setExecutor(new PlayerCommand(this));
-        getCommand("setspawn").setExecutor(new StaffCommand(this));
-        // Home command
-        getCommand("home").setExecutor(new PlayerCommand(this));
-        // TPA commands
-        getCommand("tpa").setExecutor(new PlayerCommand(this));
-        getCommand("tpaccept").setExecutor(new PlayerCommand(this));
-        getCommand("tpdeny").setExecutor(new PlayerCommand(this));
-        // Rank command
-        getCommand("rank").setExecutor(new RankCommand(this));
-        // Staff commands
-        getCommand("staff").setExecutor(new StaffCommand(this));
-        getCommand("mute").setExecutor(new StaffCommand(this));
-        getCommand("unmute").setExecutor(new StaffCommand(this));
-        // Challenge command
-        getCommand("challenge").setExecutor(new ChallengeCommand(this));
-        // Rules command
-        getCommand("rules").setExecutor(new PlayerCommand(this));
-        getCommand("auction").setExecutor(new AuctionCommand(this));
-        getCommand("bazaar").setExecutor(new BazaarCommand(this));
+        getServer().getPluginManager().registerEvents(new com.thenerdcj.listener.AnvilListener(this), this);
     }
 
     private void createDefaultSpawnIsland() {
@@ -222,20 +218,52 @@ public class FoliaSkyblock extends JavaPlugin {
     public BossManager getBossManager() { return bossManager; }
     public TradeGUI getTradeGUI() { return tradeGUI; }
     public boolean isFolia() { return true; }
+
     public ChallengeManager getChallengeManager() {
         return challengeManager;
     }
+
     public IslandUpgradeManager getIslandUpgradeManager() {
         return islandUpgradeManager;
     }
+
     public IslandSettingsManager getIslandSettingsManager() {
         return islandSettingsManager;
     }
-    public IslandBankManager getIslandBankManager() {return islandBankManager;}
-    public QuestManager getQuestManager() {return questManager;}
-    public IslandWarpManager getIslandWarpManager() {return islandWarpManager;}
-    public IslandRatingManager getIslandRatingManager() {return islandRatingManager;}
-    public IslandChatManager getIslandChatManager() {return islandChatManager;}
-    public AuctionManager getAuctionManager() {return auctionManager;}
-    public BazaarManager getBazaarManager() {return bazaarManager;}
+
+    public IslandBankManager getIslandBankManager() {
+        return islandBankManager;
+    }
+
+    public IslandRatingManager getIslandRatingManager() {
+        return islandRatingManager;
+    }
+
+    public QuestManager getQuestManager() {
+        return questManager;
+    }
+
+    public IslandWarpManager getIslandWarpManager() {
+        return islandWarpManager;
+    }
+
+    public IslandChatManager getIslandChatManager() {
+        return islandChatManager;
+    }
+
+    public AuctionManager getAuctionManager() {
+        return auctionManager;
+    }
+
+    public BazaarManager getBazaarManager() {
+        return bazaarManager;
+    }
+
+    public EnchantmentManager getEnchantmentManager() {
+        return enchantmentManager;
+    }
+
+    public EnchantingTableGUI getEnchantingTableGUI() {
+        return enchantingTableGUI;
+    }
 }
