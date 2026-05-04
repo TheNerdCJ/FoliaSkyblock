@@ -2,20 +2,22 @@ package com.thenerdcj;
 
 import com.thenerdcj.auction.AuctionManager;
 import com.thenerdcj.bazaar.BazaarManager;
+import com.thenerdcj.boss.BossManager;
 import com.thenerdcj.command.*;
 import com.thenerdcj.command.AuctionCommand;
 import com.thenerdcj.command.BazaarCommand;
 import com.thenerdcj.command.ChallengeCommand;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.enchant.EnchantmentManager;
-import com.thenerdcj.gui.EnchantingTableGUI;
+import com.thenerdcj.gui.*;
 import com.thenerdcj.listener.*;
 import com.thenerdcj.listener.IslandXPListener;
 import com.thenerdcj.listener.ChallengeProgressListener;
 import com.thenerdcj.manager.*;
 import com.thenerdcj.rank.RankManager;
-import com.thenerdcj.gui.BiomeSelectionGUI;
 import com.thenerdcj.trade.TradeGUI;
+import com.thenerdcj.shop.ChestShopManager;
+import com.thenerdcj.shop.ChestShopListener;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -50,6 +52,10 @@ public class FoliaSkyblock extends JavaPlugin {
     private BazaarManager bazaarManager;
     private EnchantmentManager enchantmentManager;
     private EnchantingTableGUI enchantingTableGUI;
+    private ChestShopManager chestShopManager;
+    private SlayerGUI slayerGUI;
+    private SlayerLeaderboardGUI slayerLeaderboardGUI;
+    private SlayerAchievementGUI slayerAchievementGUI;
 
     @Override
     public void onEnable() {
@@ -65,6 +71,9 @@ public class FoliaSkyblock extends JavaPlugin {
         try {
             databaseManager = new DatabaseManager(this);
             getLogger().info("§a[✓] Database initialized (HikariCP + SQLite)");
+
+            // Create chest_shops table
+            ChestShopManager.createTable(this);
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "§cFailed to initialize database!", e);
             getServer().getPluginManager().disablePlugin(this);
@@ -148,6 +157,22 @@ public class FoliaSkyblock extends JavaPlugin {
             enchantmentManager = new EnchantmentManager(this);
             getLogger().info("§a[✓] Enchantment Manager initialized");
 
+            // Initialize Chest Shop System (uses player economy)
+            chestShopManager = new ChestShopManager(this);
+            getLogger().info("§a[✓] Chest Shop System initialized");
+
+            // Initialize Slayer GUI (scrollable menu)
+            slayerGUI = new SlayerGUI(this);
+            getLogger().info("§a[✓] Slayer GUI initialized (scrollable)");
+
+            // Initialize Slayer Leaderboard GUI
+            slayerLeaderboardGUI = new SlayerLeaderboardGUI(this);
+            getLogger().info("§a[✓] Slayer Leaderboard GUI initialized");
+
+            // Initialize Slayer Achievement GUI
+            slayerAchievementGUI = new SlayerAchievementGUI(this);
+            getLogger().info("§a[✓] Slayer Achievement GUI initialized");
+
             getLogger().info("§a[✓] All managers initialized");
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "§cFailed to initialize managers!", e);
@@ -163,6 +188,7 @@ public class FoliaSkyblock extends JavaPlugin {
         getCommand("auction").setExecutor(new AuctionCommand(this));
         getCommand("bazaar").setExecutor(new BazaarCommand(this));
         getCommand("enchant").setExecutor(new com.thenerdcj.command.EnchantCommand(this));
+        getCommand("slayer").setExecutor(new com.thenerdcj.command.SlayerCommand(this));
         getLogger().info("§a[✓] Commands registered");
 
         // 7. Register Listeners
@@ -187,10 +213,11 @@ public class FoliaSkyblock extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
         getServer().getPluginManager().registerEvents(new DimensionIslandListener(this), this);
         getServer().getPluginManager().registerEvents(new IslandProtectionListener(this), this);
-        getServer().getPluginManager().registerEvents(new com.thenerdcj.gui.IslandSettingsGUI(this), this);
+        getServer().getPluginManager().registerEvents(new IslandSettingsGUI(this), this);
         getServer().getPluginManager().registerEvents(new IslandXPListener(this), this);
         getServer().getPluginManager().registerEvents(new ChallengeProgressListener(this), this);
-        getServer().getPluginManager().registerEvents(new com.thenerdcj.listener.AnvilListener(this), this);
+        getServer().getPluginManager().registerEvents(new AnvilListener(this), this);
+        getServer().getPluginManager().registerEvents(new ChestShopListener(this), this);
     }
 
     private void createDefaultSpawnIsland() {
@@ -243,7 +270,7 @@ public class FoliaSkyblock extends JavaPlugin {
         return questManager;
     }
 
-    public IslandWarpManager getIslandWarpManager() {
+    public  IslandWarpManager getIslandWarpManager() {
         return islandWarpManager;
     }
 
@@ -265,5 +292,21 @@ public class FoliaSkyblock extends JavaPlugin {
 
     public EnchantingTableGUI getEnchantingTableGUI() {
         return enchantingTableGUI;
+    }
+
+    public ChestShopManager getChestShopManager() {
+        return chestShopManager;
+    }
+
+    public SlayerGUI getSlayerGUI() {
+        return slayerGUI;
+    }
+
+    public SlayerLeaderboardGUI getSlayerLeaderboardGUI() {
+        return slayerLeaderboardGUI;
+    }
+
+    public SlayerAchievementGUI getSlayerAchievementGUI() {
+        return slayerAchievementGUI;
     }
 }

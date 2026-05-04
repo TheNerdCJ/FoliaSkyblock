@@ -89,11 +89,35 @@ public enum DimensionBoss {
     }
 
     public String getDisplayName() { return displayName; }
+    public String getName() { return displayName; } // Alias for compatibility
     public EntityType getEntityType() { return entityType; }
     public int getMinLevel() { return minLevel; }
     public int getMaxLevel() { return maxLevel; }
     public String getDimension() { return dimension; }
     public String getSpawnInfo() { return spawnInfo; }
+
+    /**
+     * Get default health for this boss
+     * Can be customized per boss type
+     */
+    public double getHealth() {
+        switch (this) {
+            case ENDER_DRAGON: return 200.0;
+            case WITHER: return 150.0;
+            case WARDEN: return 500.0;
+            case ELDER_GUARDIAN: return 80.0;
+            case EVOKER: return 24.0;
+            case RAVAGER: return 100.0;
+            case BREEZE: return 30.0;
+            case BLAZE: return 20.0;
+            case GHAST: return 10.0;
+            case PIGLIN_BRUTE: return 50.0;
+            case SHULKER: return 30.0;
+            case ENDERMAN: return 40.0;
+            case PHANTOM: return 20.0;
+            default: return 50.0;
+        }
+    }
 
     public boolean isAvailableAtLevel(int level) {
         return level >= minLevel && level <= maxLevel;

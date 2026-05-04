@@ -2,9 +2,13 @@ package com.thenerdcj.shop;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.UUID;
 
+/**
+ * Represents a single ChestShop
+ */
 public class ChestShop {
 
     private final UUID owner;
