@@ -45,8 +45,7 @@ public class ChestShopManager {
      */
     public static void createTable(FoliaSkyblock plugin) {
         String sql = """
-            
-                CREATE TABLE IF NOT EXISTS chest_shops (
+            CREATE TABLE IF NOT EXISTS chest_shops (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 world VARCHAR(64) NOT NULL,
                 x INTEGER NOT NULL,
@@ -93,18 +92,18 @@ public class ChestShopManager {
 
                     if (loc.getWorld() != null) {
                         ChestShop shop = new ChestShop(
-                                loc,
                                 UUID.fromString(rs.getString("owner_uuid")),
-                                rs.getString("owner_name"),
+                                loc,
+                                loc,
                                 Material.valueOf(rs.getString("item_type")),
-                                rs.getDouble("buy_price"),
-                                rs.getDouble("sell_price"),
+                                (int)rs.getDouble("buy_price"),
+                                (int)rs.getDouble("sell_price"),
                                 rs.getInt("stock")
                         );
+
                         activeShops.put(loc, shop);
                     }
                 }
-
                 plugin.getLogger().info("§a[ChestShop] Loaded " + activeShops.size() + " chest shops");
             } catch (SQLException e) {
                 plugin.getLogger().severe("§c[ChestShop] Failed to load shops: " + e.getMessage());
@@ -115,8 +114,7 @@ public class ChestShopManager {
     /**
      * Create a new chest shop
      */
-    public boolean createShop(Player player, Location signLocation, Material itemType,
-                              double buyPrice, double sellPrice) {
+    public boolean createShop(Player player, Location signLocation, Material itemType, double buyPrice, double sellPrice) {
         // Validate sign format
         if (!isValidSignLocation(signLocation)) {
             player.sendMessage("§cInvalid shop location! Sign must be placed on a chest.");
@@ -131,12 +129,12 @@ public class ChestShopManager {
 
         // Create shop
         ChestShop shop = new ChestShop(
-                signLocation,
                 player.getUniqueId(),
-                player.getName(),
+                signLocation,
+                signLocation,
                 itemType,
-                buyPrice,
-                sellPrice,
+                (int)buyPrice,
+                (int)sellPrice,
                 0
         );
 
@@ -160,14 +158,22 @@ public class ChestShopManager {
      * Update shop stock when items are added/removed
      */
     public void updateStock(Location chestLocation, int newStock) {
-        // Find shop by chest location (sign is usually above chest)
         for (Map.Entry<Location, ChestShop> entry : activeShops.entrySet()) {
             Location signLoc = entry.getKey();
             if (isAdjacentChest(signLoc, chestLocation)) {
                 ChestShop shop = entry.getValue();
-                shop.setStock(newStock);
-                updateSignDisplay(signLoc, shop);
-                saveShopToDatabase(shop);
+                ChestShop updatedShop = new ChestShop(
+                        shop.getOwner(),
+                        shop.getChestLocation(),
+                        shop.getSignLocation(),
+                        shop.getItemType(),
+                        shop.getBuyPrice(),
+                        shop.getSellPrice(),
+                        newStock
+                );
+                activeShops.put(signLoc, updatedShop);
+                updateSignDisplay(signLoc, updatedShop);
+                saveShopToDatabase(updatedShop);
                 break;
             }
         }
@@ -184,57 +190,61 @@ public class ChestShopManager {
         }
 
         // Can't buy from own shop
-        if (shop.getOwnerUuid().equals(buyer.getUniqueId())) {
+        if (shop.getOwner().equals(buyer.getUniqueId())) {
             buyer.sendMessage("§cYou cannot buy from your own shop!");
             return false;
         }
 
         // Check stock
-        if (shop.getStock() < amount) {
-            buyer.sendMessage("§cNot enough stock! Only " + shop.getStock() + " available.");
+        if (shop.getAmount() < amount) {
+            buyer.sendMessage("§cNot enough stock! Only " + shop.getAmount() + " available.");
             return false;
         }
 
         double totalPrice = shop.getBuyPrice() * amount;
 
-        // Check buyer has enough money (player economy)
-        double buyerBalance = plugin.getEconomyManager().getPlayerBalance(buyer.getUniqueId());
+        // Check buyer has enough money
+        double buyerBalance = plugin.getEconomyManager().getPlayerBalance(buyer.getUniqueId()).join();
         if (buyerBalance < totalPrice) {
             buyer.sendMessage("§cYou need $" + String.format("%.2f", totalPrice) + " to buy " + amount + "!");
             return false;
         }
 
         // Process transaction
-        // 1. Transfer money from buyer to seller
         plugin.getEconomyManager().removePlayerBalance(buyer.getUniqueId(), totalPrice);
-        plugin.getEconomyManager().addPlayerBalance(shop.getOwnerUuid(), totalPrice);
+        plugin.getEconomyManager().addPlayerBalance(shop.getOwner(), totalPrice);
 
-        // 2. Update stock
-        shop.setStock(shop.getStock() - amount);
-        updateSignDisplay(signLocation, shop);
-        saveShopToDatabase(shop);
+        // Update stock
+        ChestShop updatedShop = new ChestShop(
+                shop.getOwner(),
+                shop.getChestLocation(),
+                shop.getSignLocation(),
+                shop.getItemType(),
+                shop.getBuyPrice(),
+                shop.getSellPrice(),
+                shop.getAmount() - amount
+        );
+        activeShops.put(signLocation, updatedShop);
+        updateSignDisplay(signLocation, updatedShop);
+        saveShopToDatabase(updatedShop);
 
-        // 3. Give items to buyer
+        // Give items to buyer
         ItemStack items = new ItemStack(shop.getItemType(), amount);
         Map<Integer, ItemStack> overflow = buyer.getInventory().addItem(items);
         if (!overflow.isEmpty()) {
-            // Drop items at feet if inventory full
             for (ItemStack item : overflow.values()) {
                 buyer.getWorld().dropItem(buyer.getLocation(), item);
             }
             buyer.sendMessage("§eSome items dropped at your feet (inventory full)!");
         }
 
-        // 4. Notify seller
-        Player seller = Bukkit.getPlayer(shop.getOwnerUuid());
+        // Notify seller
+        Player seller = Bukkit.getPlayer(shop.getOwner());
         if (seller != null && seller.isOnline()) {
-            seller.sendMessage("§a" + buyer.getName() + " bought " + amount + "x " +
-                    shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
+            seller.sendMessage("§a" + buyer.getName() + " bought " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
         }
 
-        buyer.sendMessage("§aPurchased " + amount + "x " + shop.getItemType().name() +
-                " for $" + String.format("%.2f", totalPrice));
-
+        buyer.sendMessage("§aPurchased " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
         return true;
     }
 
@@ -249,7 +259,7 @@ public class ChestShopManager {
         }
 
         // Can't sell to own shop
-        if (shop.getOwnerUuid().equals(seller.getUniqueId())) {
+        if (shop.getOwner().equals(seller.getUniqueId())) {
             seller.sendMessage("§cYou cannot sell to your own shop!");
             return false;
         }
@@ -263,36 +273,41 @@ public class ChestShopManager {
 
         double totalPrice = shop.getSellPrice() * amount;
 
-        // Check shop owner has enough money to buy
-        double ownerBalance = plugin.getEconomyManager().getPlayerBalance(shop.getOwnerUuid());
+        // Check shop owner has enough money
+        double ownerBalance = plugin.getEconomyManager().getPlayerBalance(shop.getOwner()).join();
         if (ownerBalance < totalPrice) {
             seller.sendMessage("§cShop owner doesn't have enough money!");
             return false;
         }
 
         // Process transaction
-        // 1. Transfer money from shop owner to seller
-        plugin.getEconomyManager().removePlayerBalance(shop.getOwnerUuid(), totalPrice);
+        plugin.getEconomyManager().removePlayerBalance(shop.getOwner(), totalPrice);
         plugin.getEconomyManager().addPlayerBalance(seller.getUniqueId(), totalPrice);
 
-        // 2. Remove items from seller
+        // Remove items from seller
         removeItemsFromInventory(seller, shop.getItemType(), amount);
 
-        // 3. Update stock
-        shop.setStock(shop.getStock() + amount);
-        updateSignDisplay(signLocation, shop);
-        saveShopToDatabase(shop);
+        // Update stock
+        ChestShop updatedShop = new ChestShop(
+                shop.getOwner(),
+                shop.getChestLocation(),
+                shop.getSignLocation(),
+                shop.getItemType(),
+                shop.getBuyPrice(),
+                shop.getSellPrice(),
+                shop.getAmount() + amount
+        );
+        activeShops.put(signLocation, updatedShop);
+        updateSignDisplay(signLocation, updatedShop);
+        saveShopToDatabase(updatedShop);
 
-        // 4. Notify shop owner
-        Player owner = Bukkit.getPlayer(shop.getOwnerUuid());
+        // Notify shop owner
+        Player owner = Bukkit.getPlayer(shop.getOwner());
         if (owner != null && owner.isOnline()) {
-            owner.sendMessage("§a" + seller.getName() + " sold " + amount + "x " +
-                    shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
+            owner.sendMessage("§a" + seller.getName() + " sold " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
         }
 
-        seller.sendMessage("§aSold " + amount + "x " + shop.getItemType().name() +
-                " for $" + String.format("%.2f", totalPrice));
-
+        seller.sendMessage("§aSold " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
         return true;
     }
 
@@ -302,16 +317,13 @@ public class ChestShopManager {
     public void autoCorrectSignFormat(Player player, Sign sign) {
         Location loc = sign.getLocation();
         ChestShop shop = activeShops.get(loc);
-
         if (shop == null) return;
 
         // Only correct if player is the owner or has permission
-        if (!shop.getOwnerUuid().equals(player.getUniqueId()) &&
-                !player.hasPermission("foliaskyblock.admin")) {
+        if (!shop.getOwner().equals(player.getUniqueId()) && !player.hasPermission("foliaskyblock.admin")) {
             return;
         }
 
-        // Update sign with correct format
         updateSignDisplay(loc, shop);
         player.sendMessage("§aSign format auto-corrected!");
     }
@@ -325,11 +337,20 @@ public class ChestShopManager {
 
         sign.setLine(0, "§1[Shop]");
         sign.setLine(1, "§0" + shop.getItemType().name());
-        sign.setLine(2, "§aB: §2$" + String.format("%.0f", shop.getBuyPrice()) +
-                " §cS: §4$" + String.format("%.0f", shop.getSellPrice()));
-        sign.setLine(3, "§0" + shop.getOwnerName());
-
+        sign.setLine(2, "§aB: §2$" + shop.getBuyPrice() + " §cS: §4$" + shop.getSellPrice());
+        sign.setLine(3, "§0" + getOwnerName(shop));
         sign.update();
+    }
+
+    /**
+     * Get owner name from UUID
+     */
+    private String getOwnerName(ChestShop shop) {
+        Player owner = Bukkit.getPlayer(shop.getOwner());
+        if (owner != null) {
+            return owner.getName();
+        }
+        return "Unknown";
     }
 
     /**
@@ -339,7 +360,6 @@ public class ChestShopManager {
         Block block = loc.getBlock();
         if (!(block.getState() instanceof Sign)) return false;
 
-        // Check adjacent blocks for chest
         Location[] adjacent = {
                 loc.clone().add(1, 0, 0),
                 loc.clone().add(-1, 0, 0),
@@ -349,12 +369,10 @@ public class ChestShopManager {
         };
 
         for (Location adj : adjacent) {
-            if (adj.getBlock().getType() == Material.CHEST ||
-                    adj.getBlock().getType() == Material.TRAPPED_CHEST) {
+            if (adj.getBlock().getType() == Material.CHEST || adj.getBlock().getType() == Material.TRAPPED_CHEST) {
                 return true;
             }
         }
-
         return false;
     }
 
@@ -397,29 +415,25 @@ public class ChestShopManager {
      */
     private void saveShopToDatabase(ChestShop shop) {
         CompletableFuture.runAsync(() -> {
-            String sql =
-                    """
-                INSERT OR REPLACE INTO
-                    chest_shops 
-                (world, x, y, z, owner_uuid, owner_name, item_type,
-                    buy_price, sell_price,
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            String sql = """
+                INSERT OR REPLACE INTO chest_shops 
+                (world, x, y, z, owner_uuid, owner_name, item_type, buy_price, sell_price, stock)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
             try (Connection conn = plugin.getDatabaseManager().getConnection();
                  PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-                stmt.setString(1, shop.getLocation().getWorld().getName());
-                stmt.setInt(2, shop.getLocation().getBlockX());
-                stmt.setInt(3, shop.getLocation().getBlockY());
-                stmt.setInt(4, shop.getLocation().getBlockZ());
-                stmt.setString(5, shop.getOwnerUuid().toString());
-                stmt.setString(6, shop.getOwnerName());
+                stmt.setString(1, shop.getSignLocation().getWorld().getName());
+                stmt.setInt(2, shop.getSignLocation().getBlockX());
+                stmt.setInt(3, shop.getSignLocation().getBlockY());
+                stmt.setInt(4, shop.getSignLocation().getBlockZ());
+                stmt.setString(5, shop.getOwner().toString());
+                stmt.setString(6, getOwnerName(shop));
                 stmt.setString(7, shop.getItemType().name());
                 stmt.setDouble(8, shop.getBuyPrice());
                 stmt.setDouble(9, shop.getSellPrice());
-                stmt.setInt(10, shop.getStock());
-
+                stmt.setInt(10, shop.getAmount());
                 stmt.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("§c[ChestShop] Failed to save shop: " + e.getMessage());
@@ -460,7 +474,7 @@ public class ChestShopManager {
      */
     public List<ChestShop> getShopsByOwner(UUID ownerUuid) {
         return activeShops.values().stream()
-                .filter(shop -> shop.getOwnerUuid().equals(ownerUuid))
+                .filter(shop -> shop.getOwner().equals(ownerUuid))
                 .toList();
     }
 }

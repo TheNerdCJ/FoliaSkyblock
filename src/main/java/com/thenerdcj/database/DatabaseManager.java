@@ -54,7 +54,10 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_votes (voter_uuid TEXT, target_uuid TEXT, PRIMARY KEY (voter_uuid, target_uuid))",
                 "CREATE TABLE IF NOT EXISTS muted_players (uuid TEXT PRIMARY KEY, muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMP, muted_by TEXT, reason TEXT)",
                 "CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, island_id TEXT, type TEXT, category TEXT, description TEXT, target INTEGER, progress INTEGER DEFAULT 0, reward_xp INTEGER, completed BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-                "CREATE TABLE IF NOT EXISTS island_upgrades (island_id TEXT, upgrade_name TEXT, level INTEGER DEFAULT 0, PRIMARY KEY (island_id, upgrade_name))"
+                "CREATE TABLE IF NOT EXISTS island_upgrades (island_id TEXT, upgrade_name TEXT, level INTEGER DEFAULT 0, PRIMARY KEY (island_id, upgrade_name))",
+                "CREATE TABLE IF NOT EXISTS pending_items (id INTEGER PRIMARY KEY AUTOINCREMENT, player_uuid TEXT NOT NULL, item_material TEXT NOT NULL, item_amount INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE TABLE IF NOT EXISTS auctions (id TEXT PRIMARY KEY, seller_uuid TEXT NOT NULL, item_material TEXT NOT NULL, item_amount INTEGER NOT NULL, starting_price REAL NOT NULL, current_bid REAL DEFAULT 0, current_bidder TEXT, end_time BIGINT NOT NULL, active BOOLEAN DEFAULT TRUE)",
+                "CREATE TABLE IF NOT EXISTS bazaar_orders (id TEXT PRIMARY KEY, player_uuid TEXT NOT NULL, material TEXT NOT NULL, amount INTEGER NOT NULL, price_per_unit REAL NOT NULL, is_buy_order BOOLEAN NOT NULL, created_at BIGINT NOT NULL, filled BOOLEAN DEFAULT FALSE)"
         };
 
         try (Connection conn = dataSource.getConnection();
@@ -69,6 +72,9 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_player_balances_balance ON player_balances(balance DESC)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_island_balances_balance ON island_balances(balance DESC)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_island_upgrades_island ON island_upgrades(island_id)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_auctions_seller ON auctions(seller_uuid)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_auctions_end_time ON auctions(end_time)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_bazaar_orders_player ON bazaar_orders(player_uuid)");
 
             plugin.getLogger().info("§aAll tables and indexes created with HikariCP.");
         } catch (SQLException e) {
@@ -93,9 +99,6 @@ public class DatabaseManager {
         });
     }
 
-    /**
-     * Execute update with parameters (for ChestShop and other systems)
-     */
     public CompletableFuture<Boolean> executeUpdateAsync(String sql, Object... params) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
@@ -112,9 +115,6 @@ public class DatabaseManager {
         }, executor);
     }
 
-    /**
-     * Execute query with parameters and callback
-     */
     public void executeQueryAsync(String sql, java.util.function.Consumer<ResultSet> callback, Object... params) {
         CompletableFuture.runAsync(() -> {
             try (Connection conn = getConnection();
@@ -287,6 +287,46 @@ public class DatabaseManager {
                 ps.setDouble(5, xp);
                 ps.setInt(6, level);
                 ps.setDouble(7, xp);
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); }
+            return false;
+        }, executor);
+    }
+
+    public CompletableFuture<com.thenerdcj.island.Island> getIslandByOwner(UUID owner, org.bukkit.World.Environment dimension) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT * FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
+                ps.setString(1, owner.toString());
+                ps.setString(2, dimension.name());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        int gridX = rs.getInt("grid_x");
+                        int gridZ = rs.getInt("grid_z");
+                        String biome = rs.getString("biome_name");
+                        int level = rs.getInt("level");
+                        double xp = rs.getDouble("xp");
+
+                        com.thenerdcj.database.GridPosition pos = new com.thenerdcj.database.GridPosition(gridX, gridZ, dimension);
+                        com.thenerdcj.island.Island island = new com.thenerdcj.island.Island(pos, owner, biome, dimension);
+                        island.setLevel(level);
+                        island.setXp(xp);
+                        return island;
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return null;
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> deleteIsland(UUID owner, org.bukkit.World.Environment dimension) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "DELETE FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
+                ps.setString(1, owner.toString());
+                ps.setString(2, dimension.name());
                 return ps.executeUpdate() > 0;
             } catch (SQLException e) { e.printStackTrace(); }
             return false;
@@ -494,6 +534,38 @@ public class DatabaseManager {
     }
 
     // ====================== ISLAND UPGRADES ======================
+    public CompletableFuture<Map<String, Integer>> loadIslandUpgrades(String islandId) {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<String, Integer> upgrades = new HashMap<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT upgrade_name, level FROM island_upgrades WHERE island_id = ?")) {
+                ps.setString(1, islandId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        upgrades.put(rs.getString("upgrade_name"), rs.getInt("level"));
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return upgrades;
+        }, executor);
+    }
+
+    public Map<String, Integer> loadIslandUpgradesSync(String islandId) {
+        Map<String, Integer> upgrades = new HashMap<>();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT upgrade_name, level FROM island_upgrades WHERE island_id = ?")) {
+            ps.setString(1, islandId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    upgrades.put(rs.getString("upgrade_name"), rs.getInt("level"));
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return upgrades;
+    }
+
     public CompletableFuture<Boolean> saveIslandUpgrade(String islandId, String upgradeName, int level) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
@@ -523,6 +595,37 @@ public class DatabaseManager {
             } catch (SQLException e) { e.printStackTrace(); }
             return 0;
         }, executor);
+    }
+
+    // ====================== TOP BALANCES ======================
+    public CompletableFuture<List<TopBalanceEntry>> getTopBalances(int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<TopBalanceEntry> top = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT uuid, balance FROM player_balances ORDER BY balance DESC LIMIT ?")) {
+                ps.setInt(1, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        top.add(new TopBalanceEntry(UUID.fromString(rs.getString("uuid")), rs.getDouble("balance")));
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return top;
+        }, executor);
+    }
+
+    public static class TopBalanceEntry {
+        private final UUID uuid;
+        private final double balance;
+
+        public TopBalanceEntry(UUID uuid, double balance) {
+            this.uuid = uuid;
+            this.balance = balance;
+        }
+
+        public UUID uuid() { return uuid; }
+        public double balance() { return balance; }
     }
 
     // ====================== SLAYER LEADERBOARD ======================
@@ -599,6 +702,220 @@ public class DatabaseManager {
             } catch (SQLException e) { e.printStackTrace(); }
             return leaders;
         }, executor);
+    }
+
+    // ====================== AUCTION SYSTEM ======================
+    public CompletableFuture<Boolean> saveAuction(com.thenerdcj.auction.Auction auction) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT INTO auctions (id, seller_uuid, item_material, item_amount, starting_price, current_bid, current_bidder, end_time, active) " +
+                                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, auction.getId());
+                ps.setString(2, auction.getSellerUuid().toString());
+                ps.setString(3, auction.getItemMaterial());
+                ps.setInt(4, auction.getItemAmount());
+                ps.setDouble(5, auction.getStartingPrice());
+                ps.setDouble(6, auction.getCurrentBid());
+                ps.setObject(7, auction.getCurrentBidder() != null ? auction.getCurrentBidder().toString() : null);
+                ps.setLong(8, auction.getEndTime());
+                ps.setBoolean(9, auction.isActive());
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); }
+            return false;
+        }, executor);
+    }
+
+    public CompletableFuture<List<com.thenerdcj.auction.Auction>> getActiveAuctions() {
+        return CompletableFuture.supplyAsync(() -> {
+            List<com.thenerdcj.auction.Auction> auctions = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT * FROM auctions WHERE active = TRUE AND end_time > ?")) {
+                ps.setLong(1, System.currentTimeMillis());
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        auctions.add(deserializeAuction(rs));
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return auctions;
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> updateAuction(com.thenerdcj.auction.Auction auction) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "UPDATE auctions SET current_bid = ?, current_bidder = ?, active = ? WHERE id = ?")) {
+                ps.setDouble(1, auction.getCurrentBid());
+                ps.setObject(2, auction.getCurrentBidder() != null ? auction.getCurrentBidder().toString() : null);
+                ps.setBoolean(3, auction.isActive());
+                ps.setString(4, auction.getId());
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); }
+            return false;
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> markAuctionSold(String auctionId, UUID buyerUuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "UPDATE auctions SET active = FALSE, current_bidder = ? WHERE id = ?")) {
+                ps.setString(1, buyerUuid.toString());
+                ps.setString(2, auctionId);
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); }
+            return false;
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> markAuctionExpired(String auctionId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "UPDATE auctions SET active = FALSE WHERE id = ?")) {
+                ps.setString(1, auctionId);
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); }
+            return false;
+        }, executor);
+    }
+
+    // ====================== BAZAAR SYSTEM ======================
+    public CompletableFuture<Boolean> saveBazaarOrder(com.thenerdcj.bazaar.BazaarOrder order) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT INTO bazaar_orders (id, player_uuid, material, amount, price_per_unit, is_buy_order, created_at, filled) " +
+                                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, order.getId());
+                ps.setString(2, order.getPlayerUuid().toString());
+                ps.setString(3, order.getMaterial());
+                ps.setInt(4, order.getAmount());
+                ps.setDouble(5, order.getPricePerUnit());
+                ps.setBoolean(6, order.isBuyOrder());
+                ps.setLong(7, order.getCreatedAt());
+                ps.setBoolean(8, order.isFilled());
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); }
+            return false;
+        }, executor);
+    }
+
+    public CompletableFuture<List<com.thenerdcj.bazaar.BazaarOrder>> getActiveBazaarOrders() {
+        return CompletableFuture.supplyAsync(() -> {
+            List<com.thenerdcj.bazaar.BazaarOrder> orders = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT * FROM bazaar_orders WHERE filled = FALSE")) {
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        orders.add(deserializeBazaarOrder(rs));
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return orders;
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> markBazaarOrderFilled(String orderId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "UPDATE bazaar_orders SET filled = TRUE WHERE id = ?")) {
+                ps.setString(1, orderId);
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); }
+            return false;
+        }, executor);
+    }
+
+    // ====================== PENDING ITEMS ======================
+    public CompletableFuture<Boolean> storePendingItem(UUID playerUuid, org.bukkit.inventory.ItemStack item) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT INTO pending_items (player_uuid, item_material, item_amount) VALUES (?, ?, ?)")) {
+                ps.setString(1, playerUuid.toString());
+                ps.setString(2, item.getType().name());
+                ps.setInt(3, item.getAmount());
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); }
+            return false;
+        }, executor);
+    }
+
+    public CompletableFuture<List<org.bukkit.inventory.ItemStack>> getPendingItems(UUID playerUuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<org.bukkit.inventory.ItemStack> items = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT item_material, item_amount FROM pending_items WHERE player_uuid = ?")) {
+                ps.setString(1, playerUuid.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        org.bukkit.Material material = org.bukkit.Material.valueOf(rs.getString("item_material"));
+                        int amount = rs.getInt("item_amount");
+                        items.add(new org.bukkit.inventory.ItemStack(material, amount));
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+            return items;
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> clearPendingItems(UUID playerUuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "DELETE FROM pending_items WHERE player_uuid = ?")) {
+                ps.setString(1, playerUuid.toString());
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { e.printStackTrace(); }
+            return false;
+        }, executor);
+    }
+
+    // ====================== HELPER METHODS ======================
+    private com.thenerdcj.auction.Auction deserializeAuction(ResultSet rs) throws SQLException {
+        try {
+            String id = rs.getString("id");
+            UUID sellerUuid = UUID.fromString(rs.getString("seller_uuid"));
+            String itemMaterial = rs.getString("item_material");
+            int itemAmount = rs.getInt("item_amount");
+            double startingPrice = rs.getDouble("starting_price");
+            double currentBid = rs.getDouble("current_bid");
+            UUID currentBidder = rs.getString("current_bidder") != null ? UUID.fromString(rs.getString("current_bidder")) : null;
+            long endTime = rs.getLong("end_time");
+            boolean active = rs.getBoolean("active");
+
+            return new com.thenerdcj.auction.Auction(id, sellerUuid, itemMaterial, itemAmount,
+                    startingPrice, currentBid, currentBidder, endTime, active);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private com.thenerdcj.bazaar.BazaarOrder deserializeBazaarOrder(ResultSet rs) throws SQLException {
+        try {
+            String id = rs.getString("id");
+            UUID playerUuid = UUID.fromString(rs.getString("player_uuid"));
+            String material = rs.getString("material");
+            int amount = rs.getInt("amount");
+            double pricePerUnit = rs.getDouble("price_per_unit");
+            boolean isBuyOrder = rs.getBoolean("is_buy_order");
+            long createdAt = rs.getLong("created_at");
+            boolean filled = rs.getBoolean("filled");
+
+            return new com.thenerdcj.bazaar.BazaarOrder(id, playerUuid, material, amount,
+                    pricePerUnit, isBuyOrder, createdAt, filled);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     // ====================== SLAYER TABLES ======================

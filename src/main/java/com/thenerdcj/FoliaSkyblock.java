@@ -10,6 +10,7 @@ import com.thenerdcj.command.ChallengeCommand;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.enchant.EnchantmentManager;
 import com.thenerdcj.gui.*;
+import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.listener.*;
 import com.thenerdcj.listener.IslandXPListener;
 import com.thenerdcj.listener.ChallengeProgressListener;
@@ -73,7 +74,7 @@ public class FoliaSkyblock extends JavaPlugin {
             getLogger().info("§a[✓] Database initialized (HikariCP + SQLite)");
 
             // Create chest_shops table
-            ChestShopManager.createTable(this);
+            com.thenerdcj.shop.ChestShopManager.createTable(this);
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "§cFailed to initialize database!", e);
             getServer().getPluginManager().disablePlugin(this);
@@ -189,6 +190,7 @@ public class FoliaSkyblock extends JavaPlugin {
         getCommand("bazaar").setExecutor(new BazaarCommand(this));
         getCommand("enchant").setExecutor(new com.thenerdcj.command.EnchantCommand(this));
         getCommand("slayer").setExecutor(new com.thenerdcj.command.SlayerCommand(this));
+        getCommand("rank").setExecutor(new com.thenerdcj.command.RankCommand(this));
         getLogger().info("§a[✓] Commands registered");
 
         // 7. Register Listeners
@@ -213,11 +215,11 @@ public class FoliaSkyblock extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
         getServer().getPluginManager().registerEvents(new DimensionIslandListener(this), this);
         getServer().getPluginManager().registerEvents(new IslandProtectionListener(this), this);
-        getServer().getPluginManager().registerEvents(new IslandSettingsGUI(this), this);
+        getServer().getPluginManager().registerEvents(new com.thenerdcj.gui.IslandSettingsGUI(this), this);
         getServer().getPluginManager().registerEvents(new IslandXPListener(this), this);
         getServer().getPluginManager().registerEvents(new ChallengeProgressListener(this), this);
-        getServer().getPluginManager().registerEvents(new AnvilListener(this), this);
-        getServer().getPluginManager().registerEvents(new ChestShopListener(this), this);
+        getServer().getPluginManager().registerEvents(new com.thenerdcj.listener.AnvilListener(this), this);
+        getServer().getPluginManager().registerEvents(new com.thenerdcj.shop.ChestShopListener(this), this);
     }
 
     private void createDefaultSpawnIsland() {
@@ -270,7 +272,7 @@ public class FoliaSkyblock extends JavaPlugin {
         return questManager;
     }
 
-    public  IslandWarpManager getIslandWarpManager() {
+    public IslandWarpManager getIslandWarpManager() {
         return islandWarpManager;
     }
 

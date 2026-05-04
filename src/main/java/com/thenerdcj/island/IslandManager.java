@@ -1,15 +1,14 @@
-package com.thenerdcj.manager;
+package com.thenerdcj.island;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.database.TopIslandEntry;
-import com.thenerdcj.island.Island;
 import com.thenerdcj.island.generator.IslandGenerator;
-import com.thenerdcj.island.IslandRank;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.block.Biome;
 import org.bukkit.entity.Player;
 
 import java.util.*;
@@ -64,7 +63,7 @@ public class IslandManager {
     public CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension) {
         GridPosition pos = getNextAvailablePosition();
 
-        return databaseManager.saveIsland(pos.x(), pos.z(), player.getUniqueId(), biomeName, dimension)
+        return databaseManager.saveIsland(pos.x(), pos.z(), player.getUniqueId(), biomeName, dimension.name())
                 .thenApply(success -> {
                     if (success) {
                         Island island = new Island(pos, player.getUniqueId(), biomeName, dimension);
@@ -74,7 +73,7 @@ public class IslandManager {
                         org.bukkit.block.Biome chosenBiome = null;
                         if (biomeName != null && !biomeName.isEmpty()) {
                             try {
-                                chosenBiome = org.bukkit.block.Biome.valueOf(biomeName);
+                                chosenBiome = Biome.valueOf(biomeName);
                             } catch (IllegalArgumentException e) {
                                 chosenBiome = org.bukkit.block.Biome.PLAINS;
                             }

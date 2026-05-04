@@ -1,51 +1,93 @@
 package com.thenerdcj.rank;
 
-import java.util.List;
-import java.util.ArrayList;
+import java.util.*;
 
+/**
+ * RankData - Stores configurable rank information loaded from ranks.yml
+ * Fully dynamic - works with any rank defined in the config file (LuckPerms-style)
+ */
 public class RankData {
-    private final String id;
-    private final String displayName;
-    private final int level;
-    private final String category;
-    private final int voteRequirement;
-    private final double price;
-    private final String chatPrefix;
-    private final String permission;
-    private final List<String> perks;
-    private final List<String> inherits;
-    private final List<String> permissions;
 
-    public RankData(String id, String displayName, int level, String category,
-                    int voteRequirement, double price, String chatPrefix,
-                    String permission, List<String> perks, List<String> inherits,
-                    List<String> permissions) {
-        this.id = id;
+    private final String rankId;
+    private final String displayName;
+    private final String prefix;
+    private final String suffix;
+    private final List<String> permissions;
+    private final int priority;
+    private final boolean isStaff;
+    private final boolean isDonor;
+    private final String parent;
+    private final boolean isDefault;
+
+    public RankData(String rankId, String displayName, String prefix, String suffix,
+                    List<String> permissions, int priority, boolean isStaff,
+                    boolean isDonor, String parent, boolean isDefault) {
+        this.rankId = rankId;
         this.displayName = displayName;
-        this.level = level;
-        this.category = category;
-        this.voteRequirement = voteRequirement;
-        this.price = price;
-        this.chatPrefix = chatPrefix;
-        this.permission = permission;
-        this.perks = perks != null ? perks : new ArrayList<>();
-        this.inherits = inherits != null ? inherits : new ArrayList<>();
+        this.prefix = prefix != null ? prefix : "&7[" + rankId + "]";
+        this.suffix = suffix != null ? suffix : "";
         this.permissions = permissions != null ? permissions : new ArrayList<>();
+        this.priority = priority;
+        this.isStaff = isStaff;
+        this.isDonor = isDonor;
+        this.parent = parent;
+        this.isDefault = isDefault;
     }
 
-    public String getId() { return id; }
+    // Getters
+    public String getRankId() { return rankId; }
     public String getDisplayName() { return displayName; }
-    public int getLevel() { return level; }
-    public String getCategory() { return category; }
-    public int getVoteRequirement() { return voteRequirement; }
-    public double getPrice() { return price; }
-    public String getChatPrefix() { return chatPrefix; }
-    public String getPermission() { return permission; }
-    public List<String> getPerks() { return perks; }
-    public List<String> getInherits() { return inherits; }
+    public String getPrefix() { return prefix; }
+    public String getSuffix() { return suffix; }
     public List<String> getPermissions() { return permissions; }
+    public int getPriority() { return priority; }
+    public boolean isStaff() { return isStaff; }
+    public boolean isDonor() { return isDonor; }
+    public String getParent() { return parent; }
+    public boolean isDefault() { return isDefault; }
 
-    public boolean isStaff() { return "staff".equalsIgnoreCase(category); }
-    public boolean isDonor() { return "donor".equalsIgnoreCase(category); }
-    public boolean isDefault() { return "default".equalsIgnoreCase(category); }
+    /**
+     * Check if this rank has a specific permission
+     * Supports wildcards: "folia.*" matches "folia.island.create"
+     */
+    public boolean hasPermission(String permission) {
+        if (permission == null) return false;
+
+        // Direct match or global wildcard
+        if (permissions.contains("*") || permissions.contains(permission)) {
+            return true;
+        }
+
+        // Check wildcard permissions (e.g., "folia.*")
+        for (String perm : permissions) {
+            if (perm.endsWith(".*")) {
+                String base = perm.substring(0, perm.length() - 1);
+                if (permission.startsWith(base)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if this rank inherits from another rank
+     */
+    public boolean inheritsFrom(String rankId) {
+        return parent != null && parent.equalsIgnoreCase(rankId);
+    }
+
+    @Override
+    public String toString() {
+        return "RankData{" +
+                "rankId='" + rankId + '\'' +
+                ", displayName='" + displayName + '\'' +
+                ", prefix='" + prefix + '\'' +
+                ", priority=" + priority +
+                ", isStaff=" + isStaff +
+                ", isDonor=" + isDonor +
+                ", isDefault=" + isDefault +
+                '}';
+    }
 }

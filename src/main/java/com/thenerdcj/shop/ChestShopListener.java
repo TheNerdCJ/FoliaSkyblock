@@ -87,8 +87,7 @@ public class ChestShopListener implements Listener {
 
         // SECURITY: Prevent setting other players' names
         String intendedOwner = lines[3].isEmpty() ? player.getName() : lines[3];
-        if (!intendedOwner.equalsIgnoreCase(player.getName()) &&
-                !player.hasPermission("foliaskyblock.admin")) {
+        if (!intendedOwner.equalsIgnoreCase(player.getName()) && !player.hasPermission("foliaskyblock.admin")) {
             player.sendMessage("§c§lSECURITY: You can only create shops for yourself!");
             player.sendMessage("§7Line 4 will be set to your name automatically.");
             intendedOwner = player.getName();
@@ -104,10 +103,8 @@ public class ChestShopListener implements Listener {
             // Update sign with correct format
             event.setLine(0, "§1[Shop]");
             event.setLine(1, "§0" + itemType.name());
-            event.setLine(2, "§aB: §2$" + String.format("%.0f", buyPrice) +
-                    " §cS: §4$" + String.format("%.0f", sellPrice));
+            event.setLine(2, "§aB: §2$" + String.format("%.0f", buyPrice) + " §cS: §4$" + String.format("%.0f", sellPrice));
             event.setLine(3, "§0" + player.getName());
-
             player.sendMessage("§a§l✓ Shop created successfully!");
         } else {
             event.setCancelled(true);
@@ -129,27 +126,26 @@ public class ChestShopListener implements Listener {
 
         Location loc = block.getLocation();
         ChestShop shop = plugin.getChestShopManager().getShopAt(loc);
-
         if (shop == null) return;
 
         Player player = event.getPlayer();
         event.setCancelled(true);
 
         // Auto-correct sign format if owner is nearby
-        if (shop.getOwnerUuid().equals(player.getUniqueId())) {
+        if (shop.getOwner().equals(player.getUniqueId())) {
             plugin.getChestShopManager().autoCorrectSignFormat(player, sign);
         }
 
         // Show shop info
         player.sendMessage("§6§l=== SHOP INFO ===");
-        player.sendMessage("§7Owner: §e" + shop.getOwnerName());
+        player.sendMessage("§7Owner: §e" + getOwnerName(shop));
         player.sendMessage("§7Item: §e" + shop.getItemType().name());
-        player.sendMessage("§7Buy Price: §a$" + String.format("%.2f", shop.getBuyPrice()) + " §7each");
-        player.sendMessage("§7Sell Price: §c$" + String.format("%.2f", shop.getSellPrice()) + " §7each");
-        player.sendMessage("§7Stock: §e" + shop.getStock());
+        player.sendMessage("§7Buy Price: §a$" + shop.getBuyPrice() + " §7each");
+        player.sendMessage("§7Sell Price: §c$" + shop.getSellPrice() + " §7each");
+        player.sendMessage("§7Stock: §e" + shop.getAmount());
 
         // Show instructions
-        if (!shop.getOwnerUuid().equals(player.getUniqueId())) {
+        if (!shop.getOwner().equals(player.getUniqueId())) {
             player.sendMessage("");
             player.sendMessage("§7Left-click with item to §cSELL");
             player.sendMessage("§7Right-click to §aBUY");
@@ -176,7 +172,7 @@ public class ChestShopListener implements Listener {
         Player player = event.getPlayer();
 
         // Don't allow owner to buy from own shop
-        if (shop.getOwnerUuid().equals(player.getUniqueId())) {
+        if (shop.getOwner().equals(player.getUniqueId())) {
             return;
         }
 
@@ -202,7 +198,7 @@ public class ChestShopListener implements Listener {
         ItemStack heldItem = player.getInventory().getItemInMainHand();
 
         // Don't allow owner to sell to own shop
-        if (shop.getOwnerUuid().equals(player.getUniqueId())) {
+        if (shop.getOwner().equals(player.getUniqueId())) {
             return;
         }
 
@@ -230,8 +226,7 @@ public class ChestShopListener implements Listener {
         if (block.getState() instanceof Sign) {
             ChestShop shop = plugin.getChestShopManager().getShopAt(block.getLocation());
             if (shop != null) {
-                if (!shop.getOwnerUuid().equals(player.getUniqueId()) &&
-                        !player.hasPermission("foliaskyblock.admin")) {
+                if (!shop.getOwner().equals(player.getUniqueId()) && !player.hasPermission("foliaskyblock.admin")) {
                     event.setCancelled(true);
                     player.sendMessage("§cYou cannot break this shop! Only the owner can.");
                     return;
@@ -257,8 +252,7 @@ public class ChestShopListener implements Listener {
             for (Location loc : adjacent) {
                 ChestShop shop = plugin.getChestShopManager().getShopAt(loc);
                 if (shop != null) {
-                    if (!shop.getOwnerUuid().equals(player.getUniqueId()) &&
-                            !player.hasPermission("foliaskyblock.admin")) {
+                    if (!shop.getOwner().equals(player.getUniqueId()) && !player.hasPermission("foliaskyblock.admin")) {
                         event.setCancelled(true);
                         player.sendMessage("§cYou cannot break this shop chest! Only the owner can.");
                         return;
@@ -270,5 +264,16 @@ public class ChestShopListener implements Listener {
                 }
             }
         }
+    }
+
+    /**
+     * Helper method to get owner name from shop
+     */
+    private String getOwnerName(ChestShop shop) {
+        Player owner = Bukkit.getPlayer(shop.getOwner());
+        if (owner != null) {
+            return owner.getName();
+        }
+        return "Unknown";
     }
 }

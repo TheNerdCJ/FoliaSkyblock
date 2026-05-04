@@ -15,6 +15,9 @@ import org.bukkit.inventory.meta.SkullMeta;
 
 import java.util.*;
 
+/**
+ * Slayer Leaderboard GUI - Scrollable top slayers display
+ */
 public class SlayerLeaderboardGUI implements Listener {
 
     private final FoliaSkyblock plugin;
@@ -34,21 +37,43 @@ public class SlayerLeaderboardGUI implements Listener {
 
         Inventory gui = Bukkit.createInventory(null, 54, "§6§lSlayer Leaderboards §7(Page " + (page + 1) + ")");
 
+        // Header
         gui.setItem(4, createItem(Material.DIAMOND_SWORD, "§6§lSLAYER LEADERBOARDS",
                 "§7Top slayers across all dimensions!",
-                "§7Points = Kills × Tier × 10"));
+                "§7Points = Kills × Tier × 10",
+                "",
+                "§eClick to view entity-specific leaderboards"));
 
+        // Navigation
         if (page > 0) {
             gui.setItem(45, createItem(Material.ARROW, "§a§lPrevious Page", "§7Click to go back"));
         }
         gui.setItem(49, createItem(Material.BARRIER, "§c§lClose", "§7Click to close"));
         gui.setItem(53, createItem(Material.ARROW, "§a§lNext Page", "§7Click to go forward"));
 
+        // Global leaderboard (top 10)
         plugin.getDatabaseManager().getGlobalTopSlayers(10).thenAccept(globalLeaders -> {
             int slot = 10;
             int rank = 1;
 
-            for (SlayerLeaderboard entry : globalLeaders) {
+            for (Object obj : globalLeaders) {
+                SlayerLeaderboard entry;
+                if (obj instanceof SlayerLeaderboard) {
+                    entry = (SlayerLeaderboard) obj;
+                } else if (obj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> map = (Map<String, Object>) obj;
+                    entry = new SlayerLeaderboard(
+                            UUID.fromString((String) map.get("player_uuid")),
+                            (String) map.get("player_name"),
+                            (String) map.getOrDefault("entity_type", "ALL"),
+                            ((Number) map.getOrDefault("tier", 0)).intValue(),
+                            ((Number) map.getOrDefault("total_kills", 0)).intValue(),
+                            ((Number) map.getOrDefault("last_kill", 0)).longValue()
+                    );
+                } else {
+                    continue;
+                }
                 if (slot > 43) break;
 
                 ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
@@ -61,6 +86,8 @@ public class SlayerLeaderboardGUI implements Listener {
                     lore.add("§7Total Kills: §e" + entry.getTotalKills());
                     lore.add("§7Highest Tier: §e" + entry.getTier());
                     lore.add("§7Points: §6" + entry.getPoints());
+                    lore.add("");
+                    lore.add("§7Last Kill: §e" + new Date(entry.getLastKillTime()).toString().substring(0, 16));
 
                     meta.setLore(lore);
                     skull.setItemMeta(meta);
@@ -71,6 +98,7 @@ public class SlayerLeaderboardGUI implements Listener {
                 rank++;
             }
 
+            // Entity-specific quick links
             gui.setItem(38, createItem(Material.ROTTEN_FLESH, "§c§lZombie Leaderboard",
                     "§7Click to view top Zombie slayers"));
             gui.setItem(40, createItem(Material.STRING, "§8§lSpider Leaderboard",
@@ -94,6 +122,7 @@ public class SlayerLeaderboardGUI implements Listener {
 
         int currentPage = playerPages.getOrDefault(player.getUniqueId(), 0);
 
+        // Navigation
         if (clicked.getType() == Material.ARROW) {
             if (clicked.getItemMeta().getDisplayName().contains("Previous")) {
                 openPage(player, Math.max(0, currentPage - 1));
@@ -103,11 +132,13 @@ public class SlayerLeaderboardGUI implements Listener {
             return;
         }
 
+        // Close
         if (clicked.getType() == Material.BARRIER) {
             player.closeInventory();
             return;
         }
 
+        // Entity-specific leaderboards
         if (clicked.getType() == Material.ROTTEN_FLESH) {
             showEntityLeaderboard(player, "ZOMBIE");
         } else if (clicked.getType() == Material.STRING) {
@@ -127,7 +158,24 @@ public class SlayerLeaderboardGUI implements Listener {
             int slot = 10;
             int rank = 1;
 
-            for (SlayerLeaderboard entry : leaders) {
+            for (Object obj : leaders) {
+                SlayerLeaderboard entry;
+                if (obj instanceof SlayerLeaderboard) {
+                    entry = (SlayerLeaderboard) obj;
+                } else if (obj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> map = (Map<String, Object>) obj;
+                    entry = new SlayerLeaderboard(
+                            UUID.fromString((String) map.get("player_uuid")),
+                            (String) map.get("player_name"),
+                            (String) map.getOrDefault("entity_type", entityType),
+                            ((Number) map.getOrDefault("tier", 0)).intValue(),
+                            ((Number) map.getOrDefault("total_kills", 0)).intValue(),
+                            ((Number) map.getOrDefault("last_kill", 0)).longValue()
+                    );
+                } else {
+                    continue;
+                }
                 if (slot > 43) break;
 
                 ItemStack skull = new ItemStack(Material.PLAYER_HEAD);

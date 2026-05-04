@@ -2,280 +2,297 @@ package com.thenerdcj.rank;
 
 import com.thenerdcj.FoliaSkyblock;
 import org.bukkit.Bukkit;
-import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Player;
-import org.bukkit.permissions.PermissionAttachment;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * RankManager - FULLY DYNAMIC Rank System (LuckPerms-style)
+ * All ranks are loaded from ranks.yml - completely configurable!
+ *
+ * Features:
+ * - Unlimited custom ranks
+ * - Dynamic permissions per rank
+ * - Community voting for staff promotions
+ * - Prefix/suffix support
+ * - Priority-based rank ordering
+ */
 public class RankManager {
+
     private final FoliaSkyblock plugin;
-
-    private final Map<String, RankData> ranks = new ConcurrentHashMap<>();
-    private final Map<UUID, String> playerRankIds = new ConcurrentHashMap<>();
-    private final Map<UUID, Long> lastVoteTime = new ConcurrentHashMap<>();
-    private final Map<UUID, Integer> monthlyVotes = new ConcurrentHashMap<>();
-    private final Map<UUID, Long> staffRankGrantedTime = new ConcurrentHashMap<>();
-    private final Map<UUID, PermissionAttachment> permissionAttachments = new ConcurrentHashMap<>();
-
+    private final Map<UUID, String> playerRankIds = new HashMap<>();
+    private final Map<String, RankData> rankDataMap = new LinkedHashMap<>();
     private File rankFile;
-    private YamlConfiguration rankConfig;
+    private FileConfiguration rankConfig;
 
-    private int maxVotesPerMonth = 10;
-    private long voteResetInterval = 30L * 24 * 60 * 60 * 1000;
-    private long staffRankGracePeriod = 60L * 24 * 60 * 60 * 1000;
+    // Community voting thresholds (configurable)
+    private int helperVoteThreshold = 50;
+    private int moderatorVoteThreshold = 150;
+    private long voteCooldownMs = 30L * 24 * 60 * 60 * 1000; // 30 days
 
     public RankManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        loadConfig();
-
-        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::resetMonthlyVotes,
-                20L * 60 * 60 * 24 * 30, 20L * 60 * 60 * 24 * 30);
+        loadRankConfig();
+        loadPlayerRanks();
     }
 
-    private void loadConfig() {
-        rankFile = new File(plugin.getDataFolder(), "rank.yml");
+    private void loadRankConfig() {
+        rankFile = new File(plugin.getDataFolder(), "ranks.yml");
         if (!rankFile.exists()) {
-            plugin.saveResource("rank.yml", false);
+            plugin.saveResource("ranks.yml", false);
         }
         rankConfig = YamlConfiguration.loadConfiguration(rankFile);
-
-        ranks.clear();
-        loadRankSection("default-ranks", "default");
-        loadRankSection("donor-ranks", "donor");
-        loadRankSection("staff-ranks", "staff");
-
-        maxVotesPerMonth = rankConfig.getInt("voting.max-votes-per-month", 10);
-
-        plugin.getLogger().info("§aLoaded " + ranks.size() + " ranks from rank.yml");
+        loadRankData();
+        loadVotingConfig();
     }
 
-    private void loadRankSection(String sectionName, String category) {
-        ConfigurationSection section = rankConfig.getConfigurationSection(sectionName);
-        if (section == null) return;
-
-        for (String rankId : section.getKeys(false)) {
-            ConfigurationSection rankSection = section.getConfigurationSection(rankId);
-            if (rankSection == null) continue;
-
-            String displayName = rankSection.getString("display-name", rankId);
-            int level = rankSection.getInt("level", ranks.size());
-            int voteRequirement = rankSection.getInt("votes-required", 0);
-            double price = rankSection.getDouble("price", 0.0);
-            String chatPrefix = rankSection.getString("chat-prefix", "[" + displayName + "]");
-            String permission = rankSection.getString("permission", "foliasb.rank." + rankId);
-
-            List<String> perks = rankSection.getStringList("perks");
-            List<String> inherits = rankSection.getStringList("inherits");
-            List<String> permissions = rankSection.getStringList("permissions");
-
-            RankData rankData = new RankData(
-                    rankId.toUpperCase(), displayName, level, category,
-                    voteRequirement, price, chatPrefix, permission,
-                    perks, inherits, permissions
-            );
-
-            ranks.put(rankId.toUpperCase(), rankData);
-        }
+    private void loadVotingConfig() {
+        helperVoteThreshold = rankConfig.getInt("voting.helper-threshold", 50);
+        moderatorVoteThreshold = rankConfig.getInt("voting.moderator-threshold", 150);
+        voteCooldownMs = rankConfig.getLong("voting.cooldown-days", 30) * 24 * 60 * 60 * 1000;
     }
 
-    public RankData getRank(UUID uuid) {
-        String rankId = playerRankIds.getOrDefault(uuid, "MEMBER");
-        return ranks.getOrDefault(rankId, ranks.get("MEMBER"));
-    }
+    private void loadRankData() {
+        rankDataMap.clear();
 
-    public RankData getRankById(String rankId) {
-        return ranks.get(rankId.toUpperCase());
-    }
+        if (rankConfig.contains("ranks")) {
+            for (String rankId : rankConfig.getConfigurationSection("ranks").getKeys(false)) {
+                String path = "ranks." + rankId;
 
-    public void setRank(UUID uuid, String rankId) {
-        RankData rank = ranks.get(rankId.toUpperCase());
-        if (rank == null) {
-            plugin.getLogger().warning("Unknown rank: " + rankId);
-            return;
-        }
+                String displayName = rankConfig.getString(path + ".display-name", rankId);
+                String prefix = rankConfig.getString(path + ".prefix", "&7[" + rankId + "]");
+                String suffix = rankConfig.getString(path + ".suffix", "");
+                List<String> permissions = rankConfig.getStringList(path + ".permissions");
+                int priority = rankConfig.getInt(path + ".priority", 0);
+                boolean isStaff = rankConfig.getBoolean(path + ".staff", false);
+                boolean isDonor = rankConfig.getBoolean(path + ".donor", false);
+                String parent = rankConfig.getString(path + ".parent", null);
+                boolean isDefault = rankConfig.getBoolean(path + ".default", false);
 
-        playerRankIds.put(uuid, rankId.toUpperCase());
-
-        if (rank.isStaff()) {
-            staffRankGrantedTime.put(uuid, System.currentTimeMillis());
-        }
-
-        plugin.getDatabaseManager().setRank(uuid, rankId);
-        applyRankPermissions(uuid, rank);
-    }
-
-    private void applyRankPermissions(UUID uuid, RankData rank) {
-        Player player = Bukkit.getPlayer(uuid);
-        if (player == null) return;
-
-        PermissionAttachment oldAttachment = permissionAttachments.remove(uuid);
-        if (oldAttachment != null) {
-            oldAttachment.remove();
-        }
-
-        PermissionAttachment attachment = player.addAttachment(plugin);
-        permissionAttachments.put(uuid, attachment);
-
-        attachment.setPermission(rank.getPermission(), true);
-        attachment.setPermission("foliasb.category." + rank.getCategory(), true);
-
-        for (String inheritId : rank.getInherits()) {
-            RankData inherited = ranks.get(inheritId.toUpperCase());
-            if (inherited != null) {
-                for (String perm : inherited.getPermissions()) {
-                    attachment.setPermission(perm, true);
-                }
+                RankData data = new RankData(rankId, displayName, prefix, suffix,
+                        permissions, priority, isStaff, isDonor, parent, isDefault);
+                rankDataMap.put(rankId.toLowerCase(), data);
             }
         }
 
-        for (String perm : rank.getPermissions()) {
-            attachment.setPermission(perm, true);
-        }
+        plugin.getLogger().info("§aLoaded " + rankDataMap.size() + " dynamic ranks from ranks.yml");
     }
 
-    public CompletableFuture<Boolean> canVote(UUID voterUuid, UUID targetUuid) {
+    private void loadPlayerRanks() {
+        playerRankIds.clear();
+        // Player ranks are loaded from database on-demand
+    }
+
+    // ====================== DYNAMIC RANK GETTERS ======================
+
+    public String getPlayerRankId(UUID uuid) {
+        return playerRankIds.getOrDefault(uuid, getDefaultRankId());
+    }
+
+    public RankData getPlayerRankData(UUID uuid) {
+        String rankId = getPlayerRankId(uuid);
+        return rankDataMap.get(rankId.toLowerCase());
+    }
+
+    public String getDefaultRankId() {
+        // First, look for a rank explicitly marked as default
+        for (RankData data : rankDataMap.values()) {
+            if (data.isDefault()) {
+                return data.getRankId();
+            }
+        }
+
+        // Fallback: Return the rank with lowest priority
+        return rankDataMap.values().stream()
+                .min(Comparator.comparingInt(RankData::getPriority))
+                .map(RankData::getRankId)
+                .orElse("member");
+    }
+
+    public List<RankData> getAllRanksSorted() {
+        return rankDataMap.values().stream()
+                .sorted(Comparator.comparingInt(RankData::getPriority))
+                .toList();
+    }
+
+    public RankData getRankData(String rankId) {
+        return rankDataMap.get(rankId.toLowerCase());
+    }
+
+    public boolean rankExists(String rankId) {
+        return rankDataMap.containsKey(rankId.toLowerCase());
+    }
+
+    // ====================== DATABASE INTEGRATION ======================
+
+    public CompletableFuture<String> getCurrentRankId(UUID uuid) {
         return CompletableFuture.supplyAsync(() -> {
-            if (voterUuid.equals(targetUuid)) return false;
-
-            Long lastVote = lastVoteTime.get(voterUuid);
-            if (lastVote != null) {
-                long timeSinceLastVote = System.currentTimeMillis() - lastVote;
-                if (timeSinceLastVote < voteResetInterval) return false;
+            try {
+                String rankId = plugin.getDatabaseManager().getCurrentRankId(uuid).join();
+                return rankExists(rankId) ? rankId : getDefaultRankId();
+            } catch (Exception e) {
+                return getDefaultRankId();
             }
-
-            int votesThisMonth = monthlyVotes.getOrDefault(voterUuid, 0);
-            if (votesThisMonth >= maxVotesPerMonth) return false;
-
-            return true;
         });
-    }
-
-    public CompletableFuture<Boolean> castVote(UUID voterUuid, UUID targetUuid) {
-        return canVote(voterUuid, targetUuid).thenApply(canVote -> {
-            if (!canVote) return false;
-
-            lastVoteTime.put(voterUuid, System.currentTimeMillis());
-            monthlyVotes.merge(voterUuid, 1, Integer::sum);
-
-            int currentVotes = getUpvoteCount(targetUuid).join();
-            int newVotes = currentVotes + 1;
-
-            plugin.getDatabaseManager().addVote(targetUuid, voterUuid);
-            checkForAutoPromotion(targetUuid, newVotes);
-
-            return true;
-        });
-    }
-
-    public void checkForAutoPromotion(UUID uuid, int currentVotes) {
-        RankData currentRank = getRank(uuid);
-        if (currentRank == null || !currentRank.isDefault()) return;
-
-        RankData newRank = null;
-        int highestVotes = 0;
-
-        for (RankData rank : ranks.values()) {
-            if (rank.isStaff() && currentVotes >= rank.getVoteRequirement()) {
-                if (rank.getVoteRequirement() > highestVotes) {
-                    highestVotes = rank.getVoteRequirement();
-                    newRank = rank;
-                }
-            }
-        }
-
-        if (newRank != null && !newRank.getId().equals(currentRank.getId())) {
-            setRank(uuid, newRank.getId());
-
-            Player player = Bukkit.getPlayer(uuid);
-            if (player != null) {
-                player.sendMessage("§a§lCongratulations! §eYou've been promoted to " + newRank.getDisplayName() + "!");
-                player.sendMessage("§7You received §e" + currentVotes + "§7 votes from the community!");
-            }
-
-            Bukkit.broadcastMessage("§6§l[PROMOTION] §e" +
-                    Bukkit.getOfflinePlayer(uuid).getName() + " §7has been promoted to §b" + newRank.getDisplayName() + "§7!");
-        }
-    }
-
-    public void checkForAutoPromotion(UUID uuid) {
-        int votes = getUpvoteCount(uuid).join();
-        checkForAutoPromotion(uuid, votes);
     }
 
     public CompletableFuture<Integer> getUpvoteCount(UUID uuid) {
-        return CompletableFuture.completedFuture(
-                plugin.getDatabaseManager().getUpvoteCount(uuid)
-        );
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return plugin.getDatabaseManager().getUpvoteCount(uuid).join();
+            } catch (Exception e) {
+                return 0;
+            }
+        });
     }
 
-    public Collection<RankData> getAllRanks() {
-        return ranks.values();
+    public void checkForAutoPromotion(UUID uuid) {
+        getUpvoteCount(uuid).thenAccept(votes -> {
+            String currentRankId = getPlayerRankId(uuid);
+            RankData currentRank = getRankData(currentRankId);
+
+            if (currentRank == null) return;
+
+            // Check for moderator promotion
+            if (votes >= moderatorVoteThreshold && currentRank.isStaff() &&
+                    currentRankId.equalsIgnoreCase("helper")) {
+                setPlayerRank(uuid, "moderator");
+                notifyPromotion(uuid, "Moderator");
+            }
+            // Check for helper promotion
+            else if (votes >= helperVoteThreshold && !currentRank.isStaff() &&
+                    currentRankId.equalsIgnoreCase("member")) {
+                setPlayerRank(uuid, "helper");
+                notifyPromotion(uuid, "Helper");
+            }
+        });
     }
 
-    public void applyRankPrefix(Player player) {
-        RankData rank = getRank(player.getUniqueId());
-        if (rank != null) {
-            // Prefix handled by chat format
+    private void notifyPromotion(UUID uuid, String newRankName) {
+        org.bukkit.entity.Player player = Bukkit.getPlayer(uuid);
+        if (player != null && player.isOnline()) {
+            player.sendMessage("§a§lCongratulations! §7You have been promoted to §e" + newRankName + "§7!");
+            applyRankPrefix(player);
         }
     }
 
-    public String getPlayerRankId(UUID uuid) {
-        RankData rank = getRank(uuid);
-        return rank != null ? rank.getId() : "MEMBER";
+    // ====================== RANK SETTING ======================
+
+    public void setPlayerRank(UUID uuid, String rankId) {
+        if (!rankExists(rankId)) {
+            plugin.getLogger().warning("Attempted to set non-existent rank: " + rankId);
+            return;
+        }
+
+        playerRankIds.put(uuid, rankId.toLowerCase());
+
+        // Save to database
+        plugin.getDatabaseManager().setRank(uuid, rankId.toLowerCase());
+
+        // Apply prefix if player is online
+        org.bukkit.entity.Player player = Bukkit.getPlayer(uuid);
+        if (player != null && player.isOnline()) {
+            applyRankPrefix(player);
+        }
     }
+
+    public void setPlayerRank(UUID uuid, RankData rankData) {
+        setPlayerRank(uuid, rankData.getRankId());
+    }
+
+    // ====================== PERMISSION CHECKING ======================
+
+    public boolean hasPermission(UUID uuid, String permission) {
+        String rankId = getPlayerRankId(uuid);
+        RankData data = rankDataMap.get(rankId.toLowerCase());
+
+        if (data != null) {
+            return data.hasPermission(permission);
+        }
+        return false;
+    }
+
+    public List<String> getPlayerPermissions(UUID uuid) {
+        String rankId = getPlayerRankId(uuid);
+        RankData data = rankDataMap.get(rankId.toLowerCase());
+
+        if (data != null) {
+            return data.getPermissions();
+        }
+        return Collections.emptyList();
+    }
+
+    // ====================== PREFIX/SUFFIX APPLICATION ======================
+
+    public void applyRankPrefix(org.bukkit.entity.Player player) {
+        String rankId = getPlayerRankId(player.getUniqueId());
+        RankData data = rankDataMap.get(rankId.toLowerCase());
+
+        if (data != null && player.isOnline()) {
+            String prefix = org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getPrefix());
+            String suffix = org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getSuffix());
+
+            player.setDisplayName(prefix + " " + player.getName() + suffix);
+            player.setPlayerListName(prefix + " " + player.getName() + suffix);
+        }
+    }
+
+    public String getPlayerDisplayName(UUID uuid, String playerName) {
+        String rankId = getPlayerRankId(uuid);
+        RankData data = rankDataMap.get(rankId.toLowerCase());
+
+        if (data != null) {
+            String prefix = org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getPrefix());
+            String suffix = org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getSuffix());
+            return prefix + " " + playerName + suffix;
+        }
+        return playerName;
+    }
+
+    // ====================== VOTING SYSTEM ======================
+
+    public CompletableFuture<Boolean> addVote(UUID voterUuid, UUID targetUuid) {
+        return plugin.getDatabaseManager().addVote(voterUuid, targetUuid).thenApply(success -> {
+            if (success) {
+                checkForAutoPromotion(targetUuid);
+            }
+            return success;
+        });
+    }
+
+    // ====================== CONFIG MANAGEMENT ======================
 
     public void reloadRanks() {
-        loadConfig();
+        loadRankConfig();
         playerRankIds.clear();
+        plugin.getLogger().info("§aAll ranks reloaded from ranks.yml (LuckPerms-style dynamic system)");
     }
 
-    private void resetMonthlyVotes() {
-        for (Map.Entry<UUID, String> entry : playerRankIds.entrySet()) {
-            UUID uuid = entry.getKey();
-            RankData rank = ranks.get(entry.getValue());
-
-            if (rank != null && rank.isStaff()) {
-                Long grantedTime = staffRankGrantedTime.get(uuid);
-                if (grantedTime != null) {
-                    long timeSinceGranted = System.currentTimeMillis() - grantedTime;
-                    int currentVotes = getUpvoteCount(uuid).join();
-
-                    if (timeSinceGranted > staffRankGracePeriod && currentVotes < rank.getVoteRequirement()) {
-                        RankData demoteTo = getDemotionRank(rank);
-                        setRank(uuid, demoteTo.getId());
-
-                        Player player = Bukkit.getPlayer(uuid);
-                        if (player != null) {
-                            player.sendMessage("§c§lYour " + rank.getDisplayName() + " rank has been removed!");
-                            player.sendMessage("§7You didn't meet the minimum vote requirement of §e" +
-                                    rank.getVoteRequirement() + "§7 votes.");
-                        }
-                    }
-                }
-            }
+    public void saveRankConfig() {
+        try {
+            rankConfig.save(rankFile);
+        } catch (IOException e) {
+            plugin.getLogger().severe("Failed to save ranks.yml: " + e.getMessage());
         }
-
-        monthlyVotes.clear();
-        lastVoteTime.clear();
-        plugin.getLogger().info("§aMonthly vote reset completed!");
     }
 
-    private RankData getDemotionRank(RankData currentRank) {
-        RankData highestLower = ranks.get("MEMBER");
+    // ====================== UTILITY METHODS ======================
 
-        for (RankData rank : ranks.values()) {
-            if (rank.isStaff() && rank.getLevel() < currentRank.getLevel()) {
-                if (highestLower == null || rank.getLevel() > highestLower.getLevel()) {
-                    highestLower = rank;
-                }
-            }
-        }
+    public int getRankCount() {
+        return rankDataMap.size();
+    }
 
-        return highestLower != null ? highestLower : ranks.get("MEMBER");
+    public boolean isStaffRank(String rankId) {
+        RankData data = rankDataMap.get(rankId.toLowerCase());
+        return data != null && data.isStaff();
+    }
+
+    public boolean isDonorRank(String rankId) {
+        RankData data = rankDataMap.get(rankId.toLowerCase());
+        return data != null && data.isDonor();
     }
 }

@@ -49,58 +49,21 @@ public class Island {
     public Map<UUID, IslandRank> getMembers() { return Collections.unmodifiableMap(members); }
     public int getMemberCount() { return members.size(); }
 
-    public IslandRank getRank(UUID playerUuid) {
-        return members.getOrDefault(playerUuid, IslandRank.GUEST);
-    }
-
-    public boolean isOwner(UUID playerUuid) {
-        return ownerUuid.equals(playerUuid);
-    }
-
-    public boolean isMember(UUID playerUuid) {
-        return members.containsKey(playerUuid);
-    }
-
-    // ====================== XP & LEVELING ======================
-    public void addXp(double amount, int partySize) {
-        // Diminishing returns for larger parties (like Hypixel Skyblock)
-        double multiplier = Math.max(0.5, 1.0 - (partySize - 1) * 0.1);
-        double adjustedXp = amount * multiplier;
-
-        this.xp += adjustedXp;
-
-        // Check for level up
-        while (xp >= getRequiredXpForLevel(level + 1)) {
-            xp -= getRequiredXpForLevel(level + 1);
-            level++;
-        }
-    }
-
-    public void addXp(double amount) {
-        addXp(amount, 1);
-    }
-
-    private double getRequiredXpForLevel(int targetLevel) {
-        return BASE_XP_PER_LEVEL * targetLevel * targetLevel;
-    }
+    public boolean isOwner(UUID uuid) { return ownerUuid.equals(uuid); }
+    public boolean isMember(UUID uuid) { return members.containsKey(uuid); }
+    public IslandRank getRank(UUID uuid) { return members.getOrDefault(uuid, IslandRank.GUEST); }
 
     // ====================== MEMBER MANAGEMENT ======================
-    public void addMember(UUID playerUuid) {
-        if (!members.containsKey(playerUuid)) {
-            members.put(playerUuid, IslandRank.GUEST);
-        }
+    public void addMember(UUID uuid, IslandRank rank) {
+        if (!isOwner(uuid)) members.put(uuid, rank);
     }
 
-    public void removeMember(UUID playerUuid) {
-        if (!playerUuid.equals(ownerUuid)) {
-            members.remove(playerUuid);
-        }
+    public void removeMember(UUID uuid) {
+        if (!isOwner(uuid)) members.remove(uuid);
     }
 
-    public void setMemberRank(UUID playerUuid, IslandRank rank) {
-        if (members.containsKey(playerUuid) && !playerUuid.equals(ownerUuid)) {
-            members.put(playerUuid, rank);
-        }
+    public void setMemberRank(UUID uuid, IslandRank rank) {
+        if (!isOwner(uuid) && members.containsKey(uuid)) members.put(uuid, rank);
     }
 
     public void transferOwnership(UUID newOwnerUuid) {
@@ -138,33 +101,65 @@ public class Island {
         return rank != null && rank.hasPermission(permission);
     }
 
-    // ====================== SERIALIZATION ======================
-    public Map<String, Object> serialize() {
-        Map<String, Object> data = new HashMap<>();
-        data.put("grid_x", gridPosition.x());
-        data.put("grid_z", gridPosition.z());
-        data.put("dimension", dimension.name());
-        data.put("owner_uuid", ownerUuid.toString());
-        data.put("biome_name", biomeName);
-        data.put("level", level);
-        data.put("xp", xp);
-        return data;
+    // ====================== LEVELING SYSTEM ======================
+    /**
+     * Add XP with automatic party-size scaling.
+     * Solo players get full XP. Larger parties get diminishing returns.
+     */
+    public void addXp(double baseAmount, int partySize) {
+        if (baseAmount <= 0) return;
+        if (partySize <= 0) partySize = 1;
+
+        double multiplier = calculateXpMultiplier(partySize);
+        double effectiveXp = baseAmount * multiplier;
+
+        this.xp += effectiveXp;
+        checkLevelUp();
     }
 
-    public static Island deserialize(Map<String, Object> data) {
-        GridPosition pos = new GridPosition(
-                (int) data.get("grid_x"),
-                (int) data.get("grid_z"),
-                World.Environment.valueOf((String) data.get("dimension"))
-        );
+    /**
+     * Add XP as solo player (100% value)
+     */
+    public void addXp(double amount) {
+        addXp(amount, 1);
+    }
 
-        UUID owner = UUID.fromString((String) data.get("owner_uuid"));
-        String biome = (String) data.get("biome_name");
+    private double calculateXpMultiplier(int partySize) {
+        if (partySize == 1) return 1.0;
+        if (partySize == 2) return 0.85;
+        if (partySize == 3) return 0.75;
+        // 4+ members: diminishing returns
+        return Math.max(0.55, 1.0 - (partySize - 1) * 0.12);
+    }
 
-        Island island = new Island(pos, owner, biome, pos.getDimension());
-        island.level = (int) data.get("level");
-        island.xp = (double) data.get("xp");
+    private double getRequiredXpForLevel(int targetLevel) {
+        // Quadratic scaling: Level 1→2 = 100 XP, Level 50→51 = ~2500 XP
+        return BASE_XP_PER_LEVEL * targetLevel * targetLevel;
+    }
 
-        return island;
+    private void checkLevelUp() {
+        while (xp >= getRequiredXpForLevel(level + 1)) {
+            int oldLevel = level;
+            xp -= getRequiredXpForLevel(level + 1);
+            level++;
+
+            // Fire IslandLevelUpEvent
+            IslandLevelUpEvent event = new IslandLevelUpEvent(this, oldLevel, level, ownerUuid);
+            org.bukkit.Bukkit.getPluginManager().callEvent(event);
+        }
+    }
+
+    public double getProgressToNextLevel() {
+        double required = getRequiredXpForLevel(level + 1);
+        return Math.min(1.0, xp / required);
+    }
+
+    public void setLevel(int newLevel) {
+        this.level = Math.max(1, newLevel);
+        this.xp = 0;
+    }
+
+    public void setXp(double newXp) {
+        this.xp = Math.max(0, newXp);
     }
 }

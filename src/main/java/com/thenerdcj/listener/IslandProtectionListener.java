@@ -3,7 +3,7 @@ package com.thenerdcj.listener;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandPermission;
-import com.thenerdcj.manager.IslandManager;
+import com.thenerdcj.island.IslandManager;
 import org.bukkit.Location;
 import org.bukkit.World.Environment;
 import org.bukkit.entity.Player;

@@ -1,106 +1,95 @@
-# ===========================================
-# FoliaSkyblock - Fully Expandable Rank System
-# ===========================================
-# Add new ranks by simply adding new sections!
-# No code changes required!
+# ==========================================
+# FoliaSkyblock Rank Configuration
+# ==========================================
+# This file defines all ranks, their permissions, and display settings.
+#
+# DEFAULT RANK:
+# - Add "default: true" to ONE rank - this will be given to all new players
+# - If no rank has "default: true", the lowest priority rank is used
 
-default-ranks:
+ranks:
   member:
     display-name: "Member"
-    level: 0
-    chat-prefix: "&7[Member]"
-    permission: "foliasb.rank.member"
-    perks: []
+    prefix: "&7[Member]"
+    priority: 0
+    staff: false
+    donor: false
+    default: true  # <-- THIS IS THE DEFAULT RANK FOR ALL NEW PLAYERS
+    permissions:
+      - "folia.island.create"
+      - "folia.island.home"
+      - "folia.island.invite"
+      - "folia.island.chat"
+      - "folia.shop.use"
+      - "folia.trade.use"
 
   vip:
     display-name: "VIP"
-    level: 1
-    chat-prefix: "&a[VIP]"
-    permission: "foliasb.rank.vip"
-    inherits: ["member"]
-    perks:
-      - "Extra island slot"
-      - "Colored chat"
-    requirements:
-      playtime-hours: 50
+    prefix: "&6[VIP]"
+    priority: 1
+    staff: false
+    donor: true
+    permissions:
+      - "folia.island.create"
+      - "folia.island.home"
+      - "folia.island.invite"
+      - "folia.island.chat"
+      - "folia.shop.use"
+      - "folia.trade.use"
+      - "folia.island.biome.select"
+      - "folia.island.size.large"
 
-  mvp:
-    display-name: "MVP"
-    level: 2
-    chat-prefix: "&b[MVP]"
-    permission: "foliasb.rank.mvp"
-    inherits: ["vip"]
-    perks:
-      - "All VIP perks"
-      - "Priority queue"
-    requirements:
-      playtime-hours: 200
-
-donor-ranks:
-  donor:
-    display-name: "Donor"
-    level: 10
-    chat-prefix: "&6[Donor]"
-    permission: "foliasb.rank.donor"
-    price: 4.99
-    perks:
-      - "Extra island slot"
-      - "Colored chat"
-      - "Donor kit"
-
-  supporter:
-    display-name: "Supporter"
-    level: 11
-    chat-prefix: "&d[Supporter]"
-    permission: "foliasb.rank.supporter"
-    price: 9.99
-    inherits: ["donor"]
-    perks:
-      - "All Donor perks"
-      - "Biome selection"
-
-  legend:
-    display-name: "Legend"
-    level: 12
-    chat-prefix: "&5[Legend]"
-    permission: "foliasb.rank.legend"
-    price: 19.99
-    inherits: ["supporter"]
-    perks:
-      - "All Supporter perks"
-      - "Custom biome anytime"
-
-staff-ranks:
   helper:
     display-name: "Helper"
-    level: 20
-    chat-prefix: "&9[Helper]"
-    permission: "foliasb.rank.helper"
-    votes-required: 50
-    description: "Entry-level staff"
+    prefix: "&e[Helper]"
+    priority: 2
+    staff: true
+    donor: false
+    permissions:
+      - "folia.island.create"
+      - "folia.island.home"
+      - "folia.island.invite"
+      - "folia.island.chat"
+      - "folia.shop.use"
+      - "folia.trade.use"
+      - "folia.moderation.kick"
+      - "folia.moderation.mute"
+      - "folia.moderation.warn"
 
   moderator:
     display-name: "Moderator"
-    level: 21
-    chat-prefix: "&c[Mod]"
-    permission: "foliasb.rank.moderator"
-    votes-required: 150
-    inherits: ["helper"]
-    description: "Full moderation powers"
+    prefix: "&9[Mod]"
+    priority: 3
+    staff: true
+    donor: false
+    permissions:
+      - "folia.island.create"
+      - "folia.island.home"
+      - "folia.island.invite"
+      - "folia.island.chat"
+      - "folia.shop.use"
+      - "folia.trade.use"
+      - "folia.moderation.kick"
+      - "folia.moderation.mute"
+      - "folia.moderation.warn"
+      - "folia.moderation.ban"
+      - "folia.moderation.unban"
+      - "folia.moderation.freeze"
 
   admin:
     display-name: "Admin"
-    level: 22
-    chat-prefix: "&4[Admin]"
-    permission: "foliasb.rank.admin"
-    votes-required: 500
-    inherits: ["moderator"]
-    description: "Highest staff rank"
+    prefix: "&c[Admin]"
+    priority: 4
+    staff: true
+    donor: false
+    permissions:
+      - "*"
 
-# ===========================================
-# VOTING SETTINGS
-# ===========================================
-voting:
-  max-votes-per-month: 10
-  vote-cooldown-days: 30
-  staff-retention-months: 2
+  owner:
+    display-name: "Owner"
+    prefix: "&4[Owner]"
+    priority: 5
+    staff: true
+    donor: false
+    permissions:
+      - "*"
