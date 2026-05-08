@@ -2,7 +2,7 @@ package com.thenerdcj.gui;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.challenge.Challenge;
-import com.thenerdcj.manager.ChallengeManager;
+import com.thenerdcj.challenge.ChallengeManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -14,7 +14,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * GUI for Daily and Weekly Challenges
@@ -37,18 +36,17 @@ public class ChallengeGUI implements Listener {
         gui.setItem(4, createTitleItem());
 
         // Daily Challenges (Slots 10-16)
-        List<Challenge> daily = challengeManager.getActiveChallenges(player.getUniqueId()).join();
+        List<Challenge> allChallenges = challengeManager.getActiveChallenges(player.getUniqueId());
         int slot = 10;
-        for (Challenge c : daily) {
+        for (Challenge c : allChallenges) {
             if (c.getType() == Challenge.Type.DAILY) {
                 gui.setItem(slot++, createChallengeItem(c, true));
             }
         }
 
-        // Weekly Challenges (Slots 28-34)
-        List<Challenge> weekly = challengeManager.getActiveChallenges(player.getUniqueId()).join();
+// Weekly Challenges (Slots 28-34)
         slot = 28;
-        for (Challenge c : weekly) {
+        for (Challenge c : allChallenges) {
             if (c.getType() == Challenge.Type.WEEKLY) {
                 gui.setItem(slot++, createChallengeItem(c, false));
             }

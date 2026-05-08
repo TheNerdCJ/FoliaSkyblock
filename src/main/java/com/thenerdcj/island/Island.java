@@ -22,7 +22,7 @@ public class Island {
     private int level = 1;
     private double xp = 0.0;
 
-    // XP required for next level (quadratic scaling like Hypixel Skyblock)
+    // XP required for next level (quadratic scaling)
     private static final double BASE_XP_PER_LEVEL = 100.0;
 
     public Island(GridPosition gridPosition, UUID ownerUuid, String biomeName, World.Environment dimension) {
