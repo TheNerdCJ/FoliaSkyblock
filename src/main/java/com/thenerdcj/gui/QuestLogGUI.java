@@ -4,6 +4,8 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.quest.Quest;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -11,28 +13,34 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Arrays;
-import java.util.List;
 
-/**
- * Quest Log GUI - Structured quest display
- */
 public class QuestLogGUI implements Listener {
 
     private final FoliaSkyblock plugin;
+    private final NamespacedKey questIdKey;
 
     public QuestLogGUI(FoliaSkyblock plugin) {
         this.plugin = plugin;
+        this.questIdKey = new NamespacedKey(plugin, "quest_id");
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
     public void open(Player player, String islandId) {
+        player.removeMetadata("quest_island_id", plugin);
+        player.setMetadata("quest_island_id", new org.bukkit.metadata.FixedMetadataValue(plugin, islandId));
+
+        if (plugin.getQuestManager() == null) {
+            player.sendMessage("§cQuest system is not ready yet.");
+            return;
+        }
+
         plugin.getQuestManager().getQuestsForIsland(islandId).thenAccept(quests -> {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 Inventory gui = Bukkit.createInventory(null, 54, "§6§lQuest Log");
 
-                // Title
                 gui.setItem(4, createItem(Material.BOOK, "§6§lQuest Log",
                         "§7Daily & Weekly Missions", "§7Complete for rewards!"));
 
@@ -49,17 +57,14 @@ public class QuestLogGUI implements Listener {
                     if (slot % 9 == 8) slot += 2;
                 }
 
-                // Generate quests button
                 gui.setItem(49, createItem(Material.EMERALD, "§a§lGenerate New Quests",
                         "§7Click to get new daily/weekly quests"));
 
-                // Fill empty slots
                 for (int i = 0; i < 54; i++) {
                     if (gui.getItem(i) == null) gui.setItem(i, createGlassPane());
                 }
 
                 player.openInventory(gui);
-                player.setMetadata("quest_island_id", new org.bukkit.metadata.FixedMetadataValue(plugin, islandId));
             });
         });
     }
@@ -79,6 +84,7 @@ public class QuestLogGUI implements Listener {
     private ItemStack createQuestItem(Material material, Quest quest, String status) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
+
         meta.setDisplayName("§e" + quest.getTitle());
 
         String progressBar = createProgressBar(quest.getProgress(), quest.getTarget());
@@ -90,8 +96,11 @@ public class QuestLogGUI implements Listener {
                 "§7Reward: §a" + quest.getRewardXp() + " XP §7+ §e$" + quest.getRewardMoney(),
                 "",
                 status,
-                quest.isCompleted() ? "§aClick to claim reward!" : "§7Complete to claim reward"
+                quest.isCompleted() && !quest.isClaimed() ? "§aClick to claim reward!" : "§7Complete to claim reward"
         ));
+
+        // Store quest ID for reliable identification
+        meta.getPersistentDataContainer().set(questIdKey, PersistentDataType.STRING, quest.getId());
 
         item.setItemMeta(meta);
         return item;
@@ -130,19 +139,47 @@ public class QuestLogGUI implements Listener {
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();
+        ItemStack clicked = event.getCurrentItem();
+
+        if (clicked == null || clicked.getItemMeta() == null) return;
+
         if (!player.hasMetadata("quest_island_id")) return;
-
         String islandId = player.getMetadata("quest_island_id").get(0).asString();
-        String itemName = event.getCurrentItem().getItemMeta().getDisplayName();
 
+        String itemName = clicked.getItemMeta().getDisplayName();
+
+        // Generate New Quests button
         if (itemName.contains("Generate New Quests")) {
-            plugin.getQuestManager().generateDailyQuests(islandId);
-            plugin.getQuestManager().generateWeeklyQuests(islandId);
+            if (plugin.getQuestManager() != null) {
+                plugin.getQuestManager().generateDailyQuests(islandId);
+                plugin.getQuestManager().generateWeeklyQuests(islandId);
+            }
             player.sendMessage("§aNew quests generated!");
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1.0f, 1.2f);
+
             Bukkit.getScheduler().runTask(plugin, () -> {
                 player.closeInventory();
-                new QuestLogGUI(plugin).open(player, islandId);
+                this.open(player, islandId);
             });
+            return;
+        }
+
+        // Claim reward logic
+        String questId = clicked.getItemMeta().getPersistentDataContainer()
+                .get(questIdKey, PersistentDataType.STRING);
+
+        if (questId != null && plugin.getQuestManager() != null) {
+            boolean success = plugin.getQuestManager().claimQuest(islandId, questId, player);
+
+            if (success) {
+                player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    player.closeInventory();
+                    this.open(player, islandId); // Refresh GUI
+                });
+            } else {
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            }
         }
     }
 }
