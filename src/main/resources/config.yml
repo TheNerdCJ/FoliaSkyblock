@@ -67,6 +67,12 @@ economy:
 island-economy:
   starting-balance: 500.0
 
+island:
+  reset:
+    enabled: true
+    cost: 5000                    # Island balance cost (0 = free)
+    cooldown-hours: 24            # Hours between resets (0 = disabled)
+    require-confirmation: true
 # ================================================
 # Messages (you can expand these later)
 # ================================================

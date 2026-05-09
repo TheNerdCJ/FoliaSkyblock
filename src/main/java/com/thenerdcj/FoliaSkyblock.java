@@ -40,6 +40,8 @@ public class FoliaSkyblock extends JavaPlugin {
     private ChatManager chatManager;
     private WorldManager worldManager;
     private IslandGenerator islandGenerator;
+    private ResetConfirmationGUI resetConfirmationGUI;
+    private BiomeSelectionGUI biomeSelectionGUI;
 
     // ==================== GUI INSTANCES ====================
     private TradeGUI tradeGUI;
@@ -84,6 +86,9 @@ public class FoliaSkyblock extends JavaPlugin {
         this.enchantingTableGUI = new EnchantingTableGUI(this);
         this.islandChatManager = new IslandChatManager(this);
 
+        // Register new GUIs for Donor Biome Reset system
+        this.resetConfirmationGUI = new ResetConfirmationGUI(this);
+        this.biomeSelectionGUI = new BiomeSelectionGUI(this);
         registerCommands();
         registerListeners();
 
@@ -169,5 +174,13 @@ public class FoliaSkyblock extends JavaPlugin {
     // Folia detection
     public boolean isFolia() {
         return true; // This plugin is designed for Folia
+    }
+
+    public ResetConfirmationGUI getResetConfirmationGUI() {
+        return resetConfirmationGUI;
+    }
+
+    public BiomeSelectionGUI getBiomeSelectionGUI() {
+        return biomeSelectionGUI;
     }
 }

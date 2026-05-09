@@ -2,44 +2,41 @@ package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.manager.AntiCheatManager;
-import com.thenerdcj.island.IslandManager;
-import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockDispenseEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
-
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import org.bukkit.event.player.PlayerPickupItemEvent;
+import org.bukkit.inventory.ItemStack;
 
 public class AntiCheatListener implements Listener {
 
     private final FoliaSkyblock plugin;
     private final AntiCheatManager antiCheatManager;
-    private final IslandManager islandManager;
-
-    private final ConcurrentHashMap<UUID, Long> lastBreakTime = new ConcurrentHashMap<>();
 
     public AntiCheatListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        this.antiCheatManager = new AntiCheatManager(plugin);
-        this.islandManager = plugin.getIslandManager();
+        this.antiCheatManager = plugin.getAntiCheatManager();
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
-
         if (player.hasPermission("foliasb.bypass.anticheat")) return;
 
-        player.getScheduler().run(plugin, scheduledTask -> {
+        player.getScheduler().run(plugin, task -> {
             if (!antiCheatManager.checkPlayer(player)) {
-                Location from = event.getFrom();
-                player.teleport(from);
-                player.sendMessage("§c[AntiCheat] Suspicious movement detected!");
+                player.teleport(event.getFrom());
+                player.sendMessage("§c[AntiCheat] Suspicious movement detected.");
             }
         }, null);
     }
@@ -47,69 +44,88 @@ public class AntiCheatListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent e) {
         Player player = e.getPlayer();
-        Location loc = e.getBlock().getLocation();
+        if (player.hasPermission("foliasb.bypass.anticheat")) return;
 
-        plugin.getServer().getRegionScheduler().execute(plugin, loc, () -> {
-            long now = System.currentTimeMillis();
-            Long last = lastBreakTime.get(player.getUniqueId());
-
-            if (last != null) {
-                long delta = now - last;
-                double threshold = 180.0;
-
-                int efficiency = player.getInventory().getItemInMainHand()
-                        .getEnchantmentLevel(org.bukkit.enchantments.Enchantment.EFFICIENCY);
-                if (efficiency > 0) threshold *= (1.0 - Math.min(efficiency * 0.15, 0.8));
-
-                if (antiCheatManager.getProfile(player.getUniqueId()) != null &&
-                        antiCheatManager.getProfile(player.getUniqueId()).hasHighEnchantments()) {
-                    threshold *= 0.5;
-                }
-
-                if (delta < threshold) {
-                    e.setCancelled(true);
-                    player.sendMessage("§c[AntiCheat] Breaking blocks too fast!");
-                    return;
-                }
-            }
-
-            lastBreakTime.put(player.getUniqueId(), now);
-
-            if (isOre(e.getBlock().getType())) {
-                if (antiCheatManager.getProfile(player.getUniqueId()) != null) {
-                    antiCheatManager.getProfile(player.getUniqueId()).recordOreMined();
-                }
-            }
+        plugin.getServer().getRegionScheduler().execute(plugin, e.getBlock().getLocation(), () -> {
+            // Fast break logic + record for dupe context if needed
+            antiCheatManager.checkPlayer(player);
         });
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockPlace(BlockPlaceEvent e) {
+        Player player = e.getPlayer();
+        if (player.hasPermission("foliasb.bypass.anticheat")) return;
+
+        ItemStack item = e.getItemInHand();
+        if (item.getType() == Material.SHULKER_BOX) {
+            antiCheatManager.checkShulkerDuplication(player, item);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageByEntityEvent e) {
         if (!(e.getDamager() instanceof Player player)) return;
-
         if (player.hasPermission("foliasb.bypass.anticheat")) return;
 
-        if (antiCheatManager.getProfile(player.getUniqueId()) != null) {
-            antiCheatManager.getProfile(player.getUniqueId()).recordAttack();
-        }
-
-        player.getScheduler().run(plugin, scheduledTask -> {
-            if (!antiCheatManager.checkPlayer(player)) {
-                e.setCancelled(true);
-                player.sendMessage("§c[AntiCheat] Suspicious combat detected!");
-            }
-        }, null);
+        player.getScheduler().run(plugin, task -> antiCheatManager.checkPlayer(player), null);
     }
 
-    private boolean isOre(org.bukkit.Material material) {
-        return material == org.bukkit.Material.COAL_ORE ||
-                material == org.bukkit.Material.IRON_ORE ||
-                material == org.bukkit.Material.GOLD_ORE ||
-                material == org.bukkit.Material.DIAMOND_ORE ||
-                material == org.bukkit.Material.EMERALD_ORE ||
-                material == org.bukkit.Material.REDSTONE_ORE ||
-                material == org.bukkit.Material.LAPIS_ORE ||
-                material == org.bukkit.Material.NETHERITE_SCRAP ||
-                material == org.bukkit.Material.ANCIENT_DEBRIS;
+    // ==================== DUPLICATION DETECTION EVENTS ====================
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onInventoryMoveItem(InventoryMoveItemEvent e) {
+        if (e.getSource().getHolder() instanceof Player player) {
+            antiCheatManager.recordItemTransaction(player, 1);
+            antiCheatManager.checkContainerDuplication(player, e.getSource().getLocation().getBlock());
+        }
+        if (e.getDestination().getHolder() instanceof Player player2) {
+            antiCheatManager.recordItemTransaction(player2, 1);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockDispense(BlockDispenseEvent e) {
+        if (e.getBlock().getState() instanceof org.bukkit.block.Dispenser ||
+            e.getBlock().getState() instanceof org.bukkit.block.Dropper) {
+
+            // Try to find nearby player who might be using it
+            for (Player p : e.getBlock().getWorld().getPlayers()) {
+                if (p.getLocation().distance(e.getBlock().getLocation()) < 6) {
+                    antiCheatManager.checkContainerDuplication(p, e.getBlock());
+                    break;
+                }
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPlayerDropItem(PlayerDropItemEvent e) {
+        antiCheatManager.recordItemTransaction(e.getPlayer(), -1);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPlayerPickupItem(PlayerPickupItemEvent e) {
+        ItemStack item = e.getItem().getItemStack();
+        antiCheatManager.recordItemTransaction(e.getPlayer(), item.getAmount());
+
+        if (antiCheatManager.scanForIllegalItem(e.getPlayer(), item)) {
+            e.setCancelled(true);
+            e.getItem().remove();
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onInventoryClick(InventoryClickEvent e) {
+        if (!(e.getWhoClicked() instanceof Player player)) return;
+        if (player.hasPermission("foliasb.bypass.anticheat")) return;
+
+        ItemStack current = e.getCurrentItem();
+        if (current != null) {
+            antiCheatManager.recordItemTransaction(player, current.getAmount());
+            if (antiCheatManager.scanForIllegalItem(player, current)) {
+                e.setCancelled(true);
+            }
+        }
     }
 }

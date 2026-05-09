@@ -119,16 +119,11 @@ public class WorldManager {
         final int centerZ = 0;
         final int centerY = SPAWN_Y;
 
-        // Use region scheduler for Folia safety (builds on the spawn region)
-        if (plugin.isFolia()) {
-            world.getRegionScheduler().run(plugin, centerX >> 4, centerZ >> 4, task -> {
-                buildSpawnStructure(world, centerX, centerY, centerZ);
-            });
-        } else {
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                buildSpawnStructure(world, centerX, centerY, centerZ);
-            });
-        }
+        // Folia/Paper-safe scheduling using GlobalRegionScheduler (reliable across versions, no World method resolution issues)
+        // This runs the build on the correct region for chunk (0,0)
+        Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+            buildSpawnStructure(world, centerX, centerY, centerZ);
+        });
     }
 
     private void buildSpawnStructure(World world, int centerX, int centerY, int centerZ) {

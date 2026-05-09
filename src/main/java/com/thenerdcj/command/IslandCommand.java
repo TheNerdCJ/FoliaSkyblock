@@ -40,6 +40,15 @@ public class IslandCommand implements CommandExecutor {
         String sub = args[0].toLowerCase();
 
         switch (sub) {
+            case "reset":
+                if (player.hasPermission("foliasb.donor") || player.hasPermission("foliasb.donor.biome")) {
+                    // Open confirmation GUI (with live balance)
+                    plugin.getResetConfirmationGUI().open(player);
+                } else {
+                    // Non-donors get simple reset to default biome
+                    plugin.getIslandManager().resetIsland(player, player.getWorld().getEnvironment());
+                }
+                return true;
             case "create":
                 handleCreate(player, args);
                 break;

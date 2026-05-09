@@ -25,35 +25,34 @@ public class BiomeSelectionGUI implements Listener {
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
-    public void open(Player player) {
+    public void open(Player player, boolean isReset) {
         if (!player.hasPermission("foliasb.donor.biome") && !player.hasPermission("foliasb.donor")) {
             player.sendMessage("§cOnly donors can select custom biomes!");
-            player.sendMessage("§7Purchase a rank at our store to unlock this feature.");
             return;
         }
 
-        Inventory gui = Bukkit.createInventory(null, 45, GUI_TITLE);
+        Inventory gui = Bukkit.createInventory(null, 45, GUI_TITLE + (isReset ? " §7(Reset)" : ""));
 
-        gui.setItem(4, createTitleItem());
+        gui.setItem(4, createTitleItem(isReset));
 
-        gui.setItem(10, createBiomeItem(Material.GRASS_BLOCK, "§aPlains", "§7Standard grass island\n§7Good for beginners", "PLAINS"));
-        gui.setItem(12, createBiomeItem(Material.OAK_LOG, "§2Forest", "§7Dense trees and wood\n§7Great for building", "FOREST"));
-        gui.setItem(14, createBiomeItem(Material.SAND, "§eDesert", "§7Sand and cacti\n§7Unique aesthetic", "DESERT"));
-        gui.setItem(16, createBiomeItem(Material.SPRUCE_LOG, "§bTaiga", "§7Snowy forest vibe\n§7Spruce wood focus", "TAIGA"));
-        gui.setItem(20, createBiomeItem(Material.JUNGLE_LOG, "§2Jungle", "§7Tropical paradise\n§7Rich with resources", "JUNGLE"));
+        gui.setItem(10, createBiomeItem(Material.GRASS_BLOCK, "§aPlains", "PLAINS", isReset));
+        gui.setItem(12, createBiomeItem(Material.OAK_LOG, "§2Forest", "FOREST", isReset));
+        gui.setItem(14, createBiomeItem(Material.SAND, "§eDesert", "DESERT", isReset));
+        gui.setItem(16, createBiomeItem(Material.SPRUCE_LOG, "§bTaiga", "TAIGA", isReset));
+        gui.setItem(20, createBiomeItem(Material.JUNGLE_LOG, "§2Jungle", "JUNGLE", isReset));
 
         int playerLevel = getPlayerIslandLevel(player);
 
         if (playerLevel >= 15) {
-            gui.setItem(28, createBiomeItem(Material.NETHERRACK, "§cNether Wastes", "§7Unlocks at level 15\n§7Nether island", "NETHER_WASTES"));
+            gui.setItem(28, createBiomeItem(Material.NETHERRACK, "§cNether Wastes", "NETHER_WASTES", isReset));
         } else {
-            gui.setItem(28, createLockedItem("§cNether Wastes", "§7Requires level 15"));
+            gui.setItem(28, createLockedItem("§cNether Wastes", "§7Requires island level 15"));
         }
 
         if (playerLevel >= 30) {
-            gui.setItem(34, createBiomeItem(Material.END_STONE, "§5The End", "§7Unlocks at level 30\n§7End island", "THE_END"));
+            gui.setItem(34, createBiomeItem(Material.END_STONE, "§5The End", "THE_END", isReset));
         } else {
-            gui.setItem(34, createLockedItem("§5The End", "§7Requires level 30"));
+            gui.setItem(34, createLockedItem("§5The End", "§7Requires island level 30"));
         }
 
         for (int i = 0; i < 45; i++) {
@@ -65,20 +64,34 @@ public class BiomeSelectionGUI implements Listener {
         player.openInventory(gui);
     }
 
-    private ItemStack createTitleItem() {
+    public void open(Player player) {
+        open(player, false);
+    }
+
+    private ItemStack createTitleItem(boolean isReset) {
         ItemStack item = new ItemStack(Material.NETHER_STAR);
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§6§lChoose Your Starting Biome");
-        meta.setLore(Arrays.asList("§7Select a biome for your first island", "§7Donors can change biomes later with /is reset"));
+        if (isReset) {
+            meta.setDisplayName("§6§lChoose New Biome for Reset");
+            meta.setLore(Arrays.asList("§7Select a new biome", "§cWarning: Island will be reset!"));
+        } else {
+            meta.setDisplayName("§6§lChoose Your Starting Biome");
+        }
         item.setItemMeta(meta);
         return item;
     }
 
-    private ItemStack createBiomeItem(Material material, String name, String lore, String biomeKey) {
+    private ItemStack createBiomeItem(Material material, String name, String biomeKey, boolean isReset) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         meta.setDisplayName(name);
-        meta.setLore(Arrays.asList(lore.split("\n")));
+        if (isReset) {
+            meta.setLore(Arrays.asList("§7Click to reset to this biome"));
+        }
+        meta.getPersistentDataContainer().set(
+                new org.bukkit.NamespacedKey(plugin, "biome_key"),
+                org.bukkit.persistence.PersistentDataType.STRING, biomeKey
+        );
         item.setItemMeta(meta);
         return item;
     }
@@ -107,32 +120,29 @@ public class BiomeSelectionGUI implements Listener {
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!event.getView().getTitle().equals(GUI_TITLE)) return;
-
+        if (!event.getView().getTitle().startsWith(GUI_TITLE)) return;
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();
         ItemStack clicked = event.getCurrentItem();
-
-        if (clicked == null || clicked.getType() == Material.AIR || clicked.getType() == Material.BARRIER) {
-            return;
-        }
-
-        String displayName = clicked.getItemMeta() != null ? clicked.getItemMeta().getDisplayName() : "";
+        if (clicked == null || clicked.getType() == Material.AIR || clicked.getType() == Material.BARRIER) return;
 
         String biome = null;
-        if (displayName.contains("Plains")) biome = "PLAINS";
-        else if (displayName.contains("Forest")) biome = "FOREST";
-        else if (displayName.contains("Desert")) biome = "DESERT";
-        else if (displayName.contains("Taiga")) biome = "TAIGA";
-        else if (displayName.contains("Jungle")) biome = "JUNGLE";
-        else if (displayName.contains("Nether")) biome = "NETHER_WASTES";
-        else if (displayName.contains("End")) biome = "THE_END";
+        if (clicked.getItemMeta() != null) {
+            biome = clicked.getItemMeta().getPersistentDataContainer()
+                    .get(new org.bukkit.NamespacedKey(plugin, "biome_key"),
+                            org.bukkit.persistence.PersistentDataType.STRING);
+        }
 
         if (biome != null) {
             player.closeInventory();
-            plugin.getIslandManager().createIsland(player, biome, World.Environment.NORMAL);
-            player.sendMessage("§aCreating your §e" + biome + "§a island...");
+            boolean isResetMode = event.getView().getTitle().contains("(Reset)");
+
+            if (isResetMode) {
+                plugin.getIslandManager().resetIslandWithBiome(player, biome, World.Environment.NORMAL);
+            } else {
+                plugin.getIslandManager().createIsland(player, biome, World.Environment.NORMAL);
+            }
         }
     }
 }
