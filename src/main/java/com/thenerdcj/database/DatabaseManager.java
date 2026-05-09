@@ -22,7 +22,7 @@ public class DatabaseManager {
         createTables();
     }
 
-    private void initDatabase() {
+    public void initDatabase() {
         try {
             HikariConfig config = new HikariConfig();
             config.setJdbcUrl("jdbc:sqlite:" + plugin.getDataFolder() + "/skyblock.db");
@@ -932,5 +932,22 @@ public class DatabaseManager {
             )
             """;
         executeUpdate(sql);
+    }
+    /**
+     * Properly shuts down the database connection pool and executor.
+     * Call this in FoliaSkyblock.onDisable()
+     */
+    public void shutdown() {
+        plugin.getLogger().info("§e[FoliaSkyblock] Shutting down database...");
+
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
+            plugin.getLogger().info("§a[FoliaSkyblock] HikariCP connection pool closed.");
+        }
+
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdown();
+            plugin.getLogger().info("§a[FoliaSkyblock] Database executor shut down.");
+        }
     }
 }

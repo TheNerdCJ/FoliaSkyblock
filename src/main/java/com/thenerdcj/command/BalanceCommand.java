@@ -2,13 +2,12 @@ package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.DatabaseManager;
-import org.bukkit.Bukkit;
+import com.thenerdcj.island.Island;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
-import java.util.List;
 import java.util.UUID;
 
 public class BalanceCommand implements CommandExecutor {
@@ -28,57 +27,38 @@ public class BalanceCommand implements CommandExecutor {
 
         if (args.length == 0) {
             // Show own balance
-            double balance = plugin.getEconomyManager().getPlayerBalance(player.getUniqueId()).join();
-            player.sendMessage("§aYour balance: §e$" + String.format("%,.2f", balance));
+            showPlayerBalance(player, player.getUniqueId());
             return true;
         }
 
-        String sub = args[0].toLowerCase();
-
-        switch (sub) {
-            case "top":
-                player.sendMessage("§6=== Top Balances ===");
-                plugin.getDatabaseManager().getTopBalances(10).thenAccept(topList -> {
-                    for (int i = 0; i < topList.size(); i++) {
-                        DatabaseManager.TopBalanceEntry entry = topList.get(i);
-                        String playerName = Bukkit.getOfflinePlayer(entry.uuid()).getName();
-                        if (playerName == null) playerName = "Unknown";
-                        player.sendMessage("§e" + (i + 1) + ". §f" + playerName + " §7- §a$" + String.format("%,.2f", entry.balance()));
-                    }
-                });
-                break;
-
-            case "island":
-                plugin.getIslandManager().getIslandByOwner(player.getUniqueId(), org.bukkit.World.Environment.NORMAL)
-                        .thenAccept(island -> {
-                            if (island != null) {
-                                plugin.getEconomyManager().getIslandBalance(island.getGridPosition())
-                                        .thenAccept(balance -> {
-                                            player.sendMessage("§aYour island balance: §e$" + String.format("%,.2f", balance));
-                                        });
-                            } else {
-                                player.sendMessage("§cYou don't have an island!");
-                            }
-                        });
-                break;
-
-            default:
-                // Try to find another player's balance
-                UUID targetUuid = null;
-                if (args.length > 0) {
-                    targetUuid = Bukkit.getOfflinePlayer(args[0]).getUniqueId();
-                }
-
-                if (targetUuid != null) {
-                    double balance = plugin.getEconomyManager().getPlayerBalance(targetUuid).join();
-                    String name = Bukkit.getOfflinePlayer(targetUuid).getName();
-                    player.sendMessage("§a" + name + "'s balance: §e$" + String.format("%,.2f", balance));
-                } else {
-                    player.sendMessage("§cUsage: /balance [top|island|player]");
-                }
-                break;
+        // /bal <player>
+        Player target = plugin.getServer().getPlayer(args[0]);
+        if (target != null) {
+            showPlayerBalance(player, target.getUniqueId());
+        } else {
+            player.sendMessage("§cPlayer not found or is offline.");
         }
 
         return true;
+    }
+
+    private void showPlayerBalance(Player viewer, UUID targetUuid) {
+        plugin.getDatabaseManager().getPlayerBalance(targetUuid)
+                .thenAccept(balance -> {
+                    double playerBal = balance != null ? balance : 0.0;
+
+                    viewer.sendMessage("§6§l=== Balances ===");
+                    viewer.sendMessage("§7Player Balance: §a$" + String.format("%,.2f", playerBal));
+
+                    // Get island balance asynchronously
+                    plugin.getIslandManager().getIslandByOwner(targetUuid, viewer.getWorld().getEnvironment())
+                            .thenAccept(island -> {
+                                if (island != null) {
+                                    viewer.sendMessage("§7Island Balance: §a$" + String.format("%,.2f", island.getBalance()));
+                                } else {
+                                    viewer.sendMessage("§7Island Balance: §cNo island in this dimension");
+                                }
+                            });
+                });
     }
 }
