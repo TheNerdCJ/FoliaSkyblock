@@ -50,15 +50,18 @@ public class BalanceCommand implements CommandExecutor {
                     viewer.sendMessage("§6§l=== Balances ===");
                     viewer.sendMessage("§7Player Balance: §a$" + String.format("%,.2f", playerBal));
 
-                    // Get island balance asynchronously
-                    plugin.getIslandManager().getIslandByOwner(targetUuid, viewer.getWorld().getEnvironment())
-                            .thenAccept(island -> {
-                                if (island != null) {
-                                    viewer.sendMessage("§7Island Balance: §a$" + String.format("%,.2f", island.getBalance()));
-                                } else {
-                                    viewer.sendMessage("§7Island Balance: §cNo island in this dimension");
-                                }
-                            });
+                    // Island lookup is fast & synchronous (from cache)
+                    Island island = plugin.getIslandManager().getIslandByOwner(targetUuid, viewer.getWorld().getEnvironment());
+                    if (island != null) {
+                        // Proper async island balance (uses GridPosition + EconomyManager)
+                        plugin.getEconomyManager().getIslandBalance(island.getGridPosition())
+                                .thenAccept(islandBal -> {
+                                    double bal = islandBal != null ? islandBal : 0.0;
+                                    viewer.sendMessage("§7Island Balance: §a$" + String.format("%,.2f", bal));
+                                });
+                    } else {
+                        viewer.sendMessage("§7Island Balance: §cNo island in this dimension");
+                    }
                 });
     }
 }

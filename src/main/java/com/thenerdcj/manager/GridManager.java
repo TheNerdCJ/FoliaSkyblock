@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Allocate unique grid positions for new islands
  * - Track which positions are already used
  * - Provide center locations for islands
+ * - Protects grid (0,0) as unclaimable default spawn area (admin editable)
  *
  * Note: Actual island data (owner, biome, level, etc.) is stored via DatabaseManager.
  * GridManager only manages the grid coordinate system.
@@ -87,10 +88,11 @@ public class GridManager {
     // ====================== SPIRAL GENERATION ======================
 
     private void generateInitialSpiral() {
-        // Start with (0,0) - protected spawn area
-        positionQueue.add(new GridPosition(0, 0));
+        // NOTE: (0,0) is intentionally NOT added to the queue for player islands.
+        // It is reserved as the protected default spawn area (unclaimable by players, editable by admins).
+        // See findNextFreePosition for explicit protection.
 
-        // Pre-generate a large number of positions
+        // Pre-generate a large number of positions (starting from layer 1)
         while (positionQueue.size() < 500) {
             addSpiralLayer(currentLayer++);
         }
@@ -119,6 +121,7 @@ public class GridManager {
 
     /**
      * Allocates the next available grid position for a new island.
+     * Grid (0,0) is permanently protected as the default spawn.
      */
     public CompletableFuture<GridPosition> createPlayerIsland(UUID playerUuid, World.Environment dimension) {
         return CompletableFuture.supplyAsync(() -> {
@@ -138,6 +141,11 @@ public class GridManager {
     private GridPosition findNextFreePosition(World.Environment dimension) {
         while (!positionQueue.isEmpty()) {
             GridPosition candidate = positionQueue.poll();
+
+            // CRITICAL FIX: Protect default spawn at grid (0,0) - unclaimable by anyone except admins
+            if (candidate.x() == 0 && candidate.z() == 0) {
+                continue;
+            }
 
             GridPosition withDimension = new GridPosition(candidate.x(), candidate.z(), dimension);
 
@@ -159,9 +167,6 @@ public class GridManager {
         return CompletableFuture.supplyAsync(() -> {
             // Note: The actual database deletion is handled by DatabaseManager.deleteIsland()
             // We only remove it from our in-memory tracking here.
-            // In a more advanced version we could store which player owned which position.
-
-            // For now we just log it. Full cleanup would require tracking owner -> position mapping.
             plugin.getLogger().info("[GridManager] Island for player " + playerUuid + " marked for deletion in " + dimension);
 
             return true;
@@ -172,9 +177,6 @@ public class GridManager {
      * Saves used positions (can be called on shutdown or periodically).
      */
     public void saveUsedPositions() {
-        // Currently we load on startup and manage in-memory.
-        // If you want persistence of the grid state independently of the islands table,
-        // you can implement saving here.
         plugin.getLogger().info("[GridManager] Used positions saved (in-memory).");
     }
 
@@ -190,10 +192,24 @@ public class GridManager {
         return new Location(world, x, baseY, z);
     }
 
+    /**
+     * Returns the center location of the protected default spawn area (grid 0,0).
+     * This is where the nice spawn platform/structure is generated.
+     */
+    public Location getSpawnCenterLocation(World world) {
+        if (world == null) return null;
+        int baseY = plugin.getConfig().getInt("island.base-y", 80);
+        // Center of grid (0,0)
+        return new Location(world, islandSize / 2.0, baseY, islandSize / 2.0);
+    }
+
     public boolean isIslandLocation(Location loc) {
         if (loc == null || loc.getWorld() == null) return false;
 
         GridPosition pos = getGridPosition(loc);
+        if (pos.x() == 0 && pos.z() == 0) {
+            return false; // Spawn area is not a claimable island
+        }
         return usedPositions.contains(pos);
     }
 
@@ -212,5 +228,12 @@ public class GridManager {
 
     public Set<GridPosition> getUsedPositions() {
         return Collections.unmodifiableSet(usedPositions);
+    }
+
+    /**
+     * Check if a grid position is the protected spawn area.
+     */
+    public boolean isSpawnGridPosition(GridPosition pos) {
+        return pos != null && pos.x() == 0 && pos.z() == 0;
     }
 }
