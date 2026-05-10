@@ -1,9 +1,10 @@
 name: FoliaSkyblock
-version: 1.0.0
+version: 1.0.1
 main: com.thenerdcj.FoliaSkyblock
 api-version: 1.21
+folia-supported: true
 author: TheNerdCJ
-description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, and economy.
+description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, economy, trading, and Play-to-Win progression. Uses Folia API for region-safe operations.
 
 commands:
   island:
@@ -159,6 +160,10 @@ permissions:
     description: Allows viewing the server rules
     default: true
 
+  foliasb.donor:
+    description: Donor perks (cosmetic biome choice, etc.)
+    default: op
+
   foliasb.*:
     description: Wildcard - grants all FoliaSkyblock permissions
     default: op
@@ -167,3 +172,4 @@ permissions:
       foliasb.staff: true
       foliasb.admin.setspawn: true
       foliasb.island.*: true
+      foliasb.donor: true
