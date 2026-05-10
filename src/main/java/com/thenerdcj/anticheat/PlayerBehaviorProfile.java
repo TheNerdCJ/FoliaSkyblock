@@ -97,9 +97,13 @@ public class PlayerBehaviorProfile {
         lastActivity = now;
     }
 
+    /**
+     * Record ore mined for rate calculation. 
+     * Note: count increment moved to recordBlockBreak to avoid double counting.
+     * This now only updates rate periodically.
+     */
     public void recordOreMined() {
-        oreMinedCount++;
-        blocksBrokenTotal++;
+        // oreMinedCount++ and blocksBrokenTotal++ removed - now handled in recordBlockBreak for non-gen ores only
         long elapsed = System.currentTimeMillis() - oreMiningStartTime;
 
         if (elapsed > 60000) {
@@ -114,6 +118,7 @@ public class PlayerBehaviorProfile {
     /**
      * Record block break for fastbreak + xray detection.
      * Adjusts for custom island ore generators (high ore on upgraded islands is expected).
+     * Only called for non-generator ores in AntiCheatManager to whitelist Play-to-Win gen yields.
      */
     public void recordBlockBreak(Material blockType) {
         long now = System.currentTimeMillis();
@@ -125,8 +130,7 @@ public class PlayerBehaviorProfile {
             blockType == Material.DEEPSLATE || blockType.name().endsWith("_STONE")) {
             stoneMinedCount++;
         } else if (blockType.name().endsWith("_ORE") || blockType == Material.ANCIENT_DEBRIS) {
-            oreMinedCount++; // also count here for combined rate
-            // Note: AntiCheatManager can cross-check with IslandOreGenerator level if needed
+            oreMinedCount++; // count only for non-gen ores now
         }
 
         lastActivity = now;
@@ -135,6 +139,7 @@ public class PlayerBehaviorProfile {
     public long getLastBlockBreakTime() { return lastBlockBreakTime; }
     public int getBlocksBrokenTotal() { return blocksBrokenTotal; }
     public int getStoneMinedCount() { return stoneMinedCount; }
+    public int getOreMinedCount() { return oreMinedCount; }
 
     public void recordStoneMined() {
         stoneMinedCount++;
