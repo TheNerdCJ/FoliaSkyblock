@@ -3,6 +3,8 @@ package com.thenerdcj.gui;
 import com.thenerdcj.FoliaSkyblock;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -10,6 +12,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
@@ -24,7 +27,11 @@ public class ResetConfirmationGUI implements Listener {
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
-    public void open(Player player) {
+    /**
+     * Open the reset confirmation GUI for a specific dimension.
+     * This allows proper multi-dimension reset flow with biome reselection for donors.
+     */
+    public void open(Player player, World.Environment dimension) {
         int cost = plugin.getConfig().getInt("island.reset.cost", 0);
         long cooldownHours = plugin.getConfig().getLong("island.reset.cooldown-hours", 24);
 
@@ -39,7 +46,7 @@ public class ResetConfirmationGUI implements Listener {
                 ItemMeta warningMeta = warning.getItemMeta();
                 warningMeta.setDisplayName("§c§lWARNING");
                 warningMeta.setLore(Arrays.asList(
-                        "§7This will permanently reset your island!",
+                        "§7This will permanently reset your island in §e" + dimension.name() + "§7!",
                         "§7All blocks and items will be lost.",
                         "",
                         cost > 0 ? "§6Cost: §e" + cost + " §7from your balance" : "§aFree reset",
@@ -59,18 +66,24 @@ public class ResetConfirmationGUI implements Listener {
                 balanceItem.setItemMeta(balanceMeta);
                 gui.setItem(13, balanceItem);
 
-                // Confirm
+                // Confirm - store dimension in PDC for click handler
                 ItemStack confirm = new ItemStack(Material.EMERALD_BLOCK);
                 ItemMeta confirmMeta = confirm.getItemMeta();
                 confirmMeta.setDisplayName("§a§lCONFIRM RESET");
                 if (cost > 0) {
                     confirmMeta.setLore(Arrays.asList(
                             "§7This will deduct §e" + cost + "§7 from your balance",
-                            balance >= cost ? "§aYou have enough balance" : "§cInsufficient balance"
+                            balance >= cost ? "§aYou have enough balance" : "§cInsufficient balance",
+                            "§7Then choose new biome for §e" + dimension.name()
                     ));
                 } else {
-                    confirmMeta.setLore(Arrays.asList("§7Click to choose new biome"));
+                    confirmMeta.setLore(Arrays.asList(
+                            "§7Click to choose new biome for §e" + dimension.name()
+                    ));
                 }
+                // Embed target dimension so click handler knows which dim to reset
+                NamespacedKey dimKey = new NamespacedKey(plugin, "target_dimension");
+                confirmMeta.getPersistentDataContainer().set(dimKey, PersistentDataType.STRING, dimension.name());
                 confirm.setItemMeta(confirmMeta);
                 gui.setItem(11, confirm);
 
@@ -96,15 +109,23 @@ public class ResetConfirmationGUI implements Listener {
         });
     }
 
+    /**
+     * Convenience overload - uses player's current world environment.
+     */
+    public void open(Player player) {
+        open(player, player.getWorld().getEnvironment());
+    }
+
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (!event.getView().getTitle().equals(GUI_TITLE)) return;
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();
-        if (event.getCurrentItem() == null) return;
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null) return;
 
-        if (event.getCurrentItem().getType() == Material.EMERALD_BLOCK) {
+        if (clicked.getType() == Material.EMERALD_BLOCK) {
             player.closeInventory();
 
             int cost = plugin.getConfig().getInt("island.reset.cost", 0);
@@ -125,9 +146,26 @@ public class ResetConfirmationGUI implements Listener {
                 player.sendMessage("§a§l" + cost + "§a has been deducted from your balance.");
             }
 
-            plugin.getBiomeSelectionGUI().open(player, true);
+            // Read target dimension from the confirm button's PersistentDataContainer
+            World.Environment targetDim = World.Environment.NORMAL;
+            ItemMeta meta = clicked.getItemMeta();
+            if (meta != null) {
+                String dimStr = meta.getPersistentDataContainer().get(
+                        new NamespacedKey(plugin, "target_dimension"), PersistentDataType.STRING);
+                if (dimStr != null) {
+                    try {
+                        targetDim = World.Environment.valueOf(dimStr);
+                    } catch (IllegalArgumentException e) {
+                        // fallback to current world if invalid
+                        targetDim = player.getWorld().getEnvironment();
+                    }
+                }
+            }
+
+            // Open biome selection for the correct dimension (isReset=true)
+            plugin.getBiomeSelectionGUI().open(player, true, targetDim);
         }
-        else if (event.getCurrentItem().getType() == Material.REDSTONE_BLOCK) {
+        else if (clicked.getType() == Material.REDSTONE_BLOCK) {
             player.closeInventory();
             player.sendMessage("§7Island reset cancelled.");
         }

@@ -18,29 +18,12 @@ import java.util.stream.Collectors;
 /**
  * IslandCommand - Main command handler for /island and /is
  * 
- * RECOMMENDATIONS & UPDATES APPLIED:
- * - Comprehensive subcommand support for core island management, party/team system, and GUI shortcuts.
- * - Full integration with updated IslandManager (party methods, dimension-aware islands, DB persistence).
- * - Dimension support: /is create [normal|nether|end] - creates/resets per-dimension islands as designed.
- * - Party system fixes: invite/accept/deny/kick/leave/disband/promote use the improved PartyManager + DB sync.
- * - Permission & ownership checks everywhere (only owner can kick/promote/disband, members can leave/accept).
- * - Consistent messaging with § color codes matching plugin style.
- * - Async-safe where needed (create uses the CompletableFuture from manager).
- * - Tab completion for subcommands, online players, dimensions, ranks, and common biomes.
- * - Help system and usage messages for every subcommand.
- * - Folia-friendly (no blocking main thread, proper Player checks).
- * - Extensible: Easy to add more subcommands (e.g. warps, challenges) or link to existing GUIs.
- * - Error handling: Checks for island existence, online players, valid ranks, member status before actions.
- * - Donor biome support stub: /is create <biome> works for donors (non-donors get random).
- * - Reset with safety: /is reset requires "confirm" arg to prevent accidents (full GUI integration recommended via ResetConfirmationGUI).
- * 
- * Missing from original recommendations (now fixed):
- * - /is deny (was referenced in messages but not implemented)
- * - Proper DB rank updates on promote/demote (uses addIslandMember upsert)
- * - Multi-dimension create/home handling
- * - TabCompleter implementation
- * - Ownership transfer command
- * - Consistent party feedback messages
+ * PATCHED VERSION:
+ * - Integrated donor biome selection GUI for /is create (when no biome specified)
+ * - Integrated ResetConfirmationGUI + BiomeSelectionGUI flow for donors on /is reset
+ * - Non-donors still use the simple "confirm" arg + default PLAINS biome
+ * - Dimension-aware throughout (create/reset per Environment)
+ * - All other subcommands and logic unchanged from previous version
  */
 public class IslandCommand implements CommandExecutor, TabCompleter {
 
@@ -181,7 +164,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void sendHelp(Player player) {
         player.sendMessage("§6§l=== FoliaSkyblock Island Commands ===");
-        player.sendMessage("§e/is create [dimension] [biome] §7- Create island (normal/nether/end). Donors can pick biome.");
+        player.sendMessage("§e/is create [dimension] [biome] §7- Create island (normal/nether/end). Donors get interactive biome GUI.");
         player.sendMessage("§e/is home [player] §7- Teleport to your (or visit) island home in current dimension.");
         player.sendMessage("§e/is sethome §7- Set your island's home location to current position.");
         player.sendMessage("§e/is setspawn §7- Set island spawn point (owner only).");
@@ -196,7 +179,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         player.sendMessage("§e/is transfer <player> §7- Transfer island ownership (owner only).");
         player.sendMessage("§e/is leave §7- Leave the island party.");
         player.sendMessage("§e/is disband §7- Disband island party (removes all members, owner only).");
-        player.sendMessage("§e/is reset [confirm] §7- Reset your current dimension island (use confirm to proceed).");
+        player.sendMessage("§e/is reset §7- Reset current dimension island (donors get confirmation + biome choice GUI).");
         player.sendMessage("§e/is bank §7- Open Island Bank GUI.");
         player.sendMessage("§e/is settings §7- Open Island Settings GUI.");
         player.sendMessage("§e/is upgrade §7- Open Island Upgrades GUI.");
@@ -234,10 +217,19 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
             player.sendMessage("§eOnly donors can choose a custom biome. Using random biome instead.");
             biomeName = null;
         }
+
         if (biomeName == null) {
-            biomeName = "PLAINS"; // default for manager
+            if (isDonor) {
+                // Donor: open interactive biome selection GUI for the target dimension (not reset)
+                player.sendMessage("§aOpening donor biome selection GUI for §e" + dimension.name() + "§a island...");
+                plugin.getBiomeSelectionGUI().open(player, false, dimension);
+                return;
+            } else {
+                biomeName = "PLAINS"; // default for non-donors
+            }
         }
 
+        // Non-donor or donor with explicit biome arg -> direct create
         player.sendMessage("§aCreating your §e" + dimension.name() + " §aisland... This may take a moment.");
 
         plugin.getIslandManager().createIsland(player, biomeName, dimension)
@@ -460,7 +452,6 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void handleReset(Player player, String[] args) {
         World.Environment dim = player.getWorld().getEnvironment();
-        boolean confirmed = args.length > 1 && args[1].equalsIgnoreCase("confirm");
 
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), dim);
         if (island == null) {
@@ -468,15 +459,25 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        if (!confirmed) {
-            player.sendMessage("§c§lWARNING: §cResetting will delete all progress and members in this dimension!");
-            player.sendMessage("§eType §b/is reset confirm §eto proceed (or use the confirmation GUI for donors).");
+        boolean isDonor = player.hasPermission("foliasb.donor");
+
+        if (isDonor) {
+            // Donors get the nice confirmation GUI which then leads to biome selection
+            player.sendMessage("§aOpening reset confirmation for §e" + dim.name() + "§a island (donor perks enabled)...");
+            plugin.getResetConfirmationGUI().open(player, dim);
             return;
         }
 
-        player.sendMessage("§aResetting your §e" + dim.name() + " §aisland...");
+        // Non-donors: require explicit "confirm" arg and always reset to PLAINS
+        boolean confirmed = args.length > 1 && args[1].equalsIgnoreCase("confirm");
+        if (!confirmed) {
+            player.sendMessage("§c§lWARNING: §cResetting will delete all progress and members in this dimension!");
+            player.sendMessage("§eType §b/is reset confirm §eto proceed.");
+            return;
+        }
+
+        player.sendMessage("§aResetting your §e" + dim.name() + " §aisland to default biome...");
         plugin.getIslandManager().resetIslandWithBiome(player, "PLAINS", dim);
-        // For donors: recommend opening BiomeSelectionGUI + ResetConfirmationGUI for better UX
     }
 
     private void handleBank(Player player) {
