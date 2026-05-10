@@ -10,6 +10,7 @@ import com.thenerdcj.quest.QuestManager;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.gui.*;
 import com.thenerdcj.island.generator.IslandGenerator;
+import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.island.IslandUpgradeGUI;
 import com.thenerdcj.listener.*;
@@ -33,6 +34,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private BossManager bossManager;
     private AntiCheatManager antiCheatManager;
     private IslandUpgradeManager islandUpgradeManager;
+    private MinionManager minionManager;
     private IslandSettingsManager islandSettingsManager;
     private IslandBankManager islandBankManager;
     private IslandRatingManager islandRatingManager;
@@ -76,6 +78,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.islandBankManager = new IslandBankManager(this);
         this.islandRatingManager = new IslandRatingManager(this);
         this.islandWarpManager = new IslandWarpManager(this);
+        this.minionManager = new MinionManager(this);
         this.chestShopManager = new ChestShopManager(this);
         this.auctionManager = new AuctionManager(this);
         this.bazaarManager = new BazaarManager(this);
@@ -103,6 +106,14 @@ public class FoliaSkyblock extends JavaPlugin {
         // Load any online players' islands (useful for reloads)
         Bukkit.getOnlinePlayers().forEach(player -> islandManager.loadPlayerIslands(player));
 
+        // Load minion data from DB for online players' current islands (async cache population + entity spawn for persistence)
+        Bukkit.getOnlinePlayers().forEach(player -> {
+            Island island = islandManager.getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+            if (island != null) {
+                minionManager.loadMinionsForIsland(island);
+            }
+        });
+
         getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully on Folia!");
     }
 
@@ -126,6 +137,7 @@ public class FoliaSkyblock extends JavaPlugin {
         getCommand("auction").setExecutor(new AuctionCommand(this));
         getCommand("bazaar").setExecutor(new BazaarCommand(this));
         getCommand("staff").setExecutor(new StaffCommand(this));
+        getCommand("minions").setExecutor(new MinionsCommand(this));
 
         // /trade → opens the island trading GUI (island balance, level-gated items)
         getCommand("trade").setExecutor((sender, command, label, args) -> {
@@ -184,6 +196,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandBankManager getIslandBankManager() { return islandBankManager; }
     public IslandRatingManager getIslandRatingManager() { return islandRatingManager; }
     public IslandWarpManager getIslandWarpManager() { return islandWarpManager; }
+    public MinionManager getMinionManager() { return minionManager; }
     public ChestShopManager getChestShopManager() { return chestShopManager; }
     public AuctionManager getAuctionManager() { return auctionManager; }
     public BazaarManager getBazaarManager() { return bazaarManager; }

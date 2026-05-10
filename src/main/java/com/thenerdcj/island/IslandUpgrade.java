@@ -2,17 +2,26 @@ package com.thenerdcj.island;
 
 /**
  * Enum of all available island upgrades.
- * Each upgrade has a base cost and description.
+ * Each upgrade has a base cost, description, and is purchasable using island balance.
+ * Effects are applied via IslandUpgradeManager, Island.java, PartyManager, etc.
+ * 
+ * Added: MINION_SLOTS and MEMBER_LIMIT for purchasable progression.
  */
 public enum IslandUpgrade {
 
-    ISLAND_SIZE(1, 5000, "§bIncrease Island Size", "§7Expands your island border by 10 blocks"),
-    HOPPER_LIMIT(2, 3000, "§eHopper Limit", "§7Allows 5 more hoppers on your island"),
-    SPAWNER_RATE(3, 8000, "§cSpawner Rate", "§7Increases spawner activation speed by 15%"),
-    VAULT_SLOTS(1, 2500, "§6Vault Slots", "§7Adds 9 more slots to your /is vault"),
-    AUTO_SELLER(4, 12000, "§aAuto-Seller", "§7Automatically sells crops every 30 minutes"),
-    MOB_CAP(2, 4500, "§5Mob Cap", "§7Increases hostile mob spawn cap by 20%"),
-    CROP_GROWTH(3, 6000, "§2Crop Growth", "§7Crops grow 25% faster on your island");
+    ISLAND_SIZE(1, 5000, "Increase Island Size", "Expands your island border by 10 blocks"),
+    HOPPER_LIMIT(2, 3000, "Hopper Limit", "Allows 5 more hoppers on your island"),
+    SPAWNER_RATE(3, 8000, "Spawner Rate", "Increases spawner activation speed by 15%"),
+    VAULT_SLOTS(1, 2500, "Vault Slots", "Adds 9 more slots to your /is vault"),
+    AUTO_SELLER(4, 12000, "Auto-Seller", "Automatically sells crops every 30 minutes"),
+    MOB_CAP(2, 4500, "Mob Cap", "Increases hostile mob spawn cap by 20%"),
+    CROP_GROWTH(3, 6000, "Crop Growth", "Crops grow 25% faster on your island"),
+    
+    // NEW: Minion slots - purchasable upgrade for minion system (integrate with future MinionManager)
+    MINION_SLOTS(4, 10000, "Minion Slots", "Increases the maximum number of deployable minions by +1 per level"),
+    
+    // NEW: Member limit upgrade - makes party size purchasable beyond config base
+    MEMBER_LIMIT(3, 6500, "Member Limit", "Increases the maximum number of island members/party size by +1 per level");
 
     private final int levelReq;
     private final int baseCost;
@@ -38,7 +47,7 @@ public enum IslandUpgrade {
         return (int) (baseCost * Math.pow(1.5, currentLevel));
     }
 
-    // Methods expected by IslandUpgradeGUI
+    // Methods expected by IslandUpgradeGUI and manager
     public double getCost() { return baseCost; }
     public int getMaxLevel() { return 5; }
 }

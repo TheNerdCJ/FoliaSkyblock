@@ -93,6 +93,11 @@ commands:
     usage: /<command>
     aliases: [bz]
 
+  minions:
+    description: Open the minion management GUI
+    usage: /<command>
+    aliases: [minion]
+
 permissions:
   foliasb.staff.mute:
     description: Allows staff to mute and unmute players

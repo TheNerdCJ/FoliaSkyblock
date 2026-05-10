@@ -3,6 +3,7 @@ package com.thenerdcj.island.party;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandRank;
+import com.thenerdcj.island.IslandUpgrade;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -15,15 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * PartyManager - Handles dynamic party configuration and "smart" party features.
- *
- * Features:
- * - Loads settings from parties.yml
- * - Enforces max party size
- * - XP balancing configuration (used by Island)
- * - Smart / heuristic-based party assistance ("AI-like" features without heavy ML)
- *   - Suggest good members based on contribution/playtime
- *   - Auto-promotion scoring
- *   - Basic abuse detection hooks
+ * 
+ * UPDATED: Now integrates with IslandUpgrade.MEMBER_LIMIT to make member limits
+ * purchasable upgrades using island balance.
  */
 public class PartyManager {
 
@@ -97,6 +92,40 @@ public class PartyManager {
 
     public boolean areSmartFeaturesEnabled() {
         return config.getBoolean("party.smart-features.enable-suggestions", true);
+    }
+
+    // ==================== NEW: Upgrade-integrated member limit ====================
+
+    /**
+     * Returns the effective max party size for a specific island,
+     * including purchased MEMBER_LIMIT upgrades.
+     * Base from config + extra levels from upgrade.
+     */
+    public int getEffectiveMaxPartySize(Island island) {
+        int base = getMaxPartySize();
+        if (island == null) return base;
+
+        try {
+            String islandId = island.getGridPosition().getX() + "," + island.getGridPosition().getZ();
+            int extraLevels = 0;
+            if (plugin.getIslandUpgradeManager() != null) {
+                extraLevels = plugin.getIslandUpgradeManager().getUpgradeLevel(islandId, IslandUpgrade.MEMBER_LIMIT);
+            }
+            return Math.min(base + extraLevels, 20); // hard cap at 20 for balance
+        } catch (Exception e) {
+            plugin.getLogger().warning("Could not load MEMBER_LIMIT upgrade for island: " + e.getMessage());
+            return base;
+        }
+    }
+
+    /**
+     * Backward compatible: uses global max if no island context.
+     */
+    public int getMaxPartySize(Island island) {
+        if (island != null) {
+            return getEffectiveMaxPartySize(island);
+        }
+        return getMaxPartySize();
     }
 
     // ==================== PENDING INVITES ====================
@@ -181,7 +210,7 @@ public class PartyManager {
     }
 
     /**
-     * Decides if a member should be auto-promoted (simple rule-based "AI").
+     * Decides if a member should be auto-promote (simple rule-based "AI").
      */
     public boolean shouldAutoPromote(UUID playerUuid, Island island) {
         if (!areSmartFeaturesEnabled()) return false;
