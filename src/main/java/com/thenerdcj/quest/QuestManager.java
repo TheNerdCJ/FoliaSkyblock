@@ -1,6 +1,7 @@
 package com.thenerdcj.quest;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.island.Island;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -106,10 +107,22 @@ public class QuestManager {
                 player.sendMessage("§a§lQuest Completed! §r§a+" + xp + " XP  §e+$" + money);
                 player.sendMessage("§7Thank you for completing: §f" + quest.getTitle());
 
-                // TODO: Integrate with your actual economy and XP systems
-                // Example if you have EconomyManager:
-                // plugin.getEconomyManager().addPlayerBalance(player.getUniqueId(), money);
-                // And island XP or player XP
+                // Award Island XP (uses IslandManager which applies party-size balancing automatically)
+                plugin.getIslandManager().addIslandXp(player, xp);
+
+                // Award money to the ISLAND BANK (not personal player balance)
+                // Uses IslandBankManager.deposit() which persists to DB and cache
+                Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                if (island != null) {
+                    plugin.getIslandBankManager().deposit(island.getGridPosition(), money)
+                            .thenAccept(success -> {
+                                if (!success) {
+                                    player.sendMessage("§cWarning: Could not add money reward to your island bank.");
+                                }
+                            });
+                } else {
+                    player.sendMessage("§cWarning: No island found to deposit money into.");
+                }
 
                 // Play sound is handled in GUI
 

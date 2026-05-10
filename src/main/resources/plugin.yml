@@ -92,3 +92,73 @@ commands:
     description: Open the bazaar (instant trading)
     usage: /<command>
     aliases: [bz]
+
+permissions:
+  foliasb.staff.mute:
+    description: Allows staff to mute and unmute players
+    default: op
+
+  foliasb.staff:
+    description: Grants access to the staff panel and tools
+    default: op
+
+  foliasb.admin.setspawn:
+    description: Allows administrators to set the global server spawn location
+    default: op
+
+  foliasb.island.*:
+    description: All island-related commands and features
+    default: true
+
+  foliasb.balance:
+    description: Allows checking player and island balances
+    default: true
+
+  foliasb.rank:
+    description: Allows viewing player ranks, voting, and leaderboards
+    default: true
+
+  foliasb.challenge:
+    description: Allows viewing and participating in daily/weekly challenges
+    default: true
+
+  foliasb.trade:
+    description: Allows access to the island trading system/GUI
+    default: true
+
+  foliasb.auction:
+    description: Allows access to the auction house
+    default: true
+
+  foliasb.bazaar:
+    description: Allows access to the bazaar (instant buy/sell)
+    default: true
+
+  foliasb.enchant:
+    description: Allows use of the custom enchanting table
+    default: true
+
+  foliasb.spawn:
+    description: Allows teleporting to the server spawn
+    default: true
+
+  foliasb.home:
+    description: Allows teleporting to your island home
+    default: true
+
+  foliasb.tpa:
+    description: Allows sending and accepting teleport requests
+    default: true
+
+  foliasb.rules:
+    description: Allows viewing the server rules
+    default: true
+
+  foliasb.*:
+    description: Wildcard - grants all FoliaSkyblock permissions
+    default: op
+    children:
+      foliasb.staff.mute: true
+      foliasb.staff: true
+      foliasb.admin.setspawn: true
+      foliasb.island.*: true

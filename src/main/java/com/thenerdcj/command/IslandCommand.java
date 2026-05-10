@@ -484,9 +484,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void handleBank(Player player) {
         player.sendMessage("§aOpening Island Bank GUI...");
-        // TODO: Integrate actual open. Example if GUI supports it:
         new IslandBankGUI(plugin).open(player, new IslandManager(plugin).getIsland(player.getUniqueId(), player.getWorld().getEnvironment()));
-        // For now, this notifies. Add getter in FoliaSkyblock or make GUI openable.
         player.sendMessage("§7(If GUI does not appear, check IslandBankGUI implementation)");
     }
 
