@@ -1,0 +1,34 @@
+# FoliaSkyblock - Party / Team System Configuration
+# This file controls dynamic party behavior and smart features.
+
+party:
+  # Maximum number of members allowed in one island party (including owner)
+  max-size: 8
+
+  # How long an invite lasts before expiring (in seconds)
+  invite-timeout-seconds: 300
+
+  # XP Balancing - Ensures single player and party progression feel fair
+  # Larger parties get diminishing returns on XP gains
+  xp-balancing:
+    enabled: true
+    solo-multiplier: 1.0
+    size-2: 0.85
+    size-3: 0.75
+    size-4-plus: 0.55
+
+  # Default rank given to newly invited players
+  permissions:
+    default-invite-rank: GUEST
+
+  # Smart / "AI-assisted" party features (heuristic based, lightweight)
+  smart-features:
+    enable-suggestions: true          # Suggest good players to invite
+    contribution-weight: 0.6
+    playtime-weight: 0.4
+    auto-promote-threshold: 75        # Contribution score needed for auto-promote from GUEST
+
+# Future expansion ideas:
+# - party-chat-enabled: true
+# - shared-bank-access: true
+# - teleport-all-on-island-create: false

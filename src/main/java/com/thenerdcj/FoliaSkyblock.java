@@ -6,6 +6,7 @@ import com.thenerdcj.bazaar.BazaarManager;
 import com.thenerdcj.boss.BossManager;
 import com.thenerdcj.challenge.ChallengeManager;
 import com.thenerdcj.command.*;
+import com.thenerdcj.quest.QuestManager;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.gui.*;
 import com.thenerdcj.island.generator.IslandGenerator;
@@ -16,6 +17,7 @@ import com.thenerdcj.manager.*;
 import com.thenerdcj.rank.RankManager;
 import com.thenerdcj.shop.ChestShopManager;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class FoliaSkyblock extends JavaPlugin {
@@ -27,6 +29,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private EconomyManager economyManager;
     private RankManager rankManager;
     private ChallengeManager challengeManager;
+    private QuestManager questManager;
     private BossManager bossManager;
     private AntiCheatManager antiCheatManager;
     private IslandUpgradeManager islandUpgradeManager;
@@ -55,7 +58,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
-        // Core Managers
+        // Core Managers (order matters for dependencies)
         this.databaseManager = new DatabaseManager(this);
         databaseManager.initDatabase();
 
@@ -65,6 +68,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.economyManager = new EconomyManager(this);
         this.rankManager = new RankManager(this);
         this.challengeManager = new ChallengeManager(this);
+        this.questManager = new QuestManager(this);
         this.bossManager = new BossManager(this);
         this.antiCheatManager = new AntiCheatManager(this);
         this.islandUpgradeManager = new IslandUpgradeManager(this);
@@ -78,7 +82,10 @@ public class FoliaSkyblock extends JavaPlugin {
         this.chatManager = new ChatManager(this);
         this.worldManager = new WorldManager(this);
 
-        // GUI Instances (instantiate once)
+        // Initialize custom void worlds for Overworld, Nether, and End + spawn platform at 0,0
+        this.worldManager.initializeWorlds();
+
+        // GUI Instances (created once here)
         this.tradeGUI = new TradeGUI(this);
         this.slayerGUI = new SlayerGUI(this);
         this.slayerLeaderboardGUI = new SlayerLeaderboardGUI(this);
@@ -86,18 +93,21 @@ public class FoliaSkyblock extends JavaPlugin {
         this.enchantingTableGUI = new EnchantingTableGUI(this);
         this.islandChatManager = new IslandChatManager(this);
 
-        // Register new GUIs for Donor Biome Reset system
+        // Special GUIs for donor biome selection & island reset confirmation
         this.resetConfirmationGUI = new ResetConfirmationGUI(this);
         this.biomeSelectionGUI = new BiomeSelectionGUI(this);
+
         registerCommands();
         registerListeners();
 
+        // Load any online players' islands (useful for reloads)
         Bukkit.getOnlinePlayers().forEach(player -> islandManager.loadPlayerIslands(player));
 
-        getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully!");
+        getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully on Folia!");
     }
 
     private void registerCommands() {
+        // Core island & player commands
         getCommand("island").setExecutor(new IslandCommand(this));
         getCommand("is").setExecutor(new IslandCommand(this));
         getCommand("balance").setExecutor(new BalanceCommand(this));
@@ -111,9 +121,25 @@ public class FoliaSkyblock extends JavaPlugin {
         getCommand("tpdeny").setExecutor(new PlayerCommand(this));
         getCommand("slayer").setExecutor(new SlayerCommand(this));
         getCommand("enchant").setExecutor(new EnchantCommand(this));
+
+        // Economy & staff commands (previously missing executors)
+        getCommand("auction").setExecutor(new AuctionCommand(this));
+        getCommand("bazaar").setExecutor(new BazaarCommand(this));
+        getCommand("staff").setExecutor(new StaffCommand(this));
+
+        // /trade → opens the island trading GUI (island balance, level-gated items)
+        getCommand("trade").setExecutor((sender, command, label, args) -> {
+            if (sender instanceof Player player) {
+                tradeGUI.openTradeGUI(player);
+                return true;
+            }
+            sender.sendMessage("§cThis command can only be used by players.");
+            return false;
+        });
     }
 
     private void registerListeners() {
+        // Core protection & gameplay listeners
         Bukkit.getPluginManager().registerEvents(new IslandProtectionListener(this), this);
         Bukkit.getPluginManager().registerEvents(new CombatListener(this), this);
         Bukkit.getPluginManager().registerEvents(new DimensionIslandListener(this), this);
@@ -122,19 +148,24 @@ public class FoliaSkyblock extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new IslandXPListener(this), this);
         Bukkit.getPluginManager().registerEvents(new ChestShopListener(this), this);
 
-        // GUIs that register themselves
+        // Self-registering GUIs (they register their own listeners in their constructors)
         new ChallengeGUI(this);
-        new BiomeSelectionGUI(this);
         new IslandSettingsGUI(this);
         new IslandUpgradeGUI(this);
         new IslandBankGUI(this);
         new IslandBrowseGUI(this);
+        // Note: BiomeSelectionGUI and ResetConfirmationGUI are already instantiated in onEnable()
+        // and have dedicated getters, so we do NOT create them again here.
     }
 
     @Override
     public void onDisable() {
-        if (databaseManager != null) databaseManager.shutdown();
-        if (gridManager != null) gridManager.saveUsedPositions();
+        if (databaseManager != null) {
+            databaseManager.shutdown();
+        }
+        if (gridManager != null) {
+            gridManager.saveUsedPositions();
+        }
         getLogger().info("§c[FoliaSkyblock] Plugin disabled.");
     }
 
@@ -168,12 +199,10 @@ public class FoliaSkyblock extends JavaPlugin {
     public EnchantingTableGUI getEnchantingTableGUI() { return enchantingTableGUI; }
     public IslandChatManager getIslandChatManager() { return islandChatManager; }
 
-    // Placeholder for QuestManager (create the class later if needed)
-    public Object getQuestManager() { return null; }
+    public QuestManager getQuestManager() { return questManager; }
 
-    // Folia detection
     public boolean isFolia() {
-        return true; // This plugin is designed for Folia
+        return true; // Designed specifically for Folia's regionized threading
     }
 
     public ResetConfirmationGUI getResetConfirmationGUI() {
