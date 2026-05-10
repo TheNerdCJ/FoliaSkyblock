@@ -8,35 +8,33 @@ import java.util.*;
  * Lightweight MLP that learns legitimate vs cheating behavior in FoliaSkyblock.
  * Designed to work with custom island ore generators and Play-to-Win progression.
  * High ore rates from upgraded IslandOreGenerator + CobbleGeneratorListener are
- * treated as legitimate (profile + manager adjust thresholds).
+ * treated as legitimate (profile + manager adjust thresholds via whitelist).
  *
  * Architecture:
  * - Input Layer: 8 features (speed, stddev, attack rate, ore rate, enchants, potions, flags, xray-ish stone/ore ratio)
  * - Hidden Layer: 6 neurons ReLU
  * - Output: sigmoid (cheat prob)
  *
- * Communicates with PlayerBehaviorProfile for features and AntiCheatManager for training/flags.
- * Online learning allows adaptation to server meta (e.g. new donor perks or gen upgrades).
+ * Communicates with:
+ * - PlayerBehaviorProfile (feature extraction)
+ * - AntiCheatManager (training + probability queries)
+ * - IslandOreGenerator (via whitelist logic in recordBlockBreak)
+ *
+ * Online learning allows adaptation to server meta (donor perks, gen upgrades, etc.).
  */
 public class NeuralCheatDetector {
 
-    // Network architecture
     private static final int INPUT_SIZE = 8;
     private static final int HIDDEN_SIZE = 6;
     private static final int OUTPUT_SIZE = 1;
 
-    // Weights (randomly initialized)
     private double[][] weightsInputHidden;
     private double[][] weightsHiddenOutput;
-
-    // Biases
     private double[] biasHidden;
     private double[] biasOutput;
 
-    // Learning rate
     private static final double LEARNING_RATE = 0.1;
 
-    // Training data (for online learning)
     private final List<TrainingSample> trainingData = new ArrayList<>();
     private static final int MAX_TRAINING_SAMPLES = 1000;
 
@@ -44,11 +42,8 @@ public class NeuralCheatDetector {
         initializeNetwork();
     }
 
-    /**
-     * Initialize network with random weights
-     */
     private void initializeNetwork() {
-        Random random = new Random(42); // Fixed seed for reproducibility
+        Random random = new Random(42);
 
         weightsInputHidden = new double[INPUT_SIZE][HIDDEN_SIZE];
         for (int i = 0; i < INPUT_SIZE; i++) {
@@ -72,9 +67,6 @@ public class NeuralCheatDetector {
         }
     }
 
-    /**
-     * Forward pass
-     */
     public double predict(double[] inputs) {
         double[] hidden = new double[HIDDEN_SIZE];
         for (int j = 0; j < HIDDEN_SIZE; j++) {
@@ -89,15 +81,10 @@ public class NeuralCheatDetector {
         for (int j = 0; j < HIDDEN_SIZE; j++) {
             output += hidden[j] * weightsHiddenOutput[j][0];
         }
-
         return sigmoid(output);
     }
 
-    /**
-     * Train with backprop (online) - FIXED: correct gradient using pre-update weights
-     */
     public void train(double[] inputs, double target) {
-        // Forward pass
         double[] hidden = new double[HIDDEN_SIZE];
         for (int j = 0; j < HIDDEN_SIZE; j++) {
             double sum = biasHidden[j];
@@ -115,54 +102,11 @@ public class NeuralCheatDetector {
 
         double outputError = (target - prediction) * sigmoidDerivative(prediction);
 
-        // Update output layer weights and bias FIRST (or compute deltas)
-        for (int j = 0; j < HIDDEN_SIZE; j++) {
-            weightsHiddenOutput[j][0] += LEARNING_RATE * outputError * hidden[j];
-        }
-        biasOutput[0] += LEARNING_RATE * outputError;
-
-        // Hidden layer - use OLD weights for hiddenError calculation (fix for correct backprop)
-        // Since we already updated, we need to back-calculate or restructure. 
-        // For simplicity and correctness, we recompute hiddenError with the *old* implied weight by adjusting.
-        // Better restructure: compute hiddenError BEFORE output weight update.
-        // RE-IMPLEMENTED correctly below in comment, but for this edit we adjust by saving old weights.
-
-        // Actually to make it simple and correct, let's recompute hiddenError using the weight value before the add.
-        // Since update already happened, we can calculate what the old weight was:
-        // But to avoid complexity, the proper fix is to update AFTER error calc. Here is corrected version:
-
-        // NOTE: The above update is done, but to fix, I should have calculated hiddenError first.
-        // For this fixed file, the train is restructured properly:
-    }
-
-    // Corrected train method - full replacement for clarity
-    public void train(double[] inputs, double target) {
-        // Forward pass - compute activations
-        double[] hidden = new double[HIDDEN_SIZE];
-        for (int j = 0; j < HIDDEN_SIZE; j++) {
-            double sum = biasHidden[j];
-            for (int i = 0; i < INPUT_SIZE; i++) {
-                sum += inputs[i] * weightsInputHidden[i][j];
-            }
-            hidden[j] = relu(sum);
-        }
-
-        double output = biasOutput[0];
-        for (int j = 0; j < HIDDEN_SIZE; j++) {
-            output += hidden[j] * weightsHiddenOutput[j][0];
-        }
-        double prediction = sigmoid(output);
-
-        // Compute errors using CURRENT weights (before any update)
-        double outputError = (target - prediction) * sigmoidDerivative(prediction);
-
-        // Compute hidden errors using CURRENT (old) output weights
         double[] hiddenErrors = new double[HIDDEN_SIZE];
         for (int j = 0; j < HIDDEN_SIZE; j++) {
             hiddenErrors[j] = outputError * weightsHiddenOutput[j][0] * reluDerivative(hidden[j]);
         }
 
-        // Now apply updates
         for (int j = 0; j < HIDDEN_SIZE; j++) {
             weightsHiddenOutput[j][0] += LEARNING_RATE * outputError * hidden[j];
         }
@@ -182,9 +126,6 @@ public class NeuralCheatDetector {
         }
     }
 
-    /**
-     * Extract features from updated profile (includes xray heuristic signal via stone/ore)
-     */
     public double[] extractFeatures(PlayerBehaviorProfile profile) {
         double[] features = new double[INPUT_SIZE];
 
@@ -193,22 +134,17 @@ public class NeuralCheatDetector {
         features[2] = Math.min(1.0, profile.getRecentAttackCount() / 20.0);
         features[3] = Math.min(1.0, profile.getOreMiningRate() / 10.0);
 
-        // Feature 4: High enchants (legit high level players or donors)
         features[4] = profile.hasHighEnchantments() ? 1.0 : 0.0;
-
-        // Feature 5: High potions
         features[5] = profile.hasHighPotions() ? 1.0 : 0.0;
-
-        // Feature 6: Flag count normalized
         features[6] = Math.min(1.0, profile.getFlagCount() / 20.0);
 
-        // Feature 7: X-ray heuristic signal (high ore/low stone = suspicious)
-        // Note: gen ores are excluded from oreMinedCount in AntiCheatManager.recordBlockBreak
-        // so this signal now better reflects suspicious xray not legit gen mining.
+        // X-ray heuristic: high ore/low stone ratio is suspicious.
+        // Generator ores are excluded upstream in AntiCheatManager → only suspicious ores counted here.
         double stone = Math.max(1, profile.getStoneMinedCount());
-        double oreRatio = profile.getBlocksBrokenTotal() > 0 ? 
-            (profile.getOreMinedCount() * 1.0 / stone) : 0;
-        features[7] = Math.min(1.0, oreRatio / 3.0); // high ratio suspicious
+        double oreRatio = profile.getBlocksBrokenTotal() > 0
+                ? (profile.getOreMinedCount() * 1.0 / stone)
+                : 0;
+        features[7] = Math.min(1.0, oreRatio / 3.0);
 
         return features;
     }
