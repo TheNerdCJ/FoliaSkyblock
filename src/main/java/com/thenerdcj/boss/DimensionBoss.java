@@ -87,7 +87,7 @@ public enum DimensionBoss {
 
     /** Shulker King - Raid-like endgame boss */
     SHULKER_KING("Shulker King", EntityType.SHULKER, 90, 100, "End",
-            "ENDGAME EVENT: Leads shulker swarms in End Cities. High tier loot including enchanted shells and end crystals.",
+            "ENDGAME EVENT: Leads shulker swarms in End Cities. High tier loot including enchanted shells and end crystals."),
 
     // ============================================
     // SLAYER TIERS (Hypixel-inspired repeatable bosses - tiers 1-5+)
@@ -109,8 +109,16 @@ public enum DimensionBoss {
     /** Enderman Slayer (End dimension focused) */
     VOIDGLOOM_SERAPH_T1("Voidgloom Seraph T1", EntityType.ENDERMAN, 20, 40, "End",
             "Slayer Tier 1: Enderman boss. Drops: Null Sphere (trade for end resources)"),
-    VOIDGLOOM_SERAPH_T4("Voidgloom Seraph T4", EntityType.ENDERMAN, 45, 80, "End", "Slayer Tier 4: Powerful void boss. Drops: Null Edge, Ender Catalyst");
+    VOIDGLOOM_SERAPH_T4("Voidgloom Seraph T4", EntityType.ENDERMAN, 45, 80, "End", "Slayer Tier 4: Powerful void boss. Drops: Null Edge, Ender Catalyst"),
 
+
+    /** Blaze/Inferno Demonlord Slayer (Nether focused, Hypixel-inspired repeatable boss)
+     *  Fits the Play to Win slayer grind for island trading / bazaar economy.
+     */
+    DEMONLORD_T2("Inferno Demonlord T2", EntityType.BLAZE, 25, 55, "Nether",
+            "Slayer Tier 2: Mid-level blaze boss. Drops: Demon Horn, Inferno Catalyst (trade for nether resources or island balance)"),
+    DEMONLORD_T5("Inferno Demonlord T5", EntityType.BLAZE, 55, 95, "Nether",
+            "Slayer Tier 5: Elite blaze slayer. Drops: Fiery Blade, Demon Core (high value for island upgrades and trading)");
     private final String displayName;
     private final EntityType entityType;
     private final int minLevel;
