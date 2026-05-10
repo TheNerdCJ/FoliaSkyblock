@@ -2,7 +2,9 @@ package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
+import com.thenerdcj.gui.IslandBankGUI;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.island.IslandRank;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
@@ -483,7 +485,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private void handleBank(Player player) {
         player.sendMessage("§aOpening Island Bank GUI...");
         // TODO: Integrate actual open. Example if GUI supports it:
-        // new com.thenerdcj.gui.IslandBankGUI(plugin).open(player);
+        new IslandBankGUI(plugin).open(player, new IslandManager(plugin).getIsland(player.getUniqueId(), player.getWorld().getEnvironment()));
         // For now, this notifies. Add getter in FoliaSkyblock or make GUI openable.
         player.sendMessage("§7(If GUI does not appear, check IslandBankGUI implementation)");
     }
