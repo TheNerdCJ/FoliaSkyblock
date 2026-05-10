@@ -265,13 +265,13 @@ public class MinionManager {
             if (count > 0) {
                 spawnMinionsOnLoad(island, count, "WHEAT"); // default type for loaded; full type persistence can use extended table in future
             }
-            return null;
+            return (Void) null;
         }).exceptionally(ex -> {
             // Should rarely happen as loadMinionData handles SQL errors gracefully with defaults
             plugin.getLogger().warning("[MinionManager] Unexpected error loading minions for " + islandId + ": " + ex.getMessage());
             placedMinions.putIfAbsent(islandId, 0);
             islandFuels.putIfAbsent(islandId, 1000);
-            return null;
+            return (Void) null;
         });
     }
 

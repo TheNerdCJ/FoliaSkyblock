@@ -9,6 +9,9 @@ import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.inventory.ItemStack;
 
+import com.thenerdcj.auction.Auction;
+import com.thenerdcj.bazaar.BazaarOrder;
+
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -96,6 +99,21 @@ public class DatabaseManager {
 
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
+    }
+
+    /**
+     * Synchronous executeUpdate for DDL like table creation in managers' constructors.
+     * For DML prefer executeUpdateAsync.
+     */
+    public boolean executeUpdate(String sql) {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sql);
+            return true;
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to execute update: " + e.getMessage());
+            return false;
+        }
     }
 
     public CompletableFuture<Boolean> executeUpdateAsync(String sql, Object... params) {
@@ -417,32 +435,58 @@ public class DatabaseManager {
     }
 
     // ====================== AUCTION SYSTEM ======================
-    public CompletableFuture<List<Object>> getActiveAuctions() {  // Using Object as placeholder; replace with Auction if class available
+    public CompletableFuture<List<Auction>> getActiveAuctions() {
         return CompletableFuture.supplyAsync(() -> {
-            List<Object> auctions = new ArrayList<>();
+            List<Auction> auctions = new ArrayList<>();
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                      "SELECT * FROM auctions WHERE active = TRUE AND end_time > ?")) {
                 ps.setLong(1, System.currentTimeMillis());
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        // TODO: Construct Auction object from rs if Auction class has fromResultSet or constructor
-                        // For now return raw data or empty to fix compile
-                        auctions.add(rs.getString("id")); // placeholder
+                        String id = rs.getString("id");
+                        UUID sellerUuid = UUID.fromString(rs.getString("seller_uuid"));
+                        String itemMaterial = rs.getString("item_material");
+                        int itemAmount = rs.getInt("item_amount");
+                        double startingPrice = rs.getDouble("starting_price");
+                        double currentBid = rs.getDouble("current_bid");
+                        String bidderStr = rs.getString("current_bidder");
+                        UUID currentBidder = (bidderStr != null && !bidderStr.isEmpty()) ? UUID.fromString(bidderStr) : null;
+                        long endTime = rs.getLong("end_time");
+                        boolean active = rs.getBoolean("active");
+                        auctions.add(new Auction(id, sellerUuid, itemMaterial, itemAmount, startingPrice, currentBid, currentBidder, endTime, active));
                     }
                 }
-            } catch (SQLException e) { e.printStackTrace(); }
+            } catch (SQLException e) { 
+                plugin.getLogger().severe("Failed to get active auctions: " + e.getMessage());
+            }
             return auctions;
         }, executor);
     }
 
-    public CompletableFuture<Boolean> saveAuction(Object auction) { // Placeholder, use Auction type
-        // TODO: Implement full serialization of Auction to DB
-        return CompletableFuture.completedFuture(true);
+    public CompletableFuture<Boolean> saveAuction(Auction auction) {
+        return executeUpdateAsync(
+            "INSERT INTO auctions (id, seller_uuid, item_material, item_amount, starting_price, current_bid, current_bidder, end_time, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            auction.getId(),
+            auction.getSellerUuid().toString(),
+            auction.getItemMaterial(),
+            auction.getItemAmount(),
+            auction.getStartingPrice(),
+            auction.getCurrentBid(),
+            auction.getCurrentBidder() != null ? auction.getCurrentBidder().toString() : null,
+            auction.getEndTime(),
+            auction.isActive()
+        );
     }
 
-    public CompletableFuture<Boolean> updateAuction(Object auction) {
-        return CompletableFuture.completedFuture(true);
+    public CompletableFuture<Boolean> updateAuction(Auction auction) {
+        return executeUpdateAsync(
+            "UPDATE auctions SET current_bid = ?, current_bidder = ?, active = ? WHERE id = ?",
+            auction.getCurrentBid(),
+            auction.getCurrentBidder() != null ? auction.getCurrentBidder().toString() : null,
+            auction.isActive(),
+            auction.getId()
+        );
     }
 
     public CompletableFuture<Boolean> storePendingItem(UUID player, ItemStack item) {
@@ -465,12 +509,44 @@ public class DatabaseManager {
     }
 
     // ====================== BAZAAR SYSTEM ======================
-    public CompletableFuture<List<Object>> getActiveBazaarOrders() {
-        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor); // TODO: full impl
+    public CompletableFuture<List<BazaarOrder>> getActiveBazaarOrders() {
+        return CompletableFuture.supplyAsync(() -> {
+            List<BazaarOrder> orders = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                     "SELECT * FROM bazaar_orders WHERE filled = FALSE")) {
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String id = rs.getString("id");
+                        UUID playerUuid = UUID.fromString(rs.getString("player_uuid"));
+                        String material = rs.getString("material");
+                        int amount = rs.getInt("amount");
+                        double pricePerUnit = rs.getDouble("price_per_unit");
+                        boolean isBuyOrder = rs.getBoolean("is_buy_order");
+                        long createdAt = rs.getLong("created_at");
+                        boolean filled = rs.getBoolean("filled");
+                        orders.add(new BazaarOrder(id, playerUuid, material, amount, pricePerUnit, isBuyOrder, createdAt, filled));
+                    }
+                }
+            } catch (SQLException e) { 
+                plugin.getLogger().severe("Failed to get active bazaar orders: " + e.getMessage());
+            }
+            return orders;
+        }, executor);
     }
 
-    public CompletableFuture<Boolean> saveBazaarOrder(Object order) {
-        return CompletableFuture.completedFuture(true); // TODO
+    public CompletableFuture<Boolean> saveBazaarOrder(BazaarOrder order) {
+        return executeUpdateAsync(
+            "INSERT INTO bazaar_orders (id, player_uuid, material, amount, price_per_unit, is_buy_order, created_at, filled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            order.getId(),
+            order.getPlayerUuid().toString(),
+            order.getMaterial(),
+            order.getAmount(),
+            order.getPricePerUnit(),
+            order.isBuyOrder(),
+            order.getCreatedAt(),
+            order.isFilled()
+        );
     }
 
     public CompletableFuture<Boolean> markBazaarOrderFilled(String orderId) {

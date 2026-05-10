@@ -65,6 +65,11 @@ public class AntiCheatManager {
     private final Map<UUID, List<Long>> recentItemGains = new ConcurrentHashMap<>(); // timestamps of recent item gains
     private final Map<UUID, Integer> shulkerPlaceCount = new ConcurrentHashMap<>();
 
+    // XP exploit tracking for Play to Win (prevents macro/XP dupes)
+    private final Map<UUID, List<Long>> recentXPGains = new ConcurrentHashMap<>();
+    private final int xpGainThreshold = 100;
+    private final long xpWindowMs = 30000; // 30 seconds
+
     public AntiCheatManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         loadConfig();
@@ -382,4 +387,36 @@ public class AntiCheatManager {
     public boolean isEnabled() {
         return enabled;
     }
+
+    // ==================== XP EXPLOIT DETECTION (for IslandXPListener integration) ====================
+
+    public boolean isFlaggedForXPExploit(Player player, Material material) {
+        if (!enabled || player.hasPermission("foliasb.bypass.anticheat")) return false;
+        // Simple stub: can be expanded with material-specific XP rates or burst detection
+        UUID uuid = player.getUniqueId();
+        List<Long> gains = recentXPGains.get(uuid);
+        if (gains == null || gains.isEmpty()) return false;
+        long now = System.currentTimeMillis();
+        gains.removeIf(ts -> now - ts > xpWindowMs);
+        // If too many high gains recently, flag
+        return gains.size() > 5;
+    }
+
+    public void reportHighXPGain(Player player, double xpGained, String source) {
+        if (!enabled || xpGained <= xpGainThreshold || player.hasPermission("foliasb.bypass.anticheat")) return;
+        UUID uuid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        recentXPGains.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
+
+        List<Long> gains = recentXPGains.get(uuid);
+        gains.removeIf(ts -> now - ts > xpWindowMs);
+        if (gains.size() > 3) {
+            flagViolation(player, "High XP Gain from " + source + " (Possible Macro/Exploit)", 5);
+            // Optional: clear to avoid spam flags
+            gains.clear();
+        }
+    }
+
+    // Update cleanup to include XP gains (call in startCleanupTask or existing)
+    // Note: existing cleanup already has recentItemGains, add similar for XP if needed
 }

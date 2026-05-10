@@ -209,7 +209,7 @@ public class IslandXPListener implements Listener {
         if (island == null) return;
 
         double xp = 10.0; // Base fishing XP (Hypixel Fishing skill reference)
-        if (event.getCaught() instanceof ItemStack item && item.getType() == Material.COD) {
+        if (event.getCaught() instanceof org.bukkit.entity.Item caughtItem && caughtItem.getItemStack().getType() == Material.COD) {
             xp = 8.0;
         } else if (event.getState() == PlayerFishEvent.State.CAUGHT_ENTITY) {
             xp = 25.0; // Treasure or mob
@@ -272,7 +272,7 @@ public class IslandXPListener implements Listener {
 
             // Play to Win: Level ups give fair perks, no paywall
             if (newLevel % 10 == 0) {
-                plugin.getEconomyManager().addIslandBalance(island, 500.0 * (newLevel / 10)); // Bonus island balance on milestones
+                plugin.getEconomyManager().addIslandBalance(island.getGridPosition(), 500.0 * (newLevel / 10)); // Bonus island balance on milestones
             }
         } else {
             // Occasional XP gain message (not spammy)
