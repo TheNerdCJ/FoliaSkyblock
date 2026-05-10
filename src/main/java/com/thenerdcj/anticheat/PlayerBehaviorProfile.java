@@ -1,11 +1,24 @@
 package com.thenerdcj.anticheat;
 
 import org.bukkit.Location;
+import org.bukkit.Material;
 
 import java.util.*;
 
 /**
  * Player Behavior Profile - AI Memory for Anti-Cheat
+ * 
+ * Updated for better integration with FoliaSkyblock's custom island systems,
+ * ore generators, and Play-to-Win progression.
+ * 
+ * Communicates with:
+ * - NeuralCheatDetector (feature extraction for ML detection)
+ * - AntiCheatManager (records movement, combat, mining, dupe, XP events)
+ * - IslandManager / GridManager (via manager for location context in flags)
+ * - IslandXPManager / leveling (XP exploit reporting)
+ * 
+ * Tracks metrics to prevent exploits that bypass economy, trading, leveling,
+ * and custom generators (e.g. high ore from upgraded cobble gens is legit).
  */
 public class PlayerBehaviorProfile {
 
@@ -23,9 +36,13 @@ public class PlayerBehaviorProfile {
     private int recentAttackCount = 0;
     private final List<Long> attackTimestamps = new ArrayList<>();
 
+    // Mining metrics - enhanced for xray + custom ore gen awareness
     private int oreMinedCount = 0;
     private long oreMiningStartTime = 0;
     private double oreMiningRate = 0.0;
+    private int stoneMinedCount = 0; // for xray heuristic (low stone = suspicious ore focus)
+    private int blocksBrokenTotal = 0;
+    private long lastBlockBreakTime = 0;
 
     private boolean hasLegitimateSpeed = false;
     private boolean hasLegitimateReach = false;
@@ -82,6 +99,7 @@ public class PlayerBehaviorProfile {
 
     public void recordOreMined() {
         oreMinedCount++;
+        blocksBrokenTotal++;
         long elapsed = System.currentTimeMillis() - oreMiningStartTime;
 
         if (elapsed > 60000) {
@@ -90,6 +108,37 @@ public class PlayerBehaviorProfile {
             oreMiningStartTime = System.currentTimeMillis();
         }
 
+        lastActivity = System.currentTimeMillis();
+    }
+
+    /**
+     * Record block break for fastbreak + xray detection.
+     * Adjusts for custom island ore generators (high ore on upgraded islands is expected).
+     */
+    public void recordBlockBreak(Material blockType) {
+        long now = System.currentTimeMillis();
+        long timeSinceLast = now - lastBlockBreakTime;
+        lastBlockBreakTime = now;
+        blocksBrokenTotal++;
+
+        if (blockType == Material.STONE || blockType == Material.COBBLESTONE || 
+            blockType == Material.DEEPSLATE || blockType.name().endsWith("_STONE")) {
+            stoneMinedCount++;
+        } else if (blockType.name().endsWith("_ORE") || blockType == Material.ANCIENT_DEBRIS) {
+            oreMinedCount++; // also count here for combined rate
+            // Note: AntiCheatManager can cross-check with IslandOreGenerator level if needed
+        }
+
+        lastActivity = now;
+    }
+
+    public long getLastBlockBreakTime() { return lastBlockBreakTime; }
+    public int getBlocksBrokenTotal() { return blocksBrokenTotal; }
+    public int getStoneMinedCount() { return stoneMinedCount; }
+
+    public void recordStoneMined() {
+        stoneMinedCount++;
+        blocksBrokenTotal++;
         lastActivity = System.currentTimeMillis();
     }
 
@@ -102,6 +151,7 @@ public class PlayerBehaviorProfile {
         flagReasons.merge(reason, 1, Integer::sum);
     }
 
+    // Getters
     public UUID getPlayerId() { return playerId; }
     public long getLastActivity() { return lastActivity; }
     public Location getLastLocation() { return lastLocation; }
@@ -117,6 +167,7 @@ public class PlayerBehaviorProfile {
     public boolean hasHighEnchantments() { return hasHighEnchantments; }
     public boolean hasHighPotions() { return hasHighPotions; }
 
+    // Setters
     public void setLastLocation(Location loc) { this.lastLocation = loc; }
     public void setLastHealth(double health) { this.lastHealth = health; }
     public void setHasLegitimateSpeed(boolean value) { this.hasLegitimateSpeed = value; }

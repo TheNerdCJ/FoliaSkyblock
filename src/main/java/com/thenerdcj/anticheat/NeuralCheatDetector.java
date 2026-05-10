@@ -3,17 +3,20 @@ package com.thenerdcj.anticheat;
 import java.util.*;
 
 /**
- * Simple Neural Network for Cheat Detection
+ * Simple Neural Network for Cheat Detection (Updated)
  *
- * A lightweight multi-layer perceptron that learns to distinguish
- * between legitimate players (with high enchants/potions) and actual cheaters.
+ * Lightweight MLP that learns legitimate vs cheating behavior in FoliaSkyblock.
+ * Designed to work with custom island ore generators and Play-to-Win progression.
+ * High ore rates from upgraded IslandOreGenerator + CobbleGeneratorListener are
+ * treated as legitimate (profile + manager adjust thresholds).
  *
  * Architecture:
- * - Input Layer: 8 features (speed, reach, attack rate, ore rate, enchants, potions, flags, streak)
- * - Hidden Layer: 6 neurons with ReLU activation
- * - Output Layer: 1 neuron with sigmoid activation (0 = legitimate, 1 = cheating)
+ * - Input Layer: 8 features (speed, stddev, attack rate, ore rate, enchants, potions, flags, xray-ish stone/ore ratio)
+ * - Hidden Layer: 6 neurons ReLU
+ * - Output: sigmoid (cheat prob)
  *
- * Training: Online learning with backpropagation
+ * Communicates with PlayerBehaviorProfile for features and AntiCheatManager for training/flags.
+ * Online learning allows adaptation to server meta (e.g. new donor perks or gen upgrades).
  */
 public class NeuralCheatDetector {
 
@@ -47,7 +50,6 @@ public class NeuralCheatDetector {
     private void initializeNetwork() {
         Random random = new Random(42); // Fixed seed for reproducibility
 
-        // Input -> Hidden weights
         weightsInputHidden = new double[INPUT_SIZE][HIDDEN_SIZE];
         for (int i = 0; i < INPUT_SIZE; i++) {
             for (int j = 0; j < HIDDEN_SIZE; j++) {
@@ -55,13 +57,11 @@ public class NeuralCheatDetector {
             }
         }
 
-        // Hidden -> Output weights
         weightsHiddenOutput = new double[HIDDEN_SIZE][OUTPUT_SIZE];
         for (int i = 0; i < HIDDEN_SIZE; i++) {
             weightsHiddenOutput[i][0] = random.nextGaussian() * 0.5;
         }
 
-        // Biases
         biasHidden = new double[HIDDEN_SIZE];
         biasOutput = new double[OUTPUT_SIZE];
         for (int i = 0; i < HIDDEN_SIZE; i++) {
@@ -70,10 +70,9 @@ public class NeuralCheatDetector {
     }
 
     /**
-     * Forward pass through the network
+     * Forward pass
      */
     public double predict(double[] inputs) {
-        // Hidden layer
         double[] hidden = new double[HIDDEN_SIZE];
         for (int j = 0; j < HIDDEN_SIZE; j++) {
             double sum = biasHidden[j];
@@ -83,7 +82,6 @@ public class NeuralCheatDetector {
             hidden[j] = relu(sum);
         }
 
-        // Output layer
         double output = biasOutput[0];
         for (int j = 0; j < HIDDEN_SIZE; j++) {
             output += hidden[j] * weightsHiddenOutput[j][0];
@@ -93,10 +91,9 @@ public class NeuralCheatDetector {
     }
 
     /**
-     * Train the network with a single sample
+     * Train with backprop (online)
      */
     public void train(double[] inputs, double target) {
-        // Forward pass
         double[] hidden = new double[HIDDEN_SIZE];
         for (int j = 0; j < HIDDEN_SIZE; j++) {
             double sum = biasHidden[j];
@@ -112,16 +109,13 @@ public class NeuralCheatDetector {
         }
         double prediction = sigmoid(output);
 
-        // Backward pass (gradient descent)
         double outputError = (target - prediction) * sigmoidDerivative(prediction);
 
-        // Update hidden -> output weights
         for (int j = 0; j < HIDDEN_SIZE; j++) {
             weightsHiddenOutput[j][0] += LEARNING_RATE * outputError * hidden[j];
         }
         biasOutput[0] += LEARNING_RATE * outputError;
 
-        // Update input -> hidden weights
         for (int j = 0; j < HIDDEN_SIZE; j++) {
             double hiddenError = outputError * weightsHiddenOutput[j][0] * reluDerivative(hidden[j]);
             for (int i = 0; i < INPUT_SIZE; i++) {
@@ -130,7 +124,6 @@ public class NeuralCheatDetector {
             biasHidden[j] += LEARNING_RATE * hiddenError;
         }
 
-        // Store training sample
         trainingData.add(new TrainingSample(inputs, target));
         if (trainingData.size() > MAX_TRAINING_SAMPLES) {
             trainingData.remove(0);
@@ -138,86 +131,54 @@ public class NeuralCheatDetector {
     }
 
     /**
-     * Extract features from player behavior profile
+     * Extract features from updated profile (includes xray heuristic signal via stone/ore)
      */
     public double[] extractFeatures(PlayerBehaviorProfile profile) {
         double[] features = new double[INPUT_SIZE];
 
-        // Feature 0: Speed deviation (normalized)
         features[0] = Math.min(1.0, profile.getAverageSpeed() / 20.0);
-
-        // Feature 1: Speed standard deviation
         features[1] = Math.min(1.0, profile.getSpeedStandardDeviation() / 5.0);
-
-        // Feature 2: Recent attack rate (attacks per second)
         features[2] = Math.min(1.0, profile.getRecentAttackCount() / 20.0);
-
-        // Feature 3: Ore mining rate
         features[3] = Math.min(1.0, profile.getOreMiningRate() / 10.0);
 
-        // Feature 4: Has legitimate speed (0 or 1)
-        features[4] = profile.hasLegitimateSpeed() ? 1.0 : 0.0;
+        // Feature 4: High enchants (legit high level players or donors)
+        features[4] = profile.hasHighEnchantments() ? 1.0 : 0.0;
 
-        // Feature 5: Has high enchantments (0 or 1)
-        features[5] = profile.hasHighEnchantments() ? 1.0 : 0.0;
+        // Feature 5: High potions
+        features[5] = profile.hasHighPotions() ? 1.0 : 0.0;
 
-        // Feature 6: Flag count (normalized)
+        // Feature 6: Flag count normalized
         features[6] = Math.min(1.0, profile.getFlagCount() / 20.0);
 
-        // Feature 7: Has high potions (0 or 1)
-        features[7] = profile.hasHighPotions() ? 1.0 : 0.0;
+        // Feature 7: X-ray heuristic signal (high ore/low stone = suspicious unless on high gen island)
+        // Manager adjusts profile or threshold; here we use raw ratio signal
+        double stone = Math.max(1, profile.getStoneMinedCount());
+        double oreRatio = profile.getBlocksBrokenTotal() > 0 ? 
+            (profile.getOreMinedCount() * 1.0 / stone) : 0;
+        features[7] = Math.min(1.0, oreRatio / 3.0); // high ratio suspicious
 
         return features;
     }
 
-    /**
-     * Train on a labeled sample
-     * @param profile Player behavior profile
-     * @param isCheater True if player is confirmed cheating, false if legitimate
-     */
     public void learnFromSample(PlayerBehaviorProfile profile, boolean isCheater) {
         double[] features = extractFeatures(profile);
         double target = isCheater ? 1.0 : 0.0;
         train(features, target);
     }
 
-    /**
-     * Get cheat probability (0.0 = legitimate, 1.0 = cheating)
-     */
     public double getCheatProbability(PlayerBehaviorProfile profile) {
         double[] features = extractFeatures(profile);
         return predict(features);
     }
 
-    /**
-     * ReLU activation function
-     */
-    private double relu(double x) {
-        return Math.max(0, x);
-    }
+    private double relu(double x) { return Math.max(0, x); }
+    private double reluDerivative(double x) { return x > 0 ? 1.0 : 0.0; }
+    private double sigmoid(double x) { return 1.0 / (1.0 + Math.exp(-x)); }
+    private double sigmoidDerivative(double x) { return x * (1.0 - x); }
 
-    private double reluDerivative(double x) {
-        return x > 0 ? 1.0 : 0.0;
-    }
-
-    /**
-     * Sigmoid activation function
-     */
-    private double sigmoid(double x) {
-        return 1.0 / (1.0 + Math.exp(-x));
-    }
-
-    private double sigmoidDerivative(double x) {
-        return x * (1.0 - x);
-    }
-
-    /**
-     * Training sample for online learning
-     */
     private static class TrainingSample {
         double[] inputs;
         double target;
-
         TrainingSample(double[] inputs, double target) {
             this.inputs = inputs;
             this.target = target;

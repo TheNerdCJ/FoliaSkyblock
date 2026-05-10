@@ -69,6 +69,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private EnchantingTableGUI enchantingTableGUI;
     private IslandChatManager islandChatManager;
 
+
     @Override
     public void onEnable() {
         saveDefaultConfig();

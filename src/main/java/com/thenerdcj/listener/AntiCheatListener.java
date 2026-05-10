@@ -18,6 +18,14 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerPickupItemEvent;
 import org.bukkit.inventory.ItemStack;
 
+/**
+ * AntiCheatListener - Wires Bukkit/Folia events to AntiCheatManager.
+ * 
+ * Uses Folia API (EntityScheduler, RegionScheduler) for thread-safe checks on high-concurrency servers.
+ * Communicates directly with AntiCheatManager which in turn uses NeuralCheatDetector + PlayerBehaviorProfile.
+ * 
+ * Updated to support fastbreak tracking, xray heuristics, and custom generator awareness.
+ */
 public class AntiCheatListener implements Listener {
 
     private final FoliaSkyblock plugin;
@@ -33,6 +41,7 @@ public class AntiCheatListener implements Listener {
         Player player = event.getPlayer();
         if (player.hasPermission("foliasb.bypass.anticheat")) return;
 
+        // Folia EntityScheduler - safe per-player
         player.getScheduler().run(plugin, task -> {
             if (!antiCheatManager.checkPlayer(player)) {
                 player.teleport(event.getFrom());
@@ -46,8 +55,11 @@ public class AntiCheatListener implements Listener {
         Player player = e.getPlayer();
         if (player.hasPermission("foliasb.bypass.anticheat")) return;
 
+        // Record for fastbreak + xray profile BEFORE check
+        antiCheatManager.recordBlockBreak(player, e.getBlock());
+
+        // Folia RegionScheduler for location-bound check
         plugin.getServer().getRegionScheduler().execute(plugin, e.getBlock().getLocation(), () -> {
-            // Fast break logic + record for dupe context if needed
             antiCheatManager.checkPlayer(player);
         });
     }
@@ -56,6 +68,8 @@ public class AntiCheatListener implements Listener {
     public void onBlockPlace(BlockPlaceEvent e) {
         Player player = e.getPlayer();
         if (player.hasPermission("foliasb.bypass.anticheat")) return;
+
+        antiCheatManager.recordBlockPlaceTime(player); // for fastplace
 
         ItemStack item = e.getItemInHand();
         if (item.getType() == Material.SHULKER_BOX) {
@@ -71,8 +85,7 @@ public class AntiCheatListener implements Listener {
         player.getScheduler().run(plugin, task -> antiCheatManager.checkPlayer(player), null);
     }
 
-    // ==================== DUPLICATION DETECTION EVENTS ====================
-
+    // Dupe / inventory events
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInventoryMoveItem(InventoryMoveItemEvent e) {
         if (e.getSource().getHolder() instanceof Player player) {
@@ -89,7 +102,6 @@ public class AntiCheatListener implements Listener {
         if (e.getBlock().getState() instanceof org.bukkit.block.Dispenser ||
             e.getBlock().getState() instanceof org.bukkit.block.Dropper) {
 
-            // Try to find nearby player who might be using it
             for (Player p : e.getBlock().getWorld().getPlayers()) {
                 if (p.getLocation().distance(e.getBlock().getLocation()) < 6) {
                     antiCheatManager.checkContainerDuplication(p, e.getBlock());

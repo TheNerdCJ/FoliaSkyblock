@@ -16,7 +16,7 @@ public enum IslandUpgrade {
     AUTO_SELLER(4, 12000, "Auto-Seller", "Automatically sells crops every 30 minutes"),
     MOB_CAP(2, 4500, "Mob Cap", "Increases hostile mob spawn cap by 20%"),
     CROP_GROWTH(3, 6000, "Crop Growth", "Crops grow 25% faster on your island"),
-    
+    ORE_GENERATOR(3, 15000, "Ore Generator", "Upgrades all cobblestone generators on the island to produce better ores more often. Scales with level (coal/iron early → diamonds/emeralds at high levels)"),
     // NEW: Minion slots - purchasable upgrade for minion system (integrate with future MinionManager)
     MINION_SLOTS(4, 10000, "Minion Slots", "Increases the maximum number of deployable minions by +1 per level"),
     
