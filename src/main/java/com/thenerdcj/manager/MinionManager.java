@@ -285,4 +285,30 @@ public class MinionManager {
                 island.getGridPosition().getX() + "," + island.getGridPosition().getZ(), i);
         }
     }
+
+    /**
+     * Saves all in-memory minion data (counts and fuels) to the database on server shutdown or reload.
+     * This ensures Play to Win progression (minions as earned island automation) is not lost.
+     * Iterates over all tracked islands and persists via existing saveMinionCount (which also saves fuel).
+     * Called from FoliaSkyblock.onDisable() for graceful persistence.
+     * Communicates with DatabaseManager for async save.
+     */
+    public void saveAllMinionData() {
+        int savedCount = 0;
+        for (Map.Entry<String, Integer> entry : placedMinions.entrySet()) {
+            String islandId = entry.getKey();
+            int count = entry.getValue();
+            saveMinionCount(islandId, count);  // also persists current fuel from islandFuels map
+            savedCount++;
+        }
+        // Also ensure any fuels without minion count are saved? Rare, but for completeness
+        for (String islandId : islandFuels.keySet()) {
+            if (!placedMinions.containsKey(islandId)) {
+                saveMinionCount(islandId, 0);
+                savedCount++;
+            }
+        }
+        plugin.getLogger().info("§a[MinionManager] Saved minion data for " + savedCount + " islands on shutdown (Play to Win persistence).");
+        // Note: activeMinions (entities) are cleaned by server stop; counts restored on load via loadMinionsForIsland
+    }
 }

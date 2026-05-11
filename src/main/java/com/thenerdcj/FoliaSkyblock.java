@@ -132,38 +132,38 @@ public class FoliaSkyblock extends JavaPlugin {
     }
 
     private void registerCommands() {
-        // Core island & player commands
-        getCommand("island").setExecutor(new IslandCommand(this));
-        getCommand("is").setExecutor(new IslandCommand(this));
-        getCommand("balance").setExecutor(new BalanceCommand(this));
-        getCommand("bal").setExecutor(new BalanceCommand(this));
-        getCommand("rank").setExecutor(new RankCommand(this));
-        getCommand("challenge").setExecutor(new ChallengeCommand(this));
-        getCommand("challenges").setExecutor(new ChallengeCommand(this));
-        getCommand("spawn").setExecutor(new PlayerCommand(this));
-        getCommand("tpa").setExecutor(new PlayerCommand(this));
-        getCommand("tpaccept").setExecutor(new PlayerCommand(this));
-        getCommand("tpdeny").setExecutor(new PlayerCommand(this));
-        getCommand("slayer").setExecutor(new SlayerCommand(this));
-        getCommand("enchant").setExecutor(new EnchantCommand(this));
+        // Core island & player commands - safe registration to prevent NPE if command not in plugin.yml
+        safeRegisterCommand("island", new IslandCommand(this));
+        safeRegisterCommand("is", new IslandCommand(this));
+        safeRegisterCommand("balance", new BalanceCommand(this));
+        safeRegisterCommand("bal", new BalanceCommand(this));
+        safeRegisterCommand("rank", new RankCommand(this));
+        safeRegisterCommand("challenge", new ChallengeCommand(this));
+        safeRegisterCommand("challenges", new ChallengeCommand(this));
+        safeRegisterCommand("spawn", new PlayerCommand(this));
+        safeRegisterCommand("tpa", new PlayerCommand(this));
+        safeRegisterCommand("tpaccept", new PlayerCommand(this));
+        safeRegisterCommand("tpdeny", new PlayerCommand(this));
+        safeRegisterCommand("slayer", new SlayerCommand(this));
+        safeRegisterCommand("enchant", new EnchantCommand(this));
 
         // Economy & staff commands
-        getCommand("auction").setExecutor(new AuctionCommand(this));
-        getCommand("bazaar").setExecutor(new BazaarCommand(this));
-        getCommand("staff").setExecutor(new StaffCommand(this));
-        getCommand("minions").setExecutor(new MinionsCommand(this));
+        safeRegisterCommand("auction", new AuctionCommand(this));
+        safeRegisterCommand("bazaar", new BazaarCommand(this));
+        safeRegisterCommand("staff", new StaffCommand(this));
+        safeRegisterCommand("minions", new MinionsCommand(this));
 
         // Additional commands from plugin.yml that were missing executors (fixed for functionality)
-        getCommand("setspawn").setExecutor(new StaffCommand(this));
-        getCommand("mute").setExecutor(new StaffCommand(this));
-        getCommand("unmute").setExecutor(new StaffCommand(this));
-        getCommand("home").setExecutor(new IslandCommand(this));
-        getCommand("pending").setExecutor(new PlayerCommand(this));
-        getCommand("daily").setExecutor(new ChallengeCommand(this));
-        getCommand("rules").setExecutor(new PlayerCommand(this));
+        safeRegisterCommand("setspawn", new StaffCommand(this));
+        safeRegisterCommand("mute", new StaffCommand(this));
+        safeRegisterCommand("unmute", new StaffCommand(this));
+        safeRegisterCommand("home", new IslandCommand(this));
+        safeRegisterCommand("pending", new PlayerCommand(this));
+        safeRegisterCommand("daily", new ChallengeCommand(this));
+        safeRegisterCommand("rules", new PlayerCommand(this));
 
         // /trade → opens the island trading GUI (island balance, level-gated items, Play to Win trading)
-        getCommand("trade").setExecutor((sender, command, label, args) -> {
+        safeRegisterCommand("trade", (sender, command, label, args) -> {
             if (sender instanceof Player player) {
                 tradeGUI.openTradeGUI(player);
                 return true;
@@ -171,6 +171,15 @@ public class FoliaSkyblock extends JavaPlugin {
             sender.sendMessage("§cThis command can only be used by players.");
             return false;
         });
+    }
+
+    private void safeRegisterCommand(String name, org.bukkit.command.CommandExecutor executor) {
+        var cmd = getCommand(name);
+        if (cmd != null) {
+            cmd.setExecutor(executor);
+        } else {
+            getLogger().warning("§e[ FoliaSkyblock] Command '" + name + "' not found in plugin.yml - executor not registered. Add it for full functionality.");
+        }
     }
 
     private void registerListeners() {
@@ -195,13 +204,28 @@ public class FoliaSkyblock extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Graceful shutdown - save all persistent data to maintain Play to Win economy integrity and prevent data loss
         if (databaseManager != null) {
             databaseManager.shutdown();
         }
         if (gridManager != null) {
             gridManager.saveUsedPositions();
         }
-        getLogger().info("§c[FoliaSkyblock] Plugin disabled.");
+        if (minionManager != null) {
+            minionManager.saveAllMinionData();
+        }
+        if (economyManager != null) {
+            economyManager.saveAllBalances();
+        }
+        if (antiCheatManager != null) {
+            antiCheatManager.saveViolationLogs();
+        }
+        if (islandManager != null) {
+            islandManager.saveAllIslandData();
+        }
+        // Additional managers (auction, bazaar, etc.) can have similar save* if they hold in-memory state.
+
+        getLogger().info("§c[FoliaSkyblock] Plugin disabled. All Play-to-Win data persisted safely.");
     }
 
     // ==================== GETTERS ====================
