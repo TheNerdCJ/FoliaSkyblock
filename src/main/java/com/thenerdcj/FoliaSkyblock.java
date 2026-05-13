@@ -62,6 +62,8 @@ public class FoliaSkyblock extends JavaPlugin {
     private SlayerAchievementGUI slayerAchievementGUI;
     private EnchantingTableGUI enchantingTableGUI;
     private IslandChatManager islandChatManager;
+    private IslandUpgradeGUI islandUpgradeGUI;
+
 
     @Override
     public void onEnable() {
@@ -106,6 +108,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.islandChatManager = new IslandChatManager(this);
         this.resetConfirmationGUI = new ResetConfirmationGUI(this);
         this.biomeSelectionGUI = new BiomeSelectionGUI(this);
+        this.islandUpgradeGUI = new IslandUpgradeGUI(this);
 
         // === Register Commands & Listeners ===
         registerCommands();
@@ -226,7 +229,9 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandSettingsManager getIslandSettingsManager() { return islandSettingsManager; }
     public IslandRatingManager getIslandRatingManager() { return islandRatingManager; }
     public IslandWarpManager getIslandWarpManager() { return islandWarpManager; }
-
+    public IslandUpgradeGUI getIslandUpgradeGUI() {
+        return islandUpgradeGUI;
+    }
     // Folia detection
     public boolean isFolia() {
         try {
