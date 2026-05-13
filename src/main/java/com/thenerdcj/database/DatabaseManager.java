@@ -3,6 +3,7 @@ package com.thenerdcj.database;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.auction.Auction;
 import com.thenerdcj.bazaar.BazaarOrder;
+import com.thenerdcj.database.TopIslandEntry;
 import com.thenerdcj.hologram.HologramData;
 import com.thenerdcj.island.Island;
 import com.zaxxer.hikari.HikariConfig;
@@ -96,12 +97,34 @@ public class DatabaseManager {
     }
 
     public Island getIslandByOwner(UUID owner, World.Environment dimension) {
+        String sql = "SELECT id, grid_x, grid_z, biome, level FROM islands WHERE owner_uuid = ? AND dimension = ?";
+
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT id FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-            ps.setString(1, owner.toString()); ps.setString(2, dimension.name());
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, owner.toString());
+            ps.setString(2, dimension.name());
             ResultSet rs = ps.executeQuery();
-            return rs.next() ? rs.getInt("id") : -1;
-        } catch (SQLException e) { return -1; }
+
+            if (rs.next()) {
+                int gridX = rs.getInt("grid_x");
+                int gridZ = rs.getInt("grid_z");
+                String biome = rs.getString("biome");
+                int level = rs.getInt("level");
+
+                // Reconstruct GridPosition and Island
+                GridPosition pos = new GridPosition(gridX, gridZ, dimension);
+                Island island = new Island(pos, owner, biome, dimension);
+                island.setLevel(level);           // restore saved level
+
+                return island;
+            }
+
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to load island: " + e.getMessage());
+        }
+
+        return null;
     }
 
     public CompletableFuture<Boolean> deleteIsland(UUID owner, org.bukkit.World.Environment dimension) {
@@ -239,5 +262,40 @@ public class DatabaseManager {
     public void close() {
         if (dataSource != null && !dataSource.isClosed()) dataSource.close();
         executor.shutdown();
+    }
+    // Get last reset time (returns 0 if never reset)
+    public long getLastResetTime(UUID playerUuid) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT last_reset FROM islands WHERE owner_uuid = ? ORDER BY last_reset DESC LIMIT 1")) {
+
+            ps.setString(1, playerUuid.toString());
+            ResultSet rs = ps.executeQuery();
+
+            if (rs.next()) {
+                return rs.getLong("last_reset");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to get last reset time: " + e.getMessage());
+        }
+        return 0;
+    }
+
+    // Update last reset time (call this when a player resets)
+    public void updateLastResetTime(UUID playerUuid, World.Environment dimension) {
+        long now = System.currentTimeMillis();
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE islands SET last_reset = ? WHERE owner_uuid = ? AND dimension = ?")) {
+
+            ps.setLong(1, now);
+            ps.setString(2, playerUuid.toString());
+            ps.setString(3, dimension.name());
+            ps.executeUpdate();
+
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to update last reset time: " + e.getMessage());
+        }
     }
 }
