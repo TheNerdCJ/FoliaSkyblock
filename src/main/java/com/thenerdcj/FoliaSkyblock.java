@@ -24,8 +24,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 /**
  * FoliaSkyblock - High performance Skyblock for Folia API.
- * Hologram system added: Persistent admin holograms using TextDisplay + Folia RegionScheduler.
- * All previous verifications still apply (island gen, party XP, separate economies, anticheat, Play-to-Win, etc.).
  */
 public class FoliaSkyblock extends JavaPlugin {
 
@@ -69,7 +67,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
-        // Core Managers (order matters)
         this.databaseManager = new DatabaseManager(this);
         databaseManager.initDatabase();
 
@@ -94,14 +91,11 @@ public class FoliaSkyblock extends JavaPlugin {
         this.chatManager = new ChatManager(this);
         this.worldManager = new WorldManager(this);
 
-        // Initialize custom void worlds + protected 0,0 spawn
         this.worldManager.initializeWorlds();
 
-        // NEW: Hologram system (after worlds + DB ready)
         this.hologramManager = new HologramManager(this);
         hologramManager.loadAndSpawnAll();
 
-        // GUI Instances
         this.tradeGUI = new TradeGUI(this);
         this.slayerGUI = new SlayerGUI(this);
         this.slayerLeaderboardGUI = new SlayerLeaderboardGUI(this);
@@ -115,7 +109,6 @@ public class FoliaSkyblock extends JavaPlugin {
         registerCommands();
         registerListeners();
 
-        // Load online players
         Bukkit.getOnlinePlayers().forEach(player -> islandManager.loadPlayerIslands(player));
 
         getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully on Folia! Hologram system active.");
@@ -123,18 +116,12 @@ public class FoliaSkyblock extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (hologramManager != null) {
-            hologramManager.cleanup();
-        }
-        if (databaseManager != null) {
-            databaseManager.close();
-        }
+        if (hologramManager != null) hologramManager.cleanup();
+        if (databaseManager != null) databaseManager.close();
         getLogger().info("§e[FoliaSkyblock] Plugin disabled. Holograms cleaned up.");
     }
 
     private void registerCommands() {
-        // ... (your existing safeRegisterCommand calls - keep them all)
-
         safeRegisterCommand("island", new IslandCommand(this));
         safeRegisterCommand("is", new IslandCommand(this));
         safeRegisterCommand("balance", new BalanceCommand(this));
@@ -160,7 +147,6 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("daily", new ChallengeCommand(this));
         safeRegisterCommand("rules", new PlayerCommand(this));
 
-        // Trade command
         safeRegisterCommand("trade", (sender, cmd, label, args) -> {
             if (sender instanceof Player player) {
                 tradeGUI.openTradeGUI(player);
@@ -170,7 +156,6 @@ public class FoliaSkyblock extends JavaPlugin {
             return false;
         });
 
-        // NEW: Hologram admin command
         safeRegisterCommand("holo", new HologramCommand(this));
         safeRegisterCommand("hologram", new HologramCommand(this));
     }
@@ -180,43 +165,54 @@ public class FoliaSkyblock extends JavaPlugin {
         if (cmd != null) {
             cmd.setExecutor(executor);
         } else {
-            getLogger().warning("§e[ FoliaSkyblock] Command '" + name + "' not found in plugin.yml (skipped).");
+            getLogger().warning("§e[FoliaSkyblock] Command '" + name + "' not found in plugin.yml (skipped).");
         }
     }
 
     private void registerListeners() {
-        // Add your existing listeners here
-        // getServer().getPluginManager().registerEvents(new SomeListener(this), this);
+        // Add your listeners here
     }
 
-    // ==================== GETTERS (add this one) ===================
-    public HologramManager getHologramManager() { return hologramManager; }  // NEW
-
-    // ==================== MISSING GETTERS (added to fix compilation) ====================
+    // ==================== GETTERS ====================
+    public DatabaseManager getDatabaseManager() { return databaseManager; }
+    public IslandManager getIslandManager() { return islandManager; }
+    public EconomyManager getEconomyManager() { return economyManager; }
+    public RankManager getRankManager() { return rankManager; }
+    public HologramManager getHologramManager() { return hologramManager; }
     public GridManager getGridManager() { return gridManager; }
     public IslandGenerator getIslandGenerator() { return islandGenerator; }
     public IslandBankManager getIslandBankManager() { return islandBankManager; }
     public BossManager getBossManager() { return bossManager; }
     public ChatManager getChatManager() { return chatManager; }
+    public WorldManager getWorldManager() { return worldManager; }
+    public MinionManager getMinionManager() { return minionManager; }
+    public IslandUpgradeManager getIslandUpgradeManager() { return islandUpgradeManager; }
     public AuctionManager getAuctionManager() { return auctionManager; }
     public BazaarManager getBazaarManager() { return bazaarManager; }
-    public ChallengeManager getChallengeManager() { return challengeManager; }
+
+    // GUI Getters (fix for SlayerCommand errors)
+    public SlayerGUI getSlayerGUI() { return slayerGUI; }
+    public SlayerLeaderboardGUI getSlayerLeaderboardGUI() { return slayerLeaderboardGUI; }
+    public SlayerAchievementGUI getSlayerAchievementGUI() { return slayerAchievementGUI; }
     public EnchantingTableGUI getEnchantingTableGUI() { return enchantingTableGUI; }
-    public BiomeSelectionGUI getBiomeSelectionGUI() { return biomeSelectionGUI; }
     public ResetConfirmationGUI getResetConfirmationGUI() { return resetConfirmationGUI; }
-    public IslandUpgradeManager getIslandUpgradeManager() { return islandUpgradeManager; }
-    public MinionManager getMinionManager() { return minionManager; }
+    public BiomeSelectionGUI getBiomeSelectionGUI() { return biomeSelectionGUI; }
+
+    public ChallengeManager getChallengeManager() { return challengeManager; }
+    public QuestManager getQuestManager() { return questManager; }
+    public AntiCheatManager getAntiCheatManager() { return antiCheatManager; }
+    public ChestShopManager getChestShopManager() { return chestShopManager; }
     public IslandSettingsManager getIslandSettingsManager() { return islandSettingsManager; }
     public IslandRatingManager getIslandRatingManager() { return islandRatingManager; }
     public IslandWarpManager getIslandWarpManager() { return islandWarpManager; }
-    public ChestShopManager getChestShopManager() { return chestShopManager; }
-    public QuestManager getQuestManager() { return questManager; }
-    public AntiCheatManager getAntiCheatManager() { return antiCheatManager; }
-    public WorldManager getWorldManager() { return worldManager; }
-    public RankManager getRankManager() { return rankManager; }
-    public EconomyManager getEconomyManager() { return economyManager; }
-    public IslandManager getIslandManager() { return islandManager; }
-    public DatabaseManager getDatabaseManager() { return databaseManager; }
 
-    // Add more as needed (e.g. getSlayerGUI(), etc.)
+    // Folia detection
+    public boolean isFolia() {
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
 }

@@ -9,7 +9,9 @@ import org.bukkit.World;
 import org.bukkit.entity.TextDisplay;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
+import org.bukkit.util.Transformation;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -57,6 +59,7 @@ public class HologramManager {
         plugin.getServer().getRegionScheduler().execute(plugin, baseLoc, () -> {
             List<TextDisplay> displays = new ArrayList<>();
             double yOffset = 0.0;
+            double scale = data.getScale();   // Local scale variable for consistent use in spacing and entity scaling
 
             for (String rawLine : data.getLines()) {
                 Location lineLoc = baseLoc.clone().add(0, yOffset, 0);
@@ -66,7 +69,12 @@ public class HologramManager {
                     entity.setBillboard(org.bukkit.entity.Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
                     entity.setSeeThrough(data.isSeeThrough());
                     entity.setShadowed(data.isShadow());
-                    entity.setScale(new Vector3f((float) data.getScale(), (float) data.getScale(), (float) data.getScale()));
+                    entity.setTransformation(new Transformation(
+                            new Vector3f(0, 0, 0),                    // translation
+                            new Quaternionf(),                        // left rotation
+                            new Vector3f((float) scale, (float) scale, (float) scale), // scale
+                            new Quaternionf()                         // right rotation
+                    ));
 
                     if (data.getBackgroundColor() != null && !data.getBackgroundColor().isEmpty()) {
                         try {
@@ -78,7 +86,7 @@ public class HologramManager {
                 });
 
                 displays.add(td);
-                yOffset -= 0.28;
+                yOffset -= 0.28 * scale;   // Spacing now correctly scales with the hologram size
             }
 
             Hologram holo = new Hologram(data, displays);

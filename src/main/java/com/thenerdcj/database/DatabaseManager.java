@@ -3,15 +3,18 @@ package com.thenerdcj.database;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.auction.Auction;
 import com.thenerdcj.bazaar.BazaarOrder;
-import com.thenerdcj.database.TopIslandEntry;
 import com.thenerdcj.hologram.HologramData;
+import com.thenerdcj.island.Island;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.bukkit.World;
 import org.bukkit.inventory.ItemStack;
 
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -79,18 +82,20 @@ public class DatabaseManager {
     public CompletableFuture<Boolean> updateHologramLines(int id, List<String> lines) { return CompletableFuture.completedFuture(true); }
     public CompletableFuture<Boolean> updateHologramInterval(int id, int seconds) { return CompletableFuture.completedFuture(true); }
 
-    // ==================== ISLAND METHODS (Exact signatures) ====================
-    public boolean saveIsland(int gridX, int gridZ, UUID owner, String dimension, String biome) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome) VALUES (?, ?, ?, ?, ?)")) {
-            ps.setInt(1, gridX); ps.setInt(2, gridZ);
-            ps.setString(3, owner.toString()); ps.setString(4, dimension); ps.setString(5, biome);
-            ps.executeUpdate(); return true;
-        } catch (SQLException e) { return false; }
+    // ==================== ISLAND METHODS (sync for now - callers expect sync) ====================
+    public CompletableFuture<Boolean> saveIsland(int gridX, int gridZ, UUID owner, String dimension, String biome) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome) VALUES (?, ?, ?, ?, ?)")) {
+                ps.setInt(1, gridX); ps.setInt(2, gridZ);
+                ps.setString(3, owner.toString()); ps.setString(4, dimension); ps.setString(5, biome);
+                ps.executeUpdate(); return true;
+            } catch (SQLException e) { return false; }
+        }, executor);
     }
 
-    public int getIslandByOwner(UUID owner, org.bukkit.World.Environment dimension) {
+    public Island getIslandByOwner(UUID owner, World.Environment dimension) {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement("SELECT id FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
             ps.setString(1, owner.toString()); ps.setString(2, dimension.name());
@@ -99,12 +104,14 @@ public class DatabaseManager {
         } catch (SQLException e) { return -1; }
     }
 
-    public boolean deleteIsland(UUID owner, org.bukkit.World.Environment dimension) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("DELETE FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-            ps.setString(1, owner.toString()); ps.setString(2, dimension.name());
-            return ps.executeUpdate() > 0;
-        } catch (SQLException e) { return false; }
+    public CompletableFuture<Boolean> deleteIsland(UUID owner, org.bukkit.World.Environment dimension) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement("DELETE FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
+                ps.setString(1, owner.toString()); ps.setString(2, dimension.name());
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) { return false; }
+        }, executor);
     }
 
     public boolean addIslandMember(int islandId, int gridX, String dimension, UUID player, String role) {
@@ -119,7 +126,7 @@ public class DatabaseManager {
     public boolean removeIslandMember(int islandId, int gridX, String dimension, UUID player) {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                     "DELETE FROM island_members WHERE island_id = ? AND player_uuid = ?")) {
+                 "DELETE FROM island_members WHERE island_id = ? AND player_uuid = ?")) {
             ps.setInt(1, islandId); ps.setString(2, player.toString());
             return ps.executeUpdate() > 0;
         } catch (SQLException e) { return false; }
@@ -172,32 +179,54 @@ public class DatabaseManager {
     }
 
     // ==================== RANKS ====================
-    public int getCurrentRankId(UUID uuid) { return 1; }
-    public int getUpvoteCount(UUID uuid) { return 0; }
-    public boolean setRank(UUID uuid, String rankName) { return true; }
-    public boolean addVote(UUID voter, UUID target) { return true; }
+    public CompletableFuture<String> getCurrentRankId(UUID uuid) { return CompletableFuture.completedFuture("default"); }
+    public CompletableFuture<Integer> getUpvoteCount(UUID uuid) { return CompletableFuture.completedFuture(0); }
+    public CompletableFuture<Boolean> setRank(UUID uuid, String rankName) { return CompletableFuture.completedFuture(true); }
+    public CompletableFuture<Boolean> addVote(UUID voter, UUID target) { return CompletableFuture.completedFuture(true); }
 
-    // ==================== MINIONS, UPGRADES, AUCTIONS, BAZAAR, SLAYER ====================
-    public boolean saveMinionData(String islandKey, int type, int level) { return true; }
-    public List<Object> loadMinionData(String islandKey) { return new ArrayList<>(); }
+    // ==================== MINIONS, UPGRADES, AUCTIONS, BAZAAR, SLAYER (NOW ASYNC) ====================
+    public CompletableFuture<List<Object>> loadMinionData(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+    }
 
-    public List<Object> loadIslandUpgrades(String islandKey) { return new ArrayList<>(); }
-    public boolean saveIslandUpgrade(String islandKey, String type, int level) { return true; }
+    public CompletableFuture<Boolean> saveMinionData(String islandKey, int type, int level) {
+        return CompletableFuture.completedFuture(true);
+    }
 
-    public List<Auction> getActiveAuctions() { return new ArrayList<>(); }
+    public CompletableFuture<Map<String, Integer>> loadIslandUpgrades(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> new HashMap<>(), executor);
+    }
+
+    public CompletableFuture<Boolean> saveIslandUpgrade(String islandKey, String type, int level) {
+        return CompletableFuture.completedFuture(true);
+    }
+
+    public CompletableFuture<List<Auction>> getActiveAuctions() {
+        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+    }
+
     public boolean saveAuction(Auction a) { return true; }
     public boolean updateAuction(Auction a) { return true; }
     public boolean storePendingItem(UUID u, ItemStack i) { return true; }
     public boolean markAuctionSold(String id, UUID buyer) { return true; }
     public boolean markAuctionExpired(String id) { return true; }
 
-    public List<BazaarOrder> getActiveBazaarOrders() { return new ArrayList<>(); }
+    public CompletableFuture<List<BazaarOrder>> getActiveBazaarOrders() {
+        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+    }
+
     public boolean saveBazaarOrder(BazaarOrder o) { return true; }
     public boolean markBazaarOrderFilled(String id) { return true; }
 
     public boolean incrementSlayerKills(UUID uuid, String type, String tier, int amount) { return true; }
-    public List<Object> getGlobalTopSlayers(int limit) { return new ArrayList<>(); }
-    public List<Object> getTopSlayers(String type, int limit) { return new ArrayList<>(); }
+
+    public CompletableFuture<List<Object>> getGlobalTopSlayers(int limit) {
+        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+    }
+
+    public CompletableFuture<List<Object>> getTopSlayers(String type, int limit) {
+        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+    }
 
     public List<TopIslandEntry> getTopIslandsByLevel(int limit) { return new ArrayList<>(); }
 
