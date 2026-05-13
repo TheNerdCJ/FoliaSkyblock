@@ -214,6 +214,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public AuctionManager getAuctionManager() { return auctionManager; }
     public BazaarManager getBazaarManager() { return bazaarManager; }
 
+
     // GUI Getters (fix for SlayerCommand errors)
     public SlayerGUI getSlayerGUI() { return slayerGUI; }
     public SlayerLeaderboardGUI getSlayerLeaderboardGUI() { return slayerLeaderboardGUI; }

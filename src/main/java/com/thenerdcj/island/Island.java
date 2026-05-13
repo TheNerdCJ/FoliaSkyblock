@@ -10,9 +10,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Core Island object with full leveling system.
- * XP scales based on party size (diminishing returns for larger parties).
- * Added dimension unlock and online members for IslandXPListener and design compliance.
+ * Core Island object.
+ * Handles leveling, party XP balancing, member management, and dimension progression.
  */
 public class Island {
 
@@ -25,11 +24,10 @@ public class Island {
     private int level = 1;
     private double xp = 0.0;
 
-    // Dimension unlock flags (for progression to Nether/End)
+    // Dimension unlock flags
     private boolean netherUnlocked = false;
     private boolean endUnlocked = false;
 
-    // XP required for next level (quadratic scaling)
     private static final double BASE_XP_PER_LEVEL = 100.0;
 
     public Island(GridPosition gridPosition, UUID ownerUuid, String biomeName, World.Environment dimension) {
@@ -40,27 +38,37 @@ public class Island {
         members.put(ownerUuid, IslandRank.OWNER);
     }
 
-    // ====================== GETTERS ======================
+    // ====================== CORE GETTERS ======================
     public GridPosition getGridPosition() { return gridPosition; }
     public UUID getOwnerUuid() { return ownerUuid; }
     public String getBiomeName() { return biomeName; }
+    public World.Environment getDimension() { return dimension; }
+    public int getLevel() { return level; }
+    public double getXp() { return xp; }
 
     public void setBiome(String biomeName) {
         this.biomeName = biomeName;
     }
-    public World.Environment getDimension() { return dimension; }
-    public int getLevel() { return level; }
-    public double getXp() { return xp; }
-    public double getXpForNextLevel() { return getRequiredXpForLevel(level + 1); }
 
-    public Map<UUID, IslandRank> getMembers() { return Collections.unmodifiableMap(members); }
+    // ====================== UNIQUE ID (IMPORTANT FOR UPGRADES & DB) ======================
+    /**
+     * Returns a unique ID for this island (used by IslandUpgradeManager & GUI)
+     */
+    public String getId() {
+        return ownerUuid.toString() + "_" + dimension.name().toLowerCase();
+    }
+
+    // ====================== MEMBER MANAGEMENT ======================
+    public Map<UUID, IslandRank> getMembers() {
+        return Collections.unmodifiableMap(members);
+    }
+
     public int getMemberCount() { return members.size(); }
 
     public boolean isOwner(UUID uuid) { return ownerUuid.equals(uuid); }
     public boolean isMember(UUID uuid) { return members.containsKey(uuid); }
     public IslandRank getRank(UUID uuid) { return members.getOrDefault(uuid, IslandRank.GUEST); }
 
-    // ====================== MEMBER MANAGEMENT ======================
     public void addMember(UUID uuid, IslandRank rank) {
         if (!isOwner(uuid)) members.put(uuid, rank);
     }
@@ -70,7 +78,9 @@ public class Island {
     }
 
     public void setMemberRank(UUID uuid, IslandRank rank) {
-        if (!isOwner(uuid) && members.containsKey(uuid)) members.put(uuid, rank);
+        if (!isOwner(uuid) && members.containsKey(uuid)) {
+            members.put(uuid, rank);
+        }
     }
 
     public void transferOwnership(UUID newOwnerUuid) {
@@ -81,7 +91,7 @@ public class Island {
         }
     }
 
-    // ====================== CENTER LOCATION ======================
+    // ====================== LOCATION HELPERS ======================
     public Location getCenter(World world) {
         if (world.getEnvironment() != this.dimension) return null;
         int centerX = gridPosition.x() * 128 + 64;
@@ -89,12 +99,10 @@ public class Island {
         return new Location(world, centerX, 100, centerZ);
     }
 
-    // ====================== SPAWN LOCATION ======================
     private Location spawnLocation;
 
     public Location getSpawnLocation() {
-        if (spawnLocation != null) return spawnLocation;
-        return getCenter(null);
+        return spawnLocation != null ? spawnLocation : getCenter(null);
     }
 
     public void setSpawnLocation(Location location) {
@@ -107,15 +115,13 @@ public class Island {
         return rank != null && rank.hasPermission(permission);
     }
 
-    // ====================== LEVELING SYSTEM (balanced for party) ======================
+    // ====================== LEVELING SYSTEM (Party Balanced) ======================
     public void addXp(double baseAmount, int partySize) {
         if (baseAmount <= 0) return;
         if (partySize <= 0) partySize = 1;
 
         double multiplier = calculateXpMultiplier(partySize);
-        double effectiveXp = baseAmount * multiplier;
-
-        this.xp += effectiveXp;
+        this.xp += baseAmount * multiplier;
         checkLevelUp();
     }
 
@@ -159,9 +165,13 @@ public class Island {
         this.xp = Math.max(0, newXp);
     }
 
-    // ====================== DIMENSION UNLOCK (for IslandXPListener and progression design) ======================
+    public double getXpForNextLevel() {
+        return getRequiredXpForLevel(level + 1);
+    }
+
+    // ====================== DIMENSION PROGRESSION ======================
     public boolean hasUnlockedNether() {
-        return netherUnlocked || level >= 10; // Example threshold; tune based on config/boss defeats
+        return netherUnlocked || level >= 10;
     }
 
     public boolean hasUnlockedEnd() {
@@ -174,10 +184,9 @@ public class Island {
         } else if ("end".equalsIgnoreCase(dimensionName) || "the_end".equalsIgnoreCase(dimensionName)) {
             this.endUnlocked = true;
         }
-        // Could persist to DB via IslandManager or listener
     }
 
-    // ====================== ONLINE MEMBERS (for party XP calc and anti-cheat) ======================
+    // ====================== ONLINE MEMBERS ======================
     public List<Player> getOnlineMembers() {
         List<Player> online = new ArrayList<>();
         for (UUID uuid : members.keySet()) {
@@ -189,7 +198,6 @@ public class Island {
         return online;
     }
 
-    // Optional: get online member count for XP multiplier
     public int getOnlineMemberCount() {
         return getOnlineMembers().size();
     }

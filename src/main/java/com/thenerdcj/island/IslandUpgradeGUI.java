@@ -1,8 +1,9 @@
 package com.thenerdcj.island;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.island.Island;
-import com.thenerdcj.island.IslandUpgrade;
+import com.thenerdcj.database.GridPosition;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -14,12 +15,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
-/**
- * Island Upgrade GUI - Purchase island upgrades with island balance
- */
 public class IslandUpgradeGUI implements Listener {
 
     private final FoliaSkyblock plugin;
@@ -30,44 +28,52 @@ public class IslandUpgradeGUI implements Listener {
     }
 
     public void open(Player player, Island island) {
-        Inventory gui = Bukkit.createInventory(null, 54, "§6§lIsland Upgrades §7(" + island.getLevel() + ")");
+        Inventory gui = Bukkit.createInventory(null, 54,
+                Component.text("§6§lIsland Upgrades §7(Lv." + island.getLevel() + ")"));
 
-        gui.setItem(4, createItem(Material.NETHER_STAR, "§6§lIsland Upgrades",
-                "§7Upgrade your island with special perks",
-                "§7Island Balance: §e$" + String.format("%.0f", getIslandBalance(island))));
+        GridPosition pos = island.getGridPosition();
 
-        int slot = 10;
-        for (IslandUpgrade upgrade : IslandUpgrade.values()) {
-            if (slot > 44) break;
+        // Async balance fetch
+        plugin.getEconomyManager().getIslandBalance(pos).thenAccept(balance -> {
 
-            int currentLevel = getUpgradeLevel(island, upgrade);
-            boolean canAfford = getIslandBalance(island) >= upgrade.getCost();
-            boolean canPurchase = canAfford && currentLevel < upgrade.getMaxLevel();
+            // Schedule on the player's region (Folia optimized)
+            player.getScheduler().run(plugin, scheduledTask -> {
 
-            Material material = getUpgradeMaterial(upgrade);
-            String name = "§e§l" + upgrade.getDisplayName();
-            if (currentLevel > 0) name += " §7[" + currentLevel + "/" + upgrade.getMaxLevel() + "]";
+                gui.setItem(4, createItem(Material.NETHER_STAR, "§6§lIsland Upgrades",
+                        "§7Balance: §e$" + String.format("%.0f", balance)));
 
-            List<String> lore = new ArrayList<>();
-            lore.add("§7" + upgrade.getDescription());
-            lore.add("");
-            lore.add("§7Level: §e" + currentLevel + "§7/§e" + upgrade.getMaxLevel());
-            lore.add("§7Cost: §e$" + String.format("%.0f", upgrade.getCost()));
-            lore.add("");
+                int slot = 10;
+                for (IslandUpgrade upgrade : IslandUpgrade.values()) {
+                    if (slot > 44) break;
 
-            if (canPurchase) lore.add("§a§lClick to Purchase!");
-            else if (currentLevel >= upgrade.getMaxLevel()) lore.add("§c§lMAX LEVEL REACHED");
-            else { lore.add("§c§lCannot Afford"); lore.add("§7Need: §c$" + String.format("%.0f", upgrade.getCost() - getIslandBalance(island))); }
+                    int currentLevel = plugin.getIslandUpgradeManager().getUpgradeLevel(island.getId(), upgrade);
+                    double cost = upgrade.getCostForLevel(currentLevel);
+                    boolean canAfford = balance >= cost;
+                    boolean maxed = currentLevel >= upgrade.getMaxLevel();
 
-            gui.setItem(slot++, createItem(material, name, lore.toArray(new String[0])));
-        }
+                    Material material = getUpgradeMaterial(upgrade);
+                    String name = "§e§l" + upgrade.getDisplayName() +
+                            " §7[" + currentLevel + "/" + upgrade.getMaxLevel() + "]";
 
-        gui.setItem(49, createItem(Material.BARRIER, "§c§lClose", "§7Click to close"));
-        player.openInventory(gui);
+                    List<String> lore = new ArrayList<>();
+                    lore.add("§7" + upgrade.getDescription());
+                    lore.add("");
+                    lore.add("§7Level: §e" + currentLevel + "§7/§e" + upgrade.getMaxLevel());
+                    lore.add("§7Cost: §e$" + String.format("%.0f", cost));
+
+                    if (maxed) lore.add("§c§lMAX LEVEL REACHED");
+                    else if (canAfford) lore.add("§a§lClick to Purchase!");
+                    else lore.add("§c§lCannot Afford");
+
+                    gui.setItem(slot++, createItem(material, name, lore.toArray(new String[0])));
+                }
+
+                gui.setItem(49, createItem(Material.BARRIER, "§c§lClose"));
+                player.openInventory(gui);
+
+            }, null);
+        });
     }
-
-    private double getIslandBalance(Island island) { return 10000.0; }
-    private int getUpgradeLevel(Island island, IslandUpgrade upgrade) { return 0; }
 
     private Material getUpgradeMaterial(IslandUpgrade upgrade) {
         return switch (upgrade) {
@@ -82,35 +88,60 @@ public class IslandUpgradeGUI implements Listener {
         };
     }
 
-    private ItemStack createItem(Material material, String name, String... lore) {
+    private ItemStack createItem(Material material, String legacyName, String... legacyLore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        meta.setLore(Arrays.asList(lore));
+
+        meta.displayName(LegacyComponentSerializer.legacySection().deserialize(legacyName));
+
+        if (legacyLore.length > 0) {
+            List<Component> loreList = new ArrayList<>();
+            for (String line : legacyLore) {
+                loreList.add(LegacyComponentSerializer.legacySection().deserialize(line));
+            }
+            meta.lore(loreList);
+        }
+
         item.setItemMeta(meta);
         return item;
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!event.getView().getTitle().contains("§6§lIsland Upgrades")) return;
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+
+        Component viewTitle = event.getView().title();
+        String title = LegacyComponentSerializer.legacySection().serialize(viewTitle);
+
+        if (!title.contains("Island Upgrades")) return;
+
         event.setCancelled(true);
 
-        Player player = (Player) event.getWhoClicked();
         ItemStack clicked = event.getCurrentItem();
         if (clicked == null || clicked.getType() == Material.AIR) return;
 
-        String itemName = clicked.getItemMeta().getDisplayName();
-        if (itemName.contains("Close")) { player.closeInventory(); return; }
+        String itemName = "";
+        if (clicked.getItemMeta() != null && clicked.getItemMeta().displayName() != null) {
+            itemName = LegacyComponentSerializer.legacySection()
+                    .serialize(Objects.requireNonNull(clicked.getItemMeta().displayName()));
+        }
+
+        if (itemName.contains("Close")) {
+            player.closeInventory();
+            return;
+        }
+
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) return;
 
         for (IslandUpgrade upgrade : IslandUpgrade.values()) {
             if (itemName.contains(upgrade.getDisplayName())) {
-                Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-                if (island != null) {
-                    plugin.getIslandUpgradeManager().purchaseUpgrade(player, island, upgrade);
-                    player.closeInventory();
-                    Bukkit.getScheduler().runTaskLater(plugin, () -> open(player, island), 20L);
-                }
+                plugin.getIslandUpgradeManager().purchaseUpgrade(player, island, upgrade);
+                player.closeInventory();
+
+                // Use player's scheduler for GUI refresh (Folia optimized)
+                player.getScheduler().runDelayed(plugin,
+                        scheduledTask -> open(player, island), null, 5L);
                 return;
             }
         }

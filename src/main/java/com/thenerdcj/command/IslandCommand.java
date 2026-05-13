@@ -495,7 +495,12 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void handleUpgrade(Player player) {
         player.sendMessage("§aOpening Island Upgrades GUI...");
-        // Similar
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island != null) {
+            plugin.getIslandUpgradeGUI().open(player, island);
+        } else {
+            player.sendMessage("§cYou don't have an island here!");
+        }
     }
 
     private void handleBrowse(Player player, String[] args) {
