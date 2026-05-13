@@ -67,6 +67,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
+        // === Initialize Managers ===
         this.databaseManager = new DatabaseManager(this);
         databaseManager.initDatabase();
 
@@ -96,24 +97,25 @@ public class FoliaSkyblock extends JavaPlugin {
         this.hologramManager = new HologramManager(this);
         hologramManager.loadAndSpawnAll();
 
+        // === GUIs ===
         this.tradeGUI = new TradeGUI(this);
         this.slayerGUI = new SlayerGUI(this);
         this.slayerLeaderboardGUI = new SlayerLeaderboardGUI(this);
         this.slayerAchievementGUI = new SlayerAchievementGUI(this);
         this.enchantingTableGUI = new EnchantingTableGUI(this);
         this.islandChatManager = new IslandChatManager(this);
-
         this.resetConfirmationGUI = new ResetConfirmationGUI(this);
         this.biomeSelectionGUI = new BiomeSelectionGUI(this);
 
+        // === Register Commands & Listeners ===
         registerCommands();
-        registerListeners();
+        registerListeners();                    // ← ADD THIS
 
+        // Load islands for already online players
         Bukkit.getOnlinePlayers().forEach(player -> islandManager.loadPlayerIslands(player));
 
-        getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully on Folia! Hologram system active.");
+        getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully on Folia!");
     }
-
     @Override
     public void onDisable() {
         if (hologramManager != null) hologramManager.cleanup();
@@ -170,9 +172,28 @@ public class FoliaSkyblock extends JavaPlugin {
     }
 
     private void registerListeners() {
-        // Add your listeners here
-    }
+        var pm = getServer().getPluginManager();
 
+        // === Progression & XP ===
+        pm.registerEvents(new IslandXPListener(this), this);
+        pm.registerEvents(new ChallengeProgressListener(this), this);
+        pm.registerEvents(new CobbleGeneratorListener(this, gridManager, islandUpgradeManager), this);
+        // === Economy Systems ===
+        pm.registerEvents(new ChestShopListener(this), this);
+
+        // === Protection & Security ===
+        pm.registerEvents(new IslandProtectionListener(this), this);
+        pm.registerEvents(new AntiCheatListener(this), this);
+        pm.registerEvents(new HopperDupeListener(this, antiCheatManager), this);
+        // === Combat & Utilities ===
+        pm.registerEvents(new CombatListener(this), this);
+        pm.registerEvents(new AnvilListener(this), this);
+
+        // === Dimension & Island Logic ===
+        pm.registerEvents(new DimensionIslandListener(this), this);
+
+        getLogger().info("§a[FoliaSkyblock] All listeners registered successfully.");
+    }
     // ==================== GETTERS ====================
     public DatabaseManager getDatabaseManager() { return databaseManager; }
     public IslandManager getIslandManager() { return islandManager; }
