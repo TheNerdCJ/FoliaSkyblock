@@ -48,6 +48,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private IslandGenerator islandGenerator;
     private HologramManager hologramManager;
     private TeleportRequestManager teleportRequestManager;
+    private PunishmentManager punishmentManager;
 
     // ==================== GUI INSTANCES ====================
     private TradeGUI tradeGUI;
@@ -90,6 +91,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.chatManager = new ChatManager(this);
         this.teleportRequestManager = new TeleportRequestManager(this);
         this.tpaListGUI = new TPAListGUI(this, teleportRequestManager);
+        this.punishmentManager = new PunishmentManager(this);
 
         // === WorldManager (Custom Void Worlds) ===
         this.worldManager = new WorldManager(this);
@@ -303,5 +305,9 @@ public class FoliaSkyblock extends JavaPlugin {
         } catch (ClassNotFoundException e) {
             return false;
         }
+    }
+
+    public PunishmentManager getPunishmentManager() {
+        return punishmentManager;
     }
 }

@@ -1,7 +1,7 @@
 package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.manager.ChatManager;
+import com.thenerdcj.database.Punishment;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
@@ -10,6 +10,8 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
@@ -72,12 +74,10 @@ public class StaffCommand implements CommandExecutor {
                     return true;
                 }
                 try {
-                    float speed = Float.parseFloat(args[0]) / 10f;
-                    if (speed < 0.1f) speed = 0.1f;
-                    if (speed > 1f) speed = 1f;
+                    float speed = Math.max(0.1f, Math.min(1f, Float.parseFloat(args[0]) / 10f));
                     player.setFlySpeed(speed);
                     player.setWalkSpeed(speed);
-                    player.sendMessage("§aSpeed set to §e" + (int) (speed * 10));
+                    player.sendMessage("§aSpeed set to §e" + (int)(speed * 10));
                 } catch (NumberFormatException e) {
                     player.sendMessage("§cInvalid speed value.");
                 }
@@ -88,19 +88,17 @@ public class StaffCommand implements CommandExecutor {
                     player.sendMessage("§cUsage: /gm <0|1|2|3>");
                     return true;
                 }
-                try {
-                    GameMode mode = switch (args[0].toLowerCase()) {
-                        case "0", "s", "survival" -> GameMode.SURVIVAL;
-                        case "1", "c", "creative" -> GameMode.CREATIVE;
-                        case "2", "a", "adventure" -> GameMode.ADVENTURE;
-                        case "3", "sp", "spectator" -> GameMode.SPECTATOR;
-                        default -> null;
-                    };
-                    if (mode != null) {
-                        player.setGameMode(mode);
-                        player.sendMessage("§aGamemode set to §e" + mode.name());
-                    }
-                } catch (Exception e) {
+                GameMode mode = switch (args[0].toLowerCase()) {
+                    case "0", "s", "survival" -> GameMode.SURVIVAL;
+                    case "1", "c", "creative" -> GameMode.CREATIVE;
+                    case "2", "a", "adventure" -> GameMode.ADVENTURE;
+                    case "3", "sp", "spectator" -> GameMode.SPECTATOR;
+                    default -> null;
+                };
+                if (mode != null) {
+                    player.setGameMode(mode);
+                    player.sendMessage("§aGamemode set to §e" + mode.name());
+                } else {
                     player.sendMessage("§cInvalid gamemode.");
                 }
                 break;
@@ -139,75 +137,32 @@ public class StaffCommand implements CommandExecutor {
                     double x = Double.parseDouble(args[0]);
                     double y = Double.parseDouble(args[1]);
                     double z = Double.parseDouble(args[2]);
-                    player.teleport(player.getWorld().getBlockAt((int) x, (int) y, (int) z).getLocation());
+                    player.teleport(player.getWorld().getBlockAt((int)x, (int)y, (int)z).getLocation().add(0.5, 0, 0.5));
                     player.sendMessage("§aTeleported to coordinates.");
                 } catch (Exception e) {
                     player.sendMessage("§cInvalid coordinates.");
                 }
                 break;
 
-            // === Punishments ===
+            // === Punishments (with logging) ===
             case "ban", "tempban":
                 handleBan(player, args, cmd.equals("tempban"));
                 break;
+
             case "kick":
-                if (args.length == 0) {
-                    player.sendMessage("§cUsage: /kick <player> [reason]");
-                    return true;
-                }
-                Player kickTarget = Bukkit.getPlayer(args[0]);
-                if (kickTarget != null) {
-                    String reason = args.length > 1
-                            ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length))
-                            : "Kicked by staff";
-
-                    // Modern Adventure Component kick
-                    kickTarget.kick(Component.text("§c" + reason));
-
-                    player.sendMessage("§aKicked §e" + kickTarget.getName());
-                } else {
-                    player.sendMessage("§cPlayer not found.");
-                }
+                handleKick(player, args);
                 break;
 
             case "mute":
-                // Already handled in original, now expanded
-                if (args.length == 0) {
-                    player.sendMessage("§cUsage: /mute <player> [duration] [reason]");
-                    return true;
-                }
-                Player muteTarget = Bukkit.getPlayer(args[0]);
-                if (muteTarget != null) {
-                    plugin.getChatManager().mute(muteTarget.getUniqueId());
-                    player.sendMessage("§cMuted §e" + muteTarget.getName());
-                    muteTarget.sendMessage("§cYou have been muted by staff.");
-                }
+                handleMute(player, args);
                 break;
 
             case "unmute":
-                if (args.length == 0) {
-                    player.sendMessage("§cUsage: /unmute <player>");
-                    return true;
-                }
-                Player unmuteTarget = Bukkit.getPlayer(args[0]);
-                if (unmuteTarget != null) {
-                    plugin.getChatManager().unmute(unmuteTarget.getUniqueId());
-                    player.sendMessage("§aUnmuted §e" + unmuteTarget.getName());
-                }
+                handleUnmute(player, args);
                 break;
 
             case "warn":
-                if (args.length < 2) {
-                    player.sendMessage("§cUsage: /warn <player> <reason>");
-                    return true;
-                }
-                Player warnTarget = Bukkit.getPlayer(args[0]);
-                if (warnTarget != null) {
-                    String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
-                    warnTarget.sendMessage("§6§lWARNING: §e" + reason);
-                    player.sendMessage("§aWarned §e" + warnTarget.getName());
-                    // TODO: Log to database if you add punishment logging
-                }
+                handleWarn(player, args);
                 break;
 
             // === Inventory Tools ===
@@ -236,7 +191,6 @@ public class StaffCommand implements CommandExecutor {
                 break;
 
             case "freeze":
-                // Simple freeze (add to AntiCheatManager for persistence if needed)
                 if (args.length == 0) {
                     player.sendMessage("§cUsage: /freeze <player>");
                     return true;
@@ -266,13 +220,11 @@ public class StaffCommand implements CommandExecutor {
                     player.sendMessage("§cUsage: /broadcast <message>");
                     return true;
                 }
-                String msg = String.join(" ", args);
-
+                String message = String.join(" ", args);
                 Component announcement = Component.text()
                         .append(Component.text("[ANNOUNCEMENT] ", NamedTextColor.GOLD))
-                        .append(Component.text(msg, NamedTextColor.WHITE))
+                        .append(Component.text(message, NamedTextColor.WHITE))
                         .build();
-
                 Bukkit.broadcast(announcement);
                 break;
 
@@ -280,29 +232,18 @@ public class StaffCommand implements CommandExecutor {
                 player.getInventory().clear();
                 player.sendMessage("§aYour inventory has been cleared.");
                 break;
+
             case "repair":
-                org.bukkit.inventory.ItemStack handItem = player.getInventory().getItemInMainHand();
-
-                if (handItem.getType().isAir()) {
-                    player.sendMessage("§cYou must hold an item to repair.");
-                    return true;
-                }
-
-                // Modern way (no deprecation warning)
-                if (handItem.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable damageable) {
-                    damageable.setDamage(0);
-                    handItem.setItemMeta(damageable);
-                    player.sendMessage("§aItem repaired successfully.");
-                } else {
-                    player.sendMessage("§cThis item cannot be repaired.");
-                }
+                handleRepair(player);
                 break;
 
             default:
-                player.sendMessage("§cUnknown staff command. Use §b/staff help §cfor list.");
+                player.sendMessage("§cUnknown staff command.");
         }
         return true;
     }
+
+    // ==================== HELPER METHODS ====================
 
     private void toggleVanish(Player player) {
         boolean isVanished = vanishedPlayers.getOrDefault(player.getUniqueId(), false);
@@ -311,16 +252,15 @@ public class StaffCommand implements CommandExecutor {
                 if (!p.hasPermission("foliasb.staff")) p.hidePlayer(plugin, player);
             }
             vanishedPlayers.put(player.getUniqueId(), true);
-            player.sendMessage("§aYou are now vanished.");
-            // Hook into anti-cheat if needed
             plugin.getAntiCheatManager().setStaffBypass(player.getUniqueId(), true);
+            player.sendMessage("§aYou are now vanished.");
         } else {
             for (Player p : Bukkit.getOnlinePlayers()) {
                 p.showPlayer(plugin, player);
             }
             vanishedPlayers.remove(player.getUniqueId());
-            player.sendMessage("§cYou are no longer vanished.");
             plugin.getAntiCheatManager().setStaffBypass(player.getUniqueId(), false);
+            player.sendMessage("§cYou are no longer vanished.");
         }
     }
 
@@ -337,23 +277,116 @@ public class StaffCommand implements CommandExecutor {
             staff.sendMessage("§cUsage: /ban <player> [reason]   or   /tempban <player> <minutes> [reason]");
             return;
         }
-        // TODO: Expand with proper punishment storage in DatabaseManager
 
         Player target = Bukkit.getPlayer(args[0]);
-        if (target != null) {
-            String reason = args.length > (isTemp ? 2 : 1)
-                    ? String.join(" ", java.util.Arrays.copyOfRange(args, isTemp ? 2 : 1, args.length))
-                    : "Banned by staff";
+        if (target == null) {
+            staff.sendMessage("§cPlayer not found or offline.");
+            return;
+        }
 
-            // ✅ Modern fix - No more deprecation warning
-            target.kick(net.kyori.adventure.text.Component.text(
-                    "§cYou have been " + (isTemp ? "temporarily " : "") + "banned.\n" +
-                            "§eReason: §f" + reason
-            ));
+        String reason = args.length > (isTemp ? 2 : 1)
+                ? String.join(" ", java.util.Arrays.copyOfRange(args, isTemp ? 2 : 1, args.length))
+                : "Banned by staff";
 
-            staff.sendMessage("§cBanned §e" + target.getName());
-        } else {
+        long duration = 0;
+        if (isTemp) {
+            try {
+                int minutes = Integer.parseInt(args[1]);
+                duration = minutes * 60L * 1000L;
+            } catch (NumberFormatException e) {
+                staff.sendMessage("§cInvalid duration. Use number of minutes.");
+                return;
+            }
+        }
+
+        // Log punishment
+        plugin.getPunishmentManager().logPunishment(
+                target.getUniqueId(),
+                staff.getUniqueId(),
+                isTemp ? Punishment.Type.TEMPBAN : Punishment.Type.BAN,
+                reason,
+                duration
+        );
+
+        // Kick with modern API
+        String kickMsg = "§cYou have been " + (isTemp ? "temporarily " : "") + "banned.\n§eReason: §f" + reason;
+        target.kick(Component.text(kickMsg));
+
+        staff.sendMessage("§c" + (isTemp ? "Tempbanned" : "Banned") + " §e" + target.getName());
+    }
+
+    private void handleKick(Player staff, String[] args) {
+        if (args.length == 0) {
+            staff.sendMessage("§cUsage: /kick <player> [reason]");
+            return;
+        }
+        Player target = Bukkit.getPlayer(args[0]);
+        if (target == null) {
             staff.sendMessage("§cPlayer not found.");
+            return;
+        }
+        String reason = args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : "Kicked by staff";
+        target.kick(Component.text("§c" + reason));
+        staff.sendMessage("§aKicked §e" + target.getName());
+    }
+
+    private void handleMute(Player staff, String[] args) {
+        if (args.length == 0) {
+            staff.sendMessage("§cUsage: /mute <player> [reason]");
+            return;
+        }
+        Player target = Bukkit.getPlayer(args[0]);
+        if (target == null) {
+            staff.sendMessage("§cPlayer not found.");
+            return;
+        }
+        String reason = args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : "Muted by staff";
+        plugin.getChatManager().mute(target.getUniqueId());
+        plugin.getPunishmentManager().logPunishment(target.getUniqueId(), staff.getUniqueId(), Punishment.Type.MUTE, reason, 0);
+        target.sendMessage("§cYou have been muted. Reason: §f" + reason);
+        staff.sendMessage("§cMuted §e" + target.getName());
+    }
+
+    private void handleUnmute(Player staff, String[] args) {
+        if (args.length == 0) {
+            staff.sendMessage("§cUsage: /unmute <player>");
+            return;
+        }
+        Player target = Bukkit.getPlayer(args[0]);
+        if (target != null) {
+            plugin.getChatManager().unmute(target.getUniqueId());
+            staff.sendMessage("§aUnmuted §e" + target.getName());
+        }
+    }
+
+    private void handleWarn(Player staff, String[] args) {
+        if (args.length < 2) {
+            staff.sendMessage("§cUsage: /warn <player> <reason>");
+            return;
+        }
+        Player target = Bukkit.getPlayer(args[0]);
+        if (target == null) {
+            staff.sendMessage("§cPlayer not found.");
+            return;
+        }
+        String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
+        plugin.getPunishmentManager().logPunishment(target.getUniqueId(), staff.getUniqueId(), Punishment.Type.WARN, reason, 0);
+        target.sendMessage("§6§l[WARNING] §e" + reason);
+        staff.sendMessage("§aWarned §e" + target.getName());
+    }
+
+    private void handleRepair(Player player) {
+        ItemStack item = player.getInventory().getItemInMainHand();
+        if (item.getType().isAir()) {
+            player.sendMessage("§cYou must hold an item to repair.");
+            return;
+        }
+        if (item.getItemMeta() instanceof Damageable damageable) {
+            damageable.setDamage(0);
+            item.setItemMeta(damageable);
+            player.sendMessage("§aItem repaired.");
+        } else {
+            player.sendMessage("§cThis item cannot be repaired.");
         }
     }
 }

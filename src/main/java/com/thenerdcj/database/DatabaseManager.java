@@ -3,8 +3,6 @@ package com.thenerdcj.database;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.auction.Auction;
 import com.thenerdcj.bazaar.BazaarOrder;
-import com.thenerdcj.database.TopIslandEntry;
-import com.thenerdcj.hologram.HologramData;
 import com.thenerdcj.island.Island;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -12,11 +10,7 @@ import org.bukkit.World;
 import org.bukkit.inventory.ItemStack;
 
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -46,13 +40,14 @@ public class DatabaseManager {
         try {
             dataSource = new HikariDataSource(config);
             createTables();
-            plugin.getLogger().info("§a[Database] SQLite initialized.");
+            plugin.getLogger().info("§a[Database] SQLite initialized successfully.");
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Database init failed", e);
+            plugin.getLogger().log(Level.SEVERE, "Database initialization failed", e);
         }
     }
 
     private void createTables() {
+        // Core tables
         executeUpdate("CREATE TABLE IF NOT EXISTS islands (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_uuid TEXT UNIQUE, grid_x INTEGER, grid_z INTEGER, dimension TEXT, biome TEXT, level INTEGER DEFAULT 1)");
         executeUpdate("CREATE TABLE IF NOT EXISTS island_members (island_id INTEGER, player_uuid TEXT, role TEXT, PRIMARY KEY(island_id, player_uuid))");
         executeUpdate("CREATE TABLE IF NOT EXISTS player_balances (uuid TEXT PRIMARY KEY, balance REAL DEFAULT 0)");
@@ -70,29 +65,151 @@ public class DatabaseManager {
         // Hologram tables
         executeUpdate("CREATE TABLE IF NOT EXISTS holograms (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, world TEXT NOT NULL, x REAL, y REAL, z REAL, billboard TEXT DEFAULT 'CENTER', background_color TEXT, scale REAL DEFAULT 1.0, see_through BOOLEAN DEFAULT 0, shadow BOOLEAN DEFAULT 1, permission TEXT, is_dynamic BOOLEAN DEFAULT 0, dynamic_type TEXT, update_interval INTEGER DEFAULT 300)");
         executeUpdate("CREATE TABLE IF NOT EXISTS hologram_lines (holo_id INTEGER, line_index INTEGER, text TEXT, PRIMARY KEY(holo_id, line_index))");
+
+        // ==================== PUNISHMENTS TABLE ====================
+        executeUpdate("""
+            CREATE TABLE IF NOT EXISTS punishments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                target_uuid TEXT NOT NULL,
+                staff_uuid TEXT,
+                type TEXT NOT NULL,
+                reason TEXT,
+                timestamp INTEGER NOT NULL,
+                duration INTEGER DEFAULT 0,
+                active BOOLEAN DEFAULT 1
+            )
+        """);
     }
 
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
     }
 
-    // ==================== HOLOGRAM METHODS ====================
-    public CompletableFuture<Boolean> saveHologram(HologramData data) { return CompletableFuture.completedFuture(true); }
-    public CompletableFuture<List<HologramData>> loadAllHolograms() { return CompletableFuture.completedFuture(new ArrayList<>()); }
-    public CompletableFuture<Boolean> deleteHologram(int id) { return CompletableFuture.completedFuture(true); }
-    public CompletableFuture<Boolean> updateHologramLines(int id, List<String> lines) { return CompletableFuture.completedFuture(true); }
-    public CompletableFuture<Boolean> updateHologramInterval(int id, int seconds) { return CompletableFuture.completedFuture(true); }
+    public void executeUpdate(String sql) {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to execute update: " + sql + " - " + e.getMessage());
+        }
+    }
 
-    // ==================== ISLAND METHODS (sync for now - callers expect sync) ====================
+    // ==================== PUNISHMENT METHODS ====================
+
+    public CompletableFuture<Boolean> logPunishment(UUID target, UUID staff, Punishment.Type type,
+                                                    String reason, long durationMillis) {
+        return CompletableFuture.supplyAsync(() -> {
+            String sql = """
+                INSERT INTO punishments (target_uuid, staff_uuid, type, reason, timestamp, duration, active)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+                """;
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+
+                ps.setString(1, target.toString());
+                ps.setString(2, staff != null ? staff.toString() : null);
+                ps.setString(3, type.name());
+                ps.setString(4, reason);
+                ps.setLong(5, System.currentTimeMillis());
+                ps.setLong(6, durationMillis);
+                ps.executeUpdate();
+                return true;
+
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to log punishment: " + e.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+
+    public CompletableFuture<List<Punishment>> getPunishmentsForPlayer(UUID uuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Punishment> list = new ArrayList<>();
+            String sql = "SELECT * FROM punishments WHERE target_uuid = ? ORDER BY timestamp DESC";
+
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+
+                ps.setString(1, uuid.toString());
+                ResultSet rs = ps.executeQuery();
+
+                while (rs.next()) {
+                    list.add(mapResultSetToPunishment(rs));
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to load punishments: " + e.getMessage());
+            }
+            return list;
+        }, executor);
+    }
+
+    public CompletableFuture<List<Punishment>> getActivePunishments(UUID uuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Punishment> list = new ArrayList<>();
+            String sql = "SELECT * FROM punishments WHERE target_uuid = ? AND active = 1 ORDER BY timestamp DESC";
+
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+
+                ps.setString(1, uuid.toString());
+                ResultSet rs = ps.executeQuery();
+
+                while (rs.next()) {
+                    Punishment p = mapResultSetToPunishment(rs);
+                    if (!p.isExpired()) {
+                        list.add(p);
+                    }
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to load active punishments: " + e.getMessage());
+            }
+            return list;
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> expirePunishment(int punishmentId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "UPDATE punishments SET active = 0 WHERE id = ?")) {
+                ps.setInt(1, punishmentId);
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) {
+                return false;
+            }
+        }, executor);
+    }
+
+    private Punishment mapResultSetToPunishment(ResultSet rs) throws SQLException {
+        return new Punishment(
+                rs.getInt("id"),
+                UUID.fromString(rs.getString("target_uuid")),
+                rs.getString("staff_uuid") != null ? UUID.fromString(rs.getString("staff_uuid")) : null,
+                Punishment.Type.valueOf(rs.getString("type")),
+                rs.getString("reason"),
+                rs.getLong("timestamp"),
+                rs.getLong("duration"),
+                rs.getBoolean("active")
+        );
+    }
+
+    // ==================== ISLAND METHODS ====================
+
     public CompletableFuture<Boolean> saveIsland(int gridX, int gridZ, UUID owner, String dimension, String biome) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                          "INSERT OR REPLACE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome) VALUES (?, ?, ?, ?, ?)")) {
-                ps.setInt(1, gridX); ps.setInt(2, gridZ);
-                ps.setString(3, owner.toString()); ps.setString(4, dimension); ps.setString(5, biome);
-                ps.executeUpdate(); return true;
-            } catch (SQLException e) { return false; }
+                ps.setInt(1, gridX);
+                ps.setInt(2, gridZ);
+                ps.setString(3, owner.toString());
+                ps.setString(4, dimension);
+                ps.setString(5, biome);
+                ps.executeUpdate();
+                return true;
+            } catch (SQLException e) {
+                return false;
+            }
         }, executor);
     }
 
@@ -112,11 +229,9 @@ public class DatabaseManager {
                 String biome = rs.getString("biome");
                 int level = rs.getInt("level");
 
-                // Reconstruct GridPosition and Island
                 GridPosition pos = new GridPosition(gridX, gridZ, dimension);
                 Island island = new Island(pos, owner, biome, dimension);
-                island.setLevel(level);           // restore saved level
-
+                island.setLevel(level);
                 return island;
             }
 
@@ -127,35 +242,21 @@ public class DatabaseManager {
         return null;
     }
 
-    public CompletableFuture<Boolean> deleteIsland(UUID owner, org.bukkit.World.Environment dimension) {
+    public CompletableFuture<Boolean> deleteIsland(UUID owner, World.Environment dimension) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement("DELETE FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-                ps.setString(1, owner.toString()); ps.setString(2, dimension.name());
+                ps.setString(1, owner.toString());
+                ps.setString(2, dimension.name());
                 return ps.executeUpdate() > 0;
-            } catch (SQLException e) { return false; }
+            } catch (SQLException e) {
+                return false;
+            }
         }, executor);
     }
 
-    public boolean addIslandMember(int islandId, int gridX, String dimension, UUID player, String role) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR IGNORE INTO island_members (island_id, player_uuid, role) VALUES (?, ?, ?)")) {
-            ps.setInt(1, islandId); ps.setString(2, player.toString()); ps.setString(3, role);
-            return ps.executeUpdate() > 0;
-        } catch (SQLException e) { return false; }
-    }
-
-    public boolean removeIslandMember(int islandId, int gridX, String dimension, UUID player) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "DELETE FROM island_members WHERE island_id = ? AND player_uuid = ?")) {
-            ps.setInt(1, islandId); ps.setString(2, player.toString());
-            return ps.executeUpdate() > 0;
-        } catch (SQLException e) { return false; }
-    }
-
     // ==================== ECONOMY ====================
+
     public CompletableFuture<Double> getPlayerBalance(UUID uuid) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
@@ -163,7 +264,9 @@ public class DatabaseManager {
                 ps.setString(1, uuid.toString());
                 ResultSet rs = ps.executeQuery();
                 return rs.next() ? rs.getDouble("balance") : 0.0;
-            } catch (SQLException e) { return 0.0; }
+            } catch (SQLException e) {
+                return 0.0;
+            }
         }, executor);
     }
 
@@ -171,9 +274,13 @@ public class DatabaseManager {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO player_balances (uuid, balance) VALUES (?, ?)")) {
-                ps.setString(1, uuid.toString()); ps.setDouble(2, balance);
-                ps.executeUpdate(); return true;
-            } catch (SQLException e) { return false; }
+                ps.setString(1, uuid.toString());
+                ps.setDouble(2, balance);
+                ps.executeUpdate();
+                return true;
+            } catch (SQLException e) {
+                return false;
+            }
         }, executor);
     }
 
@@ -185,31 +292,28 @@ public class DatabaseManager {
         return addPlayerBalance(uuid, -amount);
     }
 
-    public CompletableFuture<Double> getIslandBalance(int islandId, int gridX, String dimension) {
-        return CompletableFuture.completedFuture(0.0);
-    }
-
-    public CompletableFuture<Boolean> setIslandBalance(int islandId, int gridX, String dimension, double balance) {
-        return CompletableFuture.completedFuture(true);
-    }
-
-    public CompletableFuture<Boolean> addIslandBalance(int islandId, int gridX, String dimension, double amount) {
-        return CompletableFuture.completedFuture(true);
-    }
-
-    public CompletableFuture<Boolean> removeIslandBalance(int islandId, int gridX, String dimension, double amount) {
-        return CompletableFuture.completedFuture(true);
-    }
-
     // ==================== RANKS ====================
-    public CompletableFuture<String> getCurrentRankId(UUID uuid) { return CompletableFuture.completedFuture("default"); }
-    public CompletableFuture<Integer> getUpvoteCount(UUID uuid) { return CompletableFuture.completedFuture(0); }
-    public CompletableFuture<Boolean> setRank(UUID uuid, String rankName) { return CompletableFuture.completedFuture(true); }
-    public CompletableFuture<Boolean> addVote(UUID voter, UUID target) { return CompletableFuture.completedFuture(true); }
 
-    // ==================== MINIONS, UPGRADES, AUCTIONS, BAZAAR, SLAYER (NOW ASYNC) ====================
+    public CompletableFuture<String> getCurrentRankId(UUID uuid) {
+        return CompletableFuture.completedFuture("default");
+    }
+
+    public CompletableFuture<Integer> getUpvoteCount(UUID uuid) {
+        return CompletableFuture.completedFuture(0);
+    }
+
+    public CompletableFuture<Boolean> setRank(UUID uuid, String rankName) {
+        return CompletableFuture.completedFuture(true);
+    }
+
+    public CompletableFuture<Boolean> addVote(UUID voter, UUID target) {
+        return CompletableFuture.completedFuture(true);
+    }
+
+    // ==================== PLACEHOLDER METHODS (to be implemented) ====================
+
     public CompletableFuture<List<Object>> loadMinionData(String islandKey) {
-        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+        return CompletableFuture.supplyAsync(ArrayList::new, executor);
     }
 
     public CompletableFuture<Boolean> saveMinionData(String islandKey, int type, int level) {
@@ -217,7 +321,7 @@ public class DatabaseManager {
     }
 
     public CompletableFuture<Map<String, Integer>> loadIslandUpgrades(String islandKey) {
-        return CompletableFuture.supplyAsync(() -> new HashMap<>(), executor);
+        return CompletableFuture.supplyAsync(HashMap::new, executor);
     }
 
     public CompletableFuture<Boolean> saveIslandUpgrade(String islandKey, String type, int level) {
@@ -225,7 +329,7 @@ public class DatabaseManager {
     }
 
     public CompletableFuture<List<Auction>> getActiveAuctions() {
-        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+        return CompletableFuture.supplyAsync(ArrayList::new, executor);
     }
 
     public boolean saveAuction(Auction a) { return true; }
@@ -235,7 +339,7 @@ public class DatabaseManager {
     public boolean markAuctionExpired(String id) { return true; }
 
     public CompletableFuture<List<BazaarOrder>> getActiveBazaarOrders() {
-        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+        return CompletableFuture.supplyAsync(ArrayList::new, executor);
     }
 
     public boolean saveBazaarOrder(BazaarOrder o) { return true; }
@@ -244,58 +348,33 @@ public class DatabaseManager {
     public boolean incrementSlayerKills(UUID uuid, String type, String tier, int amount) { return true; }
 
     public CompletableFuture<List<Object>> getGlobalTopSlayers(int limit) {
-        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+        return CompletableFuture.supplyAsync(ArrayList::new, executor);
     }
 
     public CompletableFuture<List<Object>> getTopSlayers(String type, int limit) {
-        return CompletableFuture.supplyAsync(() -> new ArrayList<>(), executor);
+        return CompletableFuture.supplyAsync(ArrayList::new, executor);
     }
 
-    public List<TopIslandEntry> getTopIslandsByLevel(int limit) { return new ArrayList<>(); }
-
-    public void executeUpdate(String sql) {
-        try (Connection conn = getConnection(); Statement st = conn.createStatement()) {
-            st.execute(sql);
-        } catch (SQLException ignored) {}
+    public List<TopIslandEntry> getTopIslandsByLevel(int limit) {
+        return new ArrayList<>();
     }
-
     public void close() {
-        if (dataSource != null && !dataSource.isClosed()) dataSource.close();
-        executor.shutdown();
-    }
-    // Get last reset time (returns 0 if never reset)
-    public long getLastResetTime(UUID playerUuid) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "SELECT last_reset FROM islands WHERE owner_uuid = ? ORDER BY last_reset DESC LIMIT 1")) {
-
-            ps.setString(1, playerUuid.toString());
-            ResultSet rs = ps.executeQuery();
-
-            if (rs.next()) {
-                return rs.getLong("last_reset");
+        try {
+            if (dataSource != null && !dataSource.isClosed()) {
+                dataSource.close();
+                plugin.getLogger().info("§a[Database] HikariCP connection pool closed.");
             }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to get last reset time: " + e.getMessage());
+        } catch (Exception e) {
+            plugin.getLogger().severe("Error closing database pool: " + e.getMessage());
         }
-        return 0;
-    }
 
-    // Update last reset time (call this when a player resets)
-    public void updateLastResetTime(UUID playerUuid, World.Environment dimension) {
-        long now = System.currentTimeMillis();
-
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "UPDATE islands SET last_reset = ? WHERE owner_uuid = ? AND dimension = ?")) {
-
-            ps.setLong(1, now);
-            ps.setString(2, playerUuid.toString());
-            ps.setString(3, dimension.name());
-            ps.executeUpdate();
-
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to update last reset time: " + e.getMessage());
+        try {
+            if (executor != null && !executor.isShutdown()) {
+                executor.shutdown();
+                plugin.getLogger().info("§a[Database] ExecutorService shut down.");
+            }
+        } catch (Exception e) {
+            plugin.getLogger().severe("Error shutting down database executor: " + e.getMessage());
         }
     }
 }
