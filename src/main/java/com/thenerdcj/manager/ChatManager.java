@@ -10,13 +10,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * Chat Manager - Global chat with mute functionality + Island chat integration
  */
 public class ChatManager {
+
     private final FoliaSkyblock plugin;
+
+    // Original features
     private final Set<UUID> muted = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Map<UUID, Boolean> islandChatMode = new ConcurrentHashMap<>();
+
+    // Expanded Private Messaging features
+    private final Map<UUID, UUID> lastMessaged = new ConcurrentHashMap<>(); // Player -> Last person they messaged
+    private final Set<UUID> staffSpyEnabled = Collections.newSetFromMap(new ConcurrentHashMap<>()); // Staff with spy toggled on
 
     public ChatManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
     }
+
+    // ====================== ORIGINAL METHODS ======================
 
     public boolean isMuted(UUID uuid) {
         return muted.contains(uuid);
@@ -103,5 +112,89 @@ public class ChatManager {
         } else {
             broadcastMessage(player, message);
         }
+    }
+
+    // ====================== NEW EXPANDED PRIVATE MESSAGING ======================
+
+    /**
+     * Send a private message from sender to target
+     */
+    public void sendPrivateMessage(Player sender, Player target, String message) {
+        if (isMuted(sender.getUniqueId())) {
+            sender.sendMessage("§cYou are muted and cannot send messages.");
+            return;
+        }
+
+        if (!target.isOnline()) {
+            sender.sendMessage("§cThat player is no longer online.");
+            return;
+        }
+
+        // Format messages
+        String senderMsg = "§7[§eTo §f" + target.getName() + "§7] §f" + message;
+        String targetMsg = "§7[§eFrom §f" + sender.getName() + "§7] §f" + message;
+
+        sender.sendMessage(senderMsg);
+        target.sendMessage(targetMsg);
+
+        // Update last messaged for /r
+        lastMessaged.put(sender.getUniqueId(), target.getUniqueId());
+        lastMessaged.put(target.getUniqueId(), sender.getUniqueId());
+
+        // Staff Spy
+        for (Player staff : Bukkit.getOnlinePlayers()) {
+            if (staffSpyEnabled.contains(staff.getUniqueId())
+                    && staff.hasPermission("folia.staff.spy")
+                    && !staff.getUniqueId().equals(sender.getUniqueId())
+                    && !staff.getUniqueId().equals(target.getUniqueId())) {
+
+                String spyMsg = "§8[§7Spy§8] §e" + sender.getName() + " §7→ §f" + target.getName() + "§7: §f" + message;
+                staff.sendMessage(spyMsg);
+            }
+        }
+    }
+
+    /**
+     * Toggle staff spy mode for moderators
+     */
+    public void toggleStaffSpy(Player player) {
+        UUID uuid = player.getUniqueId();
+        if (staffSpyEnabled.contains(uuid)) {
+            staffSpyEnabled.remove(uuid);
+            player.sendMessage("§cStaff chat spy disabled.");
+        } else {
+            if (!player.hasPermission("folia.staff.spy")) {
+                player.sendMessage("§cYou don't have permission to use staff spy.");
+                return;
+            }
+            staffSpyEnabled.add(uuid);
+            player.sendMessage("§aStaff chat spy enabled. You will now see all private messages.");
+        }
+    }
+
+    /**
+     * Get the last player this person messaged (for /r command)
+     */
+    public UUID getLastMessaged(UUID uuid) {
+        return lastMessaged.get(uuid);
+    }
+
+    /**
+     * Remove player from tracking when they quit
+     */
+    public void removePlayer(UUID uuid) {
+        muted.remove(uuid);
+        islandChatMode.remove(uuid);
+        lastMessaged.remove(uuid);
+        staffSpyEnabled.remove(uuid);
+    }
+
+    // ====================== CLEANUP ======================
+
+    /**
+     * Called when a player quits (add this to your PlayerQuitListener)
+     */
+    public void onPlayerQuit(Player player) {
+        removePlayer(player.getUniqueId());
     }
 }

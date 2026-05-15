@@ -270,4 +270,7 @@ public class FoliaSkyblock extends JavaPlugin {
             return false;
         }
     }
+
+    public TeleportRequestManager getTeleportRequestManager() {return teleportRequestManager;
+    }
 }

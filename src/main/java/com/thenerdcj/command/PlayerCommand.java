@@ -3,6 +3,7 @@ package com.thenerdcj.command;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.gui.TPAListGUI;
 import com.thenerdcj.manager.TeleportRequestManager;
+import com.thenerdcj.rank.RankData; // Important import
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -22,8 +23,7 @@ public class PlayerCommand implements CommandExecutor, TabCompleter {
 
     public PlayerCommand(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        // In real init, pass or get from plugin
-        this.tpaManager = new TeleportRequestManager(plugin); // Ideally plugin.getTpaManager()
+        this.tpaManager = plugin.getTeleportRequestManager(); // Better: get from plugin (add getter if needed)
         this.tpaListGUI = new TPAListGUI(plugin, tpaManager);
     }
 
@@ -43,7 +43,6 @@ public class PlayerCommand implements CommandExecutor, TabCompleter {
                 break;
 
             case "home":
-                // Uses IslandManager
                 player.teleport(plugin.getIslandManager().getIslandHome(player));
                 player.sendMessage("§aTeleported to your island home.");
                 break;
@@ -63,13 +62,11 @@ public class PlayerCommand implements CommandExecutor, TabCompleter {
                 break;
 
             case "tpaccept", "tpac":
-                // Accept most recent or specific
                 List<UUID> pending = tpaManager.getPendingRequestersFor(player);
                 if (pending.isEmpty()) {
                     player.sendMessage("§cNo pending TPA requests.");
                     return true;
                 }
-                // For simplicity accept first; expand with arg later
                 Player firstRequester = Bukkit.getPlayer(pending.get(0));
                 if (firstRequester != null) {
                     tpaManager.acceptRequest(player, firstRequester);
@@ -111,7 +108,7 @@ public class PlayerCommand implements CommandExecutor, TabCompleter {
                 player.sendMessage("§6You have §e" + myPending.size() + " §6pending TPA requests. Use §b/tplist§6.");
                 break;
 
-            // ========== PRIVATE MESSAGES /msg /r with ChatManager spy ==========
+            // ========== PRIVATE MESSAGES ==========
             case "msg", "tell", "whisper":
                 if (args.length < 2) {
                     player.sendMessage("§cUsage: /msg <player> <message>");
@@ -122,34 +119,36 @@ public class PlayerCommand implements CommandExecutor, TabCompleter {
                     player.sendMessage("§cPlayer not online.");
                     return true;
                 }
-                StringBuilder msg = new StringBuilder();
-                for (int i = 1; i < args.length; i++) msg.append(args[i]).append(" ");
-                String message = msg.toString().trim();
+                StringBuilder msgBuilder = new StringBuilder();
+                for (int i = 1; i < args.length; i++) msgBuilder.append(args[i]).append(" ");
+                String message = msgBuilder.toString().trim();
 
-                // Send private
-                player.sendMessage("§d[You -> " + msgTarget.getName() + "] §f" + message);
-                msgTarget.sendMessage("§d[" + player.getName() + " -> You] §f" + message);
-
-                // Staff spy if enabled (integrate with ChatManager or Rank)
-                spyOnPrivateMessage(player, msgTarget, message);
+                plugin.getChatManager().sendPrivateMessage(player, msgTarget, message);
                 break;
 
             case "r", "reply":
-                // Simple last message reply - expand with map of last conversed
-                player.sendMessage("§eReply feature: Use /msg <player> or implement last conversed tracking.");
-                // Placeholder - in full impl store last PM partner per player
+                UUID last = plugin.getChatManager().getLastMessaged(player.getUniqueId());
+                if (last == null) {
+                    player.sendMessage("§cNo one to reply to. Use /msg first.");
+                    return true;
+                }
+                Player replyTarget = Bukkit.getPlayer(last);
+                if (replyTarget == null || !replyTarget.isOnline()) {
+                    player.sendMessage("§cThe player you replied to is offline.");
+                    return true;
+                }
+                if (args.length < 1) {
+                    player.sendMessage("§cUsage: /r <message>");
+                    return true;
+                }
+                StringBuilder replyMsg = new StringBuilder();
+                for (String s : args) replyMsg.append(s).append(" ");
+                plugin.getChatManager().sendPrivateMessage(player, replyTarget, replyMsg.toString().trim());
                 break;
 
-            // ========== /list and /online ==========
+            // ========== /list and /online (FIXED PREFIX) ==========
             case "list", "online", "who":
-                player.sendMessage("§6§l=== Online Players (" + Bukkit.getOnlinePlayers().size() + "/" + Bukkit.getMaxPlayers() + ") ===");
-                StringBuilder onlineList = new StringBuilder();
-                for (Player p : Bukkit.getOnlinePlayers()) {
-                    String rankPrefix = plugin.getRankManager() != null ?
-                            plugin.getRankManager().getPrefix(p.getUniqueId()) : "§7";
-                    onlineList.append(rankPrefix).append(p.getName()).append("§r ");
-                }
-                player.sendMessage(onlineList.toString());
+                showOnlinePlayers(player);
                 break;
 
             // ========== /help ==========
@@ -176,46 +175,49 @@ public class PlayerCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    private void spyOnPrivateMessage(Player sender, Player receiver, String message) {
-        // Integrate with ChatManager or add staff spy toggle
-        // For now, broadcast to staff with perm (example)
-        String spyMsg = "§8[SPY] §7" + sender.getName() + " -> " + receiver.getName() + ": §f" + message;
-        for (Player staff : Bukkit.getOnlinePlayers()) {
-            if (staff.hasPermission("folia.staff.spy") || staff.hasPermission("folia.moderator")) {
-                // Could check toggle in ChatManager later
-                if (staff != sender && staff != receiver) {
-                    staff.sendMessage(spyMsg);
-                }
-            }
+    /** FIXED: Uses existing RankManager methods properly */
+    private void showOnlinePlayers(Player viewer) {
+        viewer.sendMessage("§6§l=== Online Players (" + Bukkit.getOnlinePlayers().size() + "/" + Bukkit.getMaxPlayers() + ") ===");
+
+        StringBuilder sb = new StringBuilder();
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            String prefix = getPlayerPrefix(p.getUniqueId());
+            sb.append(prefix).append(p.getName()).append("§r ");
         }
+        viewer.sendMessage(sb.toString());
+    }
+
+    /** Helper that uses your existing RankManager / RankData */
+    private String getPlayerPrefix(UUID uuid) {
+        if (plugin.getRankManager() == null) return "§7";
+
+        // Preferred way - full display name
+        String name = Bukkit.getPlayer(uuid) != null ? Bukkit.getPlayer(uuid).getName() : "Unknown";
+        return plugin.getRankManager().getPlayerDisplayName(uuid, name) + " ";
+
+        // Alternative (just prefix):
+        // RankData data = plugin.getRankManager().getPlayerRankData(uuid);
+        // return data != null ? org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getPrefix()) : "§7";
     }
 
     private void sendHelpMenu(Player player) {
         player.sendMessage("§6§l=== FoliaSkyblock Help & Commands ===");
-        player.sendMessage("§e/island §7or §e/is §7- Main island commands (create, home, party, upgrades, etc.)");
-        player.sendMessage("§e/tpa <player> §7- Request to teleport to player (cooldown applies)");
-        player.sendMessage("§e/tpaccept §7/ §ctpdeny §7/ §6/tplist §7- Manage incoming TPA requests (GUI supported)");
-        player.sendMessage("§e/tpignore <player> §7- Toggle ignoring TPA from a player");
-        player.sendMessage("§e/msg <player> <msg> §7- Private message (staff can spy if enabled)");
-        player.sendMessage("§e/r §7- Quick reply to last PM");
-        player.sendMessage("§e/list §7or §e/online §7- List online players with ranks");
-        player.sendMessage("§e/ah §7or §e/auction §7- Auction House (create/bid/list auctions)");
-        player.sendMessage("§e/bal §7- Check your player balance (for chest shops)");
-        player.sendMessage("§e/spawn §7- Go to default spawn (0,0 unclaimable)");
-        player.sendMessage("§e/home §7- Teleport to your island home");
-        player.sendMessage("§e/challenge §7- View challenges & progression");
-        player.sendMessage("§e/slayer §7- Slayer quests and bosses");
-        player.sendMessage("§e/trade §7- Open trade GUI with other players");
+        player.sendMessage("§e/island §7or §e/is §7- Main island commands");
+        player.sendMessage("§e/tpa <player> §7- Request teleport");
+        player.sendMessage("§e/tpaccept §7/ §ctpdeny §7/ §6/tplist §7- Manage TPA (GUI)");
+        player.sendMessage("§e/msg <player> <msg> §7- Private message");
+        player.sendMessage("§e/r <msg> §7- Reply to last message");
+        player.sendMessage("§e/list §7or §e/online §7- Online players with ranks");
+        player.sendMessage("§e/ah §7- Auction House");
+        player.sendMessage("§e/bal §7- Player balance");
         player.sendMessage("§e/help §7- This menu");
-        player.sendMessage("§7Play to Win: Progress through islands, levels, dimensions, and bosses!");
-        player.sendMessage("§7Use §b/is help §7for full island subcommands.");
+        player.sendMessage("§7Play to Win: Progress through islands, dimensions & bosses!");
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            if (alias.equalsIgnoreCase("tpa") || alias.equalsIgnoreCase("tpignore") ||
-                    alias.equalsIgnoreCase("msg") || alias.equalsIgnoreCase("tell")) {
+            if (List.of("tpa", "tpignore", "msg", "tell").contains(alias.toLowerCase())) {
                 List<String> names = new ArrayList<>();
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     names.add(p.getName());
