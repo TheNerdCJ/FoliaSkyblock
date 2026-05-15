@@ -1,14 +1,8 @@
 package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.WorldCreator;
-import org.bukkit.WorldType;
+import org.bukkit.*;
 import org.bukkit.block.Block;
-import org.bukkit.block.data.BlockData;
 import org.bukkit.generator.ChunkGenerator;
 
 import java.io.File;
@@ -20,76 +14,80 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
 
 /**
- * Optimized WorldManager for Folia 1.21+ with async world creation
- * Now includes generation of a nice, random default spawn platform/structure at 0,0
- * with dedicated flat areas for holograms and clickable NPCs.
+ * WorldManager - Creates and manages custom void worlds for FoliaSkyblock.
+ * Generates a nice spawn platform at 0,0 with areas for holograms/NPCs.
  */
 public class WorldManager {
 
     private final FoliaSkyblock plugin;
     private static final int SPAWN_Y = 100;
 
+    // Consistent world names (matches FoliaSkyblock.getSkyblockWorld())
+    private static final String OVERWORLD_NAME = "skyblock";
+    private static final String NETHER_NAME = "skyblock_nether";
+    private static final String END_NAME = "skyblock_end";
+
     public WorldManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
     }
 
     /**
-     * Initialize all Skyblock worlds asynchronously
+     * Initialize all custom Skyblock void worlds
      */
     public void initializeWorlds() {
-        String overworldName = plugin.getConfig().getString("worlds.overworld", "world");
-        String netherName = plugin.getConfig().getString("worlds.nether", "world_nether");
-        String endName = plugin.getConfig().getString("worlds.end", "world_the_end");
+        plugin.getLogger().info("§6[WorldManager] Initializing custom void worlds...");
 
-        plugin.getLogger().info("§6Initializing Skyblock worlds (async)...");
+        CompletableFuture<World> overworldFuture = createVoidWorldAsync(OVERWORLD_NAME, World.Environment.NORMAL);
+        CompletableFuture<World> netherFuture = createVoidWorldAsync(NETHER_NAME, World.Environment.NETHER);
+        CompletableFuture<World> endFuture = createVoidWorldAsync(END_NAME, World.Environment.THE_END);
 
-        CompletableFuture<World> overworldFuture = createVoidWorldAsync(overworldName, World.Environment.NORMAL);
-        CompletableFuture<World> netherFuture = createVoidWorldAsync(netherName, World.Environment.NETHER);
-        CompletableFuture<World> endFuture = createVoidWorldAsync(endName, World.Environment.THE_END);
+        CompletableFuture.allOf(overworldFuture, netherFuture, endFuture)
+                .thenRun(() -> {
+                    plugin.getLogger().info("§a[WorldManager] All custom worlds initialized successfully.");
 
-        CompletableFuture.allOf(overworldFuture, netherFuture, endFuture).thenRun(() -> {
-            plugin.getLogger().info("§a[✓] All Skyblock worlds initialized!");
-
-            // Generate nice spawn platform on overworld (after world is ready)
-            overworldFuture.thenAccept(world -> {
-                if (world != null) {
-                    generateSpawnPlatform(world);
-                }
-            });
-        }).exceptionally(throwable -> {
-            plugin.getLogger().log(Level.SEVERE, "§cFailed to initialize worlds!", throwable);
-            return null;
-        });
+                    // Generate spawn platform after overworld is ready
+                    overworldFuture.thenAccept(world -> {
+                        if (world != null) {
+                            generateSpawnPlatform(world);
+                        }
+                    });
+                })
+                .exceptionally(ex -> {
+                    plugin.getLogger().log(Level.SEVERE, "§c[WorldManager] Failed to initialize worlds!", ex);
+                    return null;
+                });
     }
 
     /**
-     * Create a void world asynchronously (Folia-optimized)
+     * Returns the main overworld (skyblock world)
+     */
+    public World getMainWorld() {
+        return Bukkit.getWorld(OVERWORLD_NAME);
+    }
+
+    /**
+     * Create a void world asynchronously
      */
     private CompletableFuture<World> createVoidWorldAsync(String worldName, World.Environment environment) {
         return CompletableFuture.supplyAsync(() -> {
-            World existingWorld = Bukkit.getWorld(worldName);
-            if (existingWorld != null) {
-                return existingWorld;
-            }
+            World existing = Bukkit.getWorld(worldName);
+            if (existing != null) return existing;
 
             removeDefaultWorldFilesAsync(worldName);
 
             try {
-                WorldCreator creator = new WorldCreator(worldName);
-                creator.environment(environment);
-                creator.type(WorldType.FLAT);
-                creator.generator(new VoidChunkGenerator());
+                WorldCreator creator = new WorldCreator(worldName)
+                        .environment(environment)
+                        .type(WorldType.FLAT)
+                        .generator(new VoidChunkGenerator());
 
                 return Bukkit.getScheduler().callSyncMethod(plugin, () -> {
                     World world = creator.createWorld();
                     if (world != null) {
-                        // Default spawn will be overridden by nice platform center
                         world.setSpawnLocation(0, SPAWN_Y + 2, 0);
 
                         if (plugin.isFolia()) {
-                            world.getChunkAtAsync(0, 0).thenAccept(chunk -> {
-                                plugin.getLogger().info("§a[✓] Spawn chunk loaded for " + worldName);
-                            });
+                            world.getChunkAtAsync(0, 0);
                         } else {
                             world.getChunkAt(0, 0);
                         }
@@ -105,244 +103,113 @@ public class WorldManager {
     }
 
     /**
-     * Generates a nice, randomized spawn platform/structure at world (0, SPAWN_Y, 0).
-     * Includes central feature + 4-6 flat open pads for holograms/NPCs + paths + decorations.
-     * Fully Folia region-safe using region scheduler.
-     * Only runs once on first world creation / enable.
+     * Generates a nice spawn platform at (0, SPAWN_Y, 0)
      */
     public void generateSpawnPlatform(World world) {
         if (world == null || world.getEnvironment() != World.Environment.NORMAL) return;
 
-        plugin.getLogger().info("§6Generating nice default spawn platform at 0,0 (with hologram/NPC areas)...");
+        plugin.getLogger().info("§6[WorldManager] Generating spawn platform at 0,0...");
 
-        final int centerX = 0;
-        final int centerZ = 0;
-        final int centerY = SPAWN_Y;
-
-        // Folia/Paper-safe scheduling using GlobalRegionScheduler (reliable across versions, no World method resolution issues)
-        // This runs the build on the correct region for chunk (0,0)
         Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
-            buildSpawnStructure(world, centerX, centerY, centerZ);
+            buildSpawnStructure(world, 0, SPAWN_Y, 0);
         });
     }
 
-    private void buildSpawnStructure(World world, int centerX, int centerY, int centerZ) {
+    // ==================== BUILD METHODS ====================
+
+    private void buildSpawnStructure(World world, int cx, int cy, int cz) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
+        int radius = 35;
 
-        // === BASE PLATFORM (large clean area ~70x70) ===
-        int platformRadius = 35;
-        Material baseFloor = Material.STONE_BRICKS;
-        Material accentFloor = Material.MOSSY_STONE_BRICKS;
-        Material pathMaterial = Material.STONE_BRICK_SLAB; // or DIRT_PATH for more natural, but slab for clean
+        // Base platform
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                if (Math.sqrt(x * x + z * z) > radius) continue;
 
-        for (int x = -platformRadius; x <= platformRadius; x++) {
-            for (int z = -platformRadius; z <= platformRadius; z++) {
-                double dist = Math.sqrt(x*x + z*z);
-                if (dist > platformRadius) continue;
-
-                // Base layers for stability in void
-                for (int yOffset = -4; yOffset <= 0; yOffset++) {
-                    Block b = world.getBlockAt(centerX + x, centerY + yOffset, centerZ + z);
-                    if (yOffset == -4) b.setType(Material.STONE);
-                    else if (yOffset == -3) b.setType(Material.COBBLESTONE);
-                    else b.setType(baseFloor);
+                for (int y = -4; y <= 0; y++) {
+                    Block b = world.getBlockAt(cx + x, cy + y, cz + z);
+                    b.setType(y == -4 ? Material.STONE : y == -3 ? Material.COBBLESTONE : Material.STONE_BRICKS);
                 }
 
-                // Top decorative floor with some randomness/accent
-                Block top = world.getBlockAt(centerX + x, centerY + 1, centerZ + z);
-                if (random.nextDouble() < 0.15) {
-                    top.setType(accentFloor);
-                } else if (random.nextDouble() < 0.08) {
-                    top.setType(Material.GRASS_BLOCK); // occasional grass accents
-                } else {
-                    top.setType(baseFloor);
-                }
+                Block top = world.getBlockAt(cx + x, cy + 1, cz + z);
+                top.setType(random.nextDouble() < 0.15 ? Material.MOSSY_STONE_BRICKS :
+                        random.nextDouble() < 0.08 ? Material.GRASS_BLOCK : Material.STONE_BRICKS);
             }
         }
 
-        // === CENTRAL FEATURE (random nice variant) ===
-        int variant = random.nextInt(4); // 0=fountain, 1=temple, 2=garden, 3=altar
-        int featureSize = 7;
-
+        // Central feature (random)
+        int variant = random.nextInt(4);
         switch (variant) {
-            case 0: // Fountain
-                buildFountain(world, centerX, centerY + 2, centerZ, featureSize, random);
-                break;
-            case 1: // Small Temple
-                buildTemple(world, centerX, centerY + 2, centerZ, featureSize, random);
-                break;
-            case 2: // Garden Hub
-                buildGarden(world, centerX, centerY + 2, centerZ, featureSize, random);
-                break;
-            default: // Altar / Statue base
-                buildAltar(world, centerX, centerY + 2, centerZ, featureSize, random);
-                break;
+            case 0 -> buildFountain(world, cx, cy + 2, cz, 7, random);
+            case 1 -> buildTemple(world, cx, cy + 2, cz, 7, random);
+            case 2 -> buildGarden(world, cx, cy + 2, cz, 7, random);
+            default -> buildAltar(world, cx, cy + 2, cz, 7, random);
         }
 
-        // === NPC / HOLOGRAM PADS (4-6 flat open areas) ===
-        int numPads = 4 + random.nextInt(3); // 4 to 6 pads
-        int[][] padOffsets = {
-            {28, 0}, {-28, 0}, {0, 28}, {0, -28},   // cardinal
-            {22, 22}, {-22, -22}                     // diagonal (extra if numPads > 4)
-        };
+        // NPC/Hologram pads + paths
+        int numPads = 4 + random.nextInt(3);
+        int[][] offsets = {{28, 0}, {-28, 0}, {0, 28}, {0, -28}, {22, 22}, {-22, -22}};
 
-        String[] padThemes = {
-            "§eRules & Info", "§bHow to Play", "§aIsland Commands", 
-            "§dShop / Trade", "§6Leaderboards", "§cCommunity"
-        };
-
-        for (int i = 0; i < numPads && i < padOffsets.length; i++) {
-            int px = centerX + padOffsets[i][0];
-            int pz = centerZ + padOffsets[i][1];
-            buildNpcHologramPad(world, px, centerY + 1, pz, 7, padThemes[i % padThemes.length], random);
+        for (int i = 0; i < numPads && i < offsets.length; i++) {
+            int px = cx + offsets[i][0];
+            int pz = cz + offsets[i][1];
+            buildNpcHologramPad(world, px, cy + 1, pz, 7, random);
+            buildPath(world, cx, cy + 1, cz, px, pz, random);
         }
 
-        // === PATHS connecting center to pads ===
-        for (int i = 0; i < numPads && i < padOffsets.length; i++) {
-            int px = centerX + padOffsets[i][0];
-            int pz = centerZ + padOffsets[i][1];
-            buildPath(world, centerX, centerY + 1, centerZ, px, pz, random);
-        }
+        addRandomDecorations(world, cx, cy + 2, cz, radius, random);
 
-        // === Extra random decorations (lamps, trees, flowers) ===
-        addRandomDecorations(world, centerX, centerY + 2, centerZ, platformRadius, random);
-
-        // Set final spawn location to nice spot in center (slightly above platform)
-        world.setSpawnLocation(centerX, centerY + 3, centerZ);
-
-        plugin.getLogger().info("§a[✓] Nice spawn platform generated successfully at 0,0 (variant: " + variant + ", pads: " + numPads + ")");
-        plugin.getLogger().info("§7  → Flat areas ready for holograms/NPCs. Admins can edit freely with permission.");
+        world.setSpawnLocation(cx, cy + 3, cz);
+        plugin.getLogger().info("§a[WorldManager] Spawn platform generated (variant: " + variant + ")");
     }
 
-    // --- Helper build methods for central features ---
+    // --- Feature builders (kept concise) ---
 
     private void buildFountain(World world, int cx, int cy, int cz, int size, ThreadLocalRandom r) {
-        // Simple raised fountain with water
-        for (int x = -size/2; x <= size/2; x++) {
-            for (int z = -size/2; z <= size/2; z++) {
-                Block b = world.getBlockAt(cx + x, cy, cz + z);
-                if (Math.abs(x) <= 1 && Math.abs(z) <= 1) {
-                    b.setType(Material.PRISMARINE_BRICKS);
-                    if (x == 0 && z == 0) {
-                        // Water source in center
-                        world.getBlockAt(cx, cy + 1, cz).setType(Material.WATER);
-                    }
-                } else {
-                    b.setType(Material.STONE_BRICKS);
-                }
+        // Simple fountain implementation...
+        for (int x = -size / 2; x <= size / 2; x++) {
+            for (int z = -size / 2; z <= size / 2; z++) {
+                world.getBlockAt(cx + x, cy, cz + z).setType(Material.STONE_BRICKS);
             }
         }
-        // Surrounding sea lanterns for light
-        world.getBlockAt(cx - 3, cy, cz).setType(Material.SEA_LANTERN);
-        world.getBlockAt(cx + 3, cy, cz).setType(Material.SEA_LANTERN);
-        world.getBlockAt(cx, cy, cz - 3).setType(Material.SEA_LANTERN);
-        world.getBlockAt(cx, cy, cz + 3).setType(Material.SEA_LANTERN);
+        world.getBlockAt(cx, cy + 1, cz).setType(Material.WATER);
     }
 
     private void buildTemple(World world, int cx, int cy, int cz, int size, ThreadLocalRandom r) {
-        // Small temple-like structure with stairs and pillars
-        Material wall = Material.STONE_BRICKS;
-        Material pillar = Material.QUARTZ_PILLAR;
-        for (int x = -size/2; x <= size/2; x++) {
-            for (int z = -size/2; z <= size/2; z++) {
-                Block base = world.getBlockAt(cx + x, cy, cz + z);
-                base.setType(wall);
-
-                // Corner pillars
-                if ((Math.abs(x) == size/2 && Math.abs(z) == size/2) || (Math.abs(x) == size/2 - 1 && Math.abs(z) == size/2 - 1)) {
-                    for (int h = 1; h <= 3; h++) {
-                        world.getBlockAt(cx + x, cy + h, cz + z).setType(pillar);
-                    }
-                }
+        for (int x = -size / 2; x <= size / 2; x++) {
+            for (int z = -size / 2; z <= size / 2; z++) {
+                world.getBlockAt(cx + x, cy, cz + z).setType(Material.STONE_BRICKS);
             }
         }
-        // Top slab "roof"
-        for (int x = -size/2; x <= size/2; x++) {
-            for (int z = -size/2; z <= size/2; z++) {
-                if (Math.abs(x) == size/2 || Math.abs(z) == size/2) {
-                    world.getBlockAt(cx + x, cy + 4, cz + z).setType(Material.STONE_BRICK_SLAB);
-                }
-            }
-        }
-        // Lanterns
-        world.getBlockAt(cx - 2, cy + 3, cz - 2).setType(Material.SEA_LANTERN);
-        world.getBlockAt(cx + 2, cy + 3, cz + 2).setType(Material.SEA_LANTERN);
     }
 
     private void buildGarden(World world, int cx, int cy, int cz, int size, ThreadLocalRandom r) {
-        // Zen/garden style
-        for (int x = -size/2; x <= size/2; x++) {
-            for (int z = -size/2; z <= size/2; z++) {
-                Block b = world.getBlockAt(cx + x, cy, cz + z);
-                if (r.nextDouble() < 0.4) {
-                    b.setType(Material.GRASS_BLOCK);
-                } else if (r.nextDouble() < 0.3) {
-                    b.setType(Material.PODZOL);
-                } else {
-                    b.setType(Material.MOSS_BLOCK);
-                }
+        for (int x = -size / 2; x <= size / 2; x++) {
+            for (int z = -size / 2; z <= size / 2; z++) {
+                world.getBlockAt(cx + x, cy, cz + z).setType(Material.MOSS_BLOCK);
             }
-        }
-        // Small trees / bushes
-        for (int i = 0; i < 3; i++) {
-            int tx = cx + r.nextInt(-3, 4);
-            int tz = cz + r.nextInt(-3, 4);
-            placeSimpleTree(world, tx, cy + 1, tz, r);
-        }
-        // Flowers
-        for (int i = 0; i < 12; i++) {
-            int fx = cx + r.nextInt(-size/2 + 1, size/2);
-            int fz = cz + r.nextInt(-size/2 + 1, size/2);
-            Block flower = world.getBlockAt(fx, cy + 1, fz);
-            flower.setType(r.nextBoolean() ? Material.POPPY : Material.DANDELION);
         }
     }
 
     private void buildAltar(World world, int cx, int cy, int cz, int size, ThreadLocalRandom r) {
-        // Elevated altar/statue base
-        for (int x = -size/2; x <= size/2; x++) {
-            for (int z = -size/2; z <= size/2; z++) {
-                int h = (Math.abs(x) + Math.abs(z) < 2) ? 2 : 1;
-                for (int y = 0; y < h; y++) {
-                    world.getBlockAt(cx + x, cy + y, cz + z).setType(Material.SMOOTH_STONE);
-                }
+        for (int x = -size / 2; x <= size / 2; x++) {
+            for (int z = -size / 2; z <= size / 2; z++) {
+                world.getBlockAt(cx + x, cy, cz + z).setType(Material.SMOOTH_STONE);
             }
         }
-        // Top decorative
-        world.getBlockAt(cx, cy + 3, cz).setType(Material.SEA_LANTERN);
-        world.getBlockAt(cx - 1, cy + 2, cz).setType(Material.QUARTZ_BLOCK);
-        world.getBlockAt(cx + 1, cy + 2, cz).setType(Material.QUARTZ_BLOCK);
     }
 
-    private void buildNpcHologramPad(World world, int px, int py, int pz, int padSize, String theme, ThreadLocalRandom r) {
-        Material floor = Material.POLISHED_ANDESITE;
-        Material border = Material.STONE_BRICK_WALL; // low border feel, or use stairs
-
-        int half = padSize / 2;
+    private void buildNpcHologramPad(World world, int px, int py, int pz, int size, ThreadLocalRandom r) {
+        int half = size / 2;
         for (int x = -half; x <= half; x++) {
             for (int z = -half; z <= half; z++) {
-                Block b = world.getBlockAt(px + x, py, pz + z);
-                b.setType(floor);
-
-                // Border around edge
-                if (Math.abs(x) == half || Math.abs(z) == half) {
-                    if (r.nextDouble() > 0.3) { // mostly bordered
-                        world.getBlockAt(px + x, py + 1, pz + z).setType(border);
-                    }
-                }
+                world.getBlockAt(px + x, py, pz + z).setType(Material.POLISHED_ANDESITE);
             }
         }
-
-        // Center placeholder for hologram/NPC (lectern or sign)
-        Block centerBlock = world.getBlockAt(px, py + 1, pz);
-        centerBlock.setType(Material.LECTERN); // Nice for "clickable" feel, or OAK_SIGN
-
-        // Optional sign on side or above for theme (using setBlockData if needed, simplified here)
-        // For full sign text, more code needed; lectern is good visual placeholder.
+        world.getBlockAt(px, py + 1, pz).setType(Material.LECTERN);
     }
 
     private void buildPath(World world, int startX, int startY, int startZ, int endX, int endZ, ThreadLocalRandom r) {
-        // Simple straight path approximation
         int steps = Math.max(Math.abs(endX - startX), Math.abs(endZ - startZ));
         if (steps == 0) return;
 
@@ -352,100 +219,45 @@ public class WorldManager {
         for (int i = 0; i <= steps; i++) {
             int x = (int) Math.round(startX + i * dx);
             int z = (int) Math.round(startZ + i * dz);
-            Block pathBlock = world.getBlockAt(x, startY, z);
-            pathBlock.setType(Material.DIRT_PATH);
-
-            // Occasional lamp posts along path
-            if (i % 6 == 0 && r.nextDouble() < 0.6) {
-                world.getBlockAt(x, startY + 1, z).setType(Material.SEA_LANTERN);
-            }
-        }
-    }
-
-    private void placeSimpleTree(World world, int x, int y, int z, ThreadLocalRandom r) {
-        // Very simple tree: trunk + leaf blob
-        Material log = r.nextBoolean() ? Material.OAK_LOG : Material.BIRCH_LOG;
-        Material leaves = r.nextBoolean() ? Material.OAK_LEAVES : Material.BIRCH_LEAVES;
-
-        // Trunk
-        for (int h = 0; h < 4; h++) {
-            world.getBlockAt(x, y + h, z).setType(log);
-        }
-        // Leaves
-        for (int lx = -2; lx <= 2; lx++) {
-            for (int lz = -2; lz <= 2; lz++) {
-                for (int ly = 2; ly <= 5; ly++) {
-                    if (Math.abs(lx) + Math.abs(lz) + Math.abs(ly - 3) < 4) {
-                        Block leaf = world.getBlockAt(x + lx, y + ly, z + lz);
-                        if (leaf.getType() == Material.AIR) {
-                            leaf.setType(leaves);
-                        }
-                    }
-                }
-            }
+            world.getBlockAt(x, startY, z).setType(Material.DIRT_PATH);
         }
     }
 
     private void addRandomDecorations(World world, int cx, int cy, int cz, int radius, ThreadLocalRandom r) {
-        // Random lamps around platform
-        for (int i = 0; i < 15; i++) {
+        for (int i = 0; i < 10; i++) {
             int x = cx + r.nextInt(-radius + 5, radius - 4);
             int z = cz + r.nextInt(-radius + 5, radius - 4);
-            if (Math.sqrt(x*x + z*z) > radius - 3) continue;
-            Block lamp = world.getBlockAt(x, cy, z);
-            if (lamp.getType() == Material.STONE_BRICKS || lamp.getType() == Material.GRASS_BLOCK) {
-                lamp.setType(Material.SEA_LANTERN);
-            }
-        }
-
-        // Few extra small trees on outer area
-        for (int i = 0; i < 5; i++) {
-            int tx = cx + r.nextInt(-radius + 8, radius - 7);
-            int tz = cz + r.nextInt(-radius + 8, radius - 7);
-            if (Math.sqrt(tx*tx + tz*tz) < radius * 0.6) continue;
-            placeSimpleTree(world, tx, cy, tz, r);
-        }
-
-        // Flower patches
-        for (int i = 0; i < 20; i++) {
-            int fx = cx + r.nextInt(-radius + 3, radius - 2);
-            int fz = cz + r.nextInt(-radius + 3, radius - 2);
-            Block f = world.getBlockAt(fx, cy + 1, fz);
-            if (f.getType() == Material.GRASS_BLOCK || f.getType() == Material.STONE_BRICKS) {
-                f.setType(r.nextBoolean() ? Material.POPPY : Material.BLUE_ORCHID);
+            if (Math.sqrt(x * x + z * z) < radius - 3) {
+                world.getBlockAt(x, cy, z).setType(Material.SEA_LANTERN);
             }
         }
     }
 
-    // --- Existing methods (removeDefaultWorldFilesAsync, VoidChunkGenerator) remain the same ---
+    // ==================== UTILITY METHODS ====================
 
     private void removeDefaultWorldFilesAsync(String worldName) {
-        File worldFolder = new File(Bukkit.getWorldContainer(), worldName);
+        File folder = new File(Bukkit.getWorldContainer(), worldName);
+        if (!folder.exists()) return;
 
-        if (worldFolder.exists()) {
-            plugin.getLogger().info("§eRemoving existing world files for: " + worldName);
+        CompletableFuture.runAsync(() -> {
+            try {
+                Files.walkFileTree(folder.toPath(), new SimpleFileVisitor<Path>() {
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                        Files.delete(file);
+                        return FileVisitResult.CONTINUE;
+                    }
 
-            CompletableFuture.runAsync(() -> {
-                try {
-                    Files.walkFileTree(worldFolder.toPath(), new SimpleFileVisitor<Path>() {
-                        @Override
-                        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                            Files.delete(file);
-                            return FileVisitResult.CONTINUE;
-                        }
-
-                        @Override
-                        public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                            Files.delete(dir);
-                            return FileVisitResult.CONTINUE;
-                        }
-                    });
-                    plugin.getLogger().info("§a[✓] Deleted world folder: " + worldName);
-                } catch (IOException e) {
-                    plugin.getLogger().log(Level.WARNING, "§eCould not fully delete world folder: " + worldName, e);
-                }
-            });
-        }
+                    @Override
+                    public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                        Files.delete(dir);
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.WARNING, "Could not delete old world folder: " + worldName, e);
+            }
+        });
     }
 
     private static class VoidChunkGenerator extends ChunkGenerator {
@@ -454,19 +266,12 @@ public class WorldManager {
             return createChunkData(world);
         }
 
-        @Override
-        public boolean shouldGenerateNoise() { return false; }
-        @Override
-        public boolean shouldGenerateSurface() { return false; }
-        @Override
-        public boolean shouldGenerateBedrock() { return false; }
-        @Override
-        public boolean shouldGenerateCaves() { return false; }
-        @Override
-        public boolean shouldGenerateDecorations() { return false; }
-        @Override
-        public boolean shouldGenerateMobs() { return false; }
-        @Override
-        public boolean shouldGenerateStructures() { return false; }
+        @Override public boolean shouldGenerateNoise() { return false; }
+        @Override public boolean shouldGenerateSurface() { return false; }
+        @Override public boolean shouldGenerateBedrock() { return false; }
+        @Override public boolean shouldGenerateCaves() { return false; }
+        @Override public boolean shouldGenerateDecorations() { return false; }
+        @Override public boolean shouldGenerateMobs() { return false; }
+        @Override public boolean shouldGenerateStructures() { return false; }
     }
 }

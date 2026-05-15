@@ -19,12 +19,10 @@ import com.thenerdcj.manager.*;
 import com.thenerdcj.rank.RankManager;
 import com.thenerdcj.shop.ChestShopManager;
 import org.bukkit.Bukkit;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
-/**
- * FoliaSkyblock - High performance Skyblock for Folia API.
- */
 public class FoliaSkyblock extends JavaPlugin {
 
     // ==================== MANAGERS ====================
@@ -51,8 +49,6 @@ public class FoliaSkyblock extends JavaPlugin {
     private IslandGenerator islandGenerator;
     private ResetConfirmationGUI resetConfirmationGUI;
     private BiomeSelectionGUI biomeSelectionGUI;
-
-    // NEW: Hologram Manager
     private HologramManager hologramManager;
 
     // ==================== GUI INSTANCES ====================
@@ -64,12 +60,11 @@ public class FoliaSkyblock extends JavaPlugin {
     private IslandChatManager islandChatManager;
     private IslandUpgradeGUI islandUpgradeGUI;
 
-
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
-        // === Initialize Managers ===
+        // === Core Managers ===
         this.databaseManager = new DatabaseManager(this);
         databaseManager.initDatabase();
 
@@ -92,10 +87,14 @@ public class FoliaSkyblock extends JavaPlugin {
         this.auctionManager = new AuctionManager(this);
         this.bazaarManager = new BazaarManager(this);
         this.chatManager = new ChatManager(this);
-        this.worldManager = new WorldManager(this);
 
+        // === WorldManager (Custom Void Worlds) ===
+        this.worldManager = new WorldManager(this);
         this.worldManager.initializeWorlds();
 
+        getLogger().info("§e[WorldManager] Creating custom void worlds for Skyblock...");
+
+        // === Hologram Manager ===
         this.hologramManager = new HologramManager(this);
         hologramManager.loadAndSpawnAll();
 
@@ -112,20 +111,22 @@ public class FoliaSkyblock extends JavaPlugin {
 
         // === Register Commands & Listeners ===
         registerCommands();
-        registerListeners();                    // ← ADD THIS
+        registerListeners();
 
-        // Load islands for already online players
+        // Load islands for online players
         Bukkit.getOnlinePlayers().forEach(player -> islandManager.loadPlayerIslands(player));
 
         getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully on Folia!");
     }
+
     @Override
     public void onDisable() {
         if (hologramManager != null) hologramManager.cleanup();
         if (databaseManager != null) databaseManager.close();
-        getLogger().info("§e[FoliaSkyblock] Plugin disabled. Holograms cleaned up.");
+        getLogger().info("§e[FoliaSkyblock] Plugin disabled.");
     }
 
+    // ==================== COMMAND REGISTRATION ====================
     private void registerCommands() {
         safeRegisterCommand("island", new IslandCommand(this));
         safeRegisterCommand("is", new IslandCommand(this));
@@ -170,33 +171,28 @@ public class FoliaSkyblock extends JavaPlugin {
         if (cmd != null) {
             cmd.setExecutor(executor);
         } else {
-            getLogger().warning("§e[FoliaSkyblock] Command '" + name + "' not found in plugin.yml (skipped).");
+            getLogger().warning("§e[FoliaSkyblock] Command '" + name + "' not found in plugin.yml.");
         }
     }
 
+    // ==================== LISTENER REGISTRATION ====================
     private void registerListeners() {
         var pm = getServer().getPluginManager();
 
-        // === Progression & XP ===
         pm.registerEvents(new IslandXPListener(this), this);
         pm.registerEvents(new ChallengeProgressListener(this), this);
         pm.registerEvents(new CobbleGeneratorListener(this, gridManager, islandUpgradeManager), this);
-        // === Economy Systems ===
         pm.registerEvents(new ChestShopListener(this), this);
-
-        // === Protection & Security ===
         pm.registerEvents(new IslandProtectionListener(this), this);
         pm.registerEvents(new AntiCheatListener(this), this);
         pm.registerEvents(new HopperDupeListener(this, antiCheatManager), this);
-        // === Combat & Utilities ===
         pm.registerEvents(new CombatListener(this), this);
         pm.registerEvents(new AnvilListener(this), this);
-
-        // === Dimension & Island Logic ===
         pm.registerEvents(new DimensionIslandListener(this), this);
 
-        getLogger().info("§a[FoliaSkyblock] All listeners registered successfully.");
+        getLogger().info("§a[FoliaSkyblock] All listeners registered.");
     }
+
     // ==================== GETTERS ====================
     public DatabaseManager getDatabaseManager() { return databaseManager; }
     public IslandManager getIslandManager() { return islandManager; }
@@ -213,27 +209,43 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandUpgradeManager getIslandUpgradeManager() { return islandUpgradeManager; }
     public AuctionManager getAuctionManager() { return auctionManager; }
     public BazaarManager getBazaarManager() { return bazaarManager; }
+    public AntiCheatManager getAntiCheatManager() { return antiCheatManager; }
+    public ChestShopManager getChestShopManager() { return chestShopManager; }
+    public IslandSettingsManager getIslandSettingsManager() { return islandSettingsManager; }
+    public IslandRatingManager getIslandRatingManager() { return islandRatingManager; }
+    public IslandWarpManager getIslandWarpManager() { return islandWarpManager; }
+    public ChallengeManager getChallengeManager() { return challengeManager; }
+    public QuestManager getQuestManager() { return questManager; }
 
-
-    // GUI Getters (fix for SlayerCommand errors)
+    // GUI Getters
     public SlayerGUI getSlayerGUI() { return slayerGUI; }
     public SlayerLeaderboardGUI getSlayerLeaderboardGUI() { return slayerLeaderboardGUI; }
     public SlayerAchievementGUI getSlayerAchievementGUI() { return slayerAchievementGUI; }
     public EnchantingTableGUI getEnchantingTableGUI() { return enchantingTableGUI; }
     public ResetConfirmationGUI getResetConfirmationGUI() { return resetConfirmationGUI; }
     public BiomeSelectionGUI getBiomeSelectionGUI() { return biomeSelectionGUI; }
+    public IslandUpgradeGUI getIslandUpgradeGUI() { return islandUpgradeGUI; }
 
-    public ChallengeManager getChallengeManager() { return challengeManager; }
-    public QuestManager getQuestManager() { return questManager; }
-    public AntiCheatManager getAntiCheatManager() { return antiCheatManager; }
-    public ChestShopManager getChestShopManager() { return chestShopManager; }
-    public IslandSettingsManager getIslandSettingsManager() { return islandSettingsManager; }
-    public IslandRatingManager getIslandRatingManager() { return islandRatingManager; }
-    public IslandWarpManager getIslandWarpManager() { return islandWarpManager; }
-    public IslandUpgradeGUI getIslandUpgradeGUI() {
-        return islandUpgradeGUI;
+    // ==================== WORLD MANAGER HELPERS ====================
+
+    /**
+     * Returns the custom Skyblock world for the given dimension.
+     * This coordinates with WorldManager and IslandGenerator.
+     */
+    public World getSkyblockWorld(World.Environment environment) {
+        if (worldManager == null) return null;
+
+        return switch (environment) {
+            case NORMAL -> Bukkit.getWorld("skyblock");
+            case NETHER -> Bukkit.getWorld("skyblock_nether");
+            case THE_END -> Bukkit.getWorld("skyblock_end");
+            default -> null;
+        };
     }
-    // Folia detection
+
+    /**
+     * Checks if the plugin is running on Folia.
+     */
     public boolean isFolia() {
         try {
             Class.forName("io.papermc.paper.threadedregions.RegionizedServer");

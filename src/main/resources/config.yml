@@ -1,13 +1,6 @@
 # ================================================
 # FoliaSkyblock - Full Configuration
 # ================================================
-
-# World Settings
-worlds:
-  name: "skyblock"
-  nether-name: "skyblock_nether"
-  end-name: "skyblock_end"
-
 # Island Settings
 island:
   base-y: 80
@@ -16,7 +9,6 @@ island:
     nether: 20
     end: 50
   # Default starter items are handled in IslandManager.java
-
 
 # Grid System
 grid:

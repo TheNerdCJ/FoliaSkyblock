@@ -50,27 +50,21 @@ public class IslandGenerator {
 
     public void generateIsland(Island island, Player player, Biome chosenBiome, boolean isDonor) {
         World world = getWorldForDimension(island.getDimension());
+
         if (world == null) {
             plugin.getLogger().severe("Could not find world for dimension: " + island.getDimension());
             return;
         }
 
         Location center = island.getCenter(world);
-        BiomeTemplate template = BiomeTemplate.getTemplate(chosenBiome); // use improved
-
+        BiomeTemplate template = BiomeTemplate.getTemplate(chosenBiome);
         Biome finalBiome = determineFinalBiome(chosenBiome, isDonor, island.getDimension(), template);
-        island.setBiome(finalBiome.getKey().getKey());
-
-        // Compute stable seed from island position + dimension for unique but consistent generation
         long seed = computeIslandSeed(center, island.getDimension(), finalBiome);
 
         plugin.getServer().getRegionScheduler().execute(plugin, center, () -> {
             generateIslandStructure(center, finalBiome, island.getDimension(), template, seed);
             placeStarterChest(center, finalBiome, player, seed);
             setBiomeInChunk(center, finalBiome);
-
-            plugin.getLogger().info("§aGenerated enhanced " + finalBiome.getKey().getKey() +
-                    " island (radius ~" + getRandomizedRadius(template, seed) + ") for " + player.getName());
         });
     }
 
