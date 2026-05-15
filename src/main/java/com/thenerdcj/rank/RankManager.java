@@ -89,6 +89,7 @@ public class RankManager {
 
     // ====================== DYNAMIC RANK GETTERS ======================
 
+
     public String getPlayerRankId(UUID uuid) {
         return playerRankIds.getOrDefault(uuid, getDefaultRankId());
     }

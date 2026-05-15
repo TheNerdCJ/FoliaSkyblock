@@ -50,6 +50,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private ResetConfirmationGUI resetConfirmationGUI;
     private BiomeSelectionGUI biomeSelectionGUI;
     private HologramManager hologramManager;
+    private TeleportRequestManager teleportRequestManager;
 
     // ==================== GUI INSTANCES ====================
     private TradeGUI tradeGUI;
@@ -59,6 +60,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private EnchantingTableGUI enchantingTableGUI;
     private IslandChatManager islandChatManager;
     private IslandUpgradeGUI islandUpgradeGUI;
+    private TPAListGUI tpaListGUI;
 
     @Override
     public void onEnable() {
@@ -87,6 +89,9 @@ public class FoliaSkyblock extends JavaPlugin {
         this.auctionManager = new AuctionManager(this);
         this.bazaarManager = new BazaarManager(this);
         this.chatManager = new ChatManager(this);
+        this.teleportRequestManager = new TeleportRequestManager(this);
+        this.tpaListGUI = new TPAListGUI(this, teleportRequestManager);
+
 
         // === WorldManager (Custom Void Worlds) ===
         this.worldManager = new WorldManager(this);
@@ -152,6 +157,16 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("pending", new PlayerCommand(this));
         safeRegisterCommand("daily", new ChallengeCommand(this));
         safeRegisterCommand("rules", new PlayerCommand(this));
+        safeRegisterCommand("tpa", new PlayerCommand(this));
+        safeRegisterCommand("tpaccept", new PlayerCommand(this));
+        safeRegisterCommand("tpdeny", new PlayerCommand(this));
+        safeRegisterCommand("tpignore", new PlayerCommand(this));
+        safeRegisterCommand("tplist", new PlayerCommand(this));
+        safeRegisterCommand("msg", new PlayerCommand(this));
+        safeRegisterCommand("r", new PlayerCommand(this));
+        safeRegisterCommand("list", new PlayerCommand(this));
+        safeRegisterCommand("online", new PlayerCommand(this));
+        safeRegisterCommand("help", new PlayerCommand(this));
 
         safeRegisterCommand("trade", (sender, cmd, label, args) -> {
             if (sender instanceof Player player) {
@@ -189,6 +204,7 @@ public class FoliaSkyblock extends JavaPlugin {
         pm.registerEvents(new CombatListener(this), this);
         pm.registerEvents(new AnvilListener(this), this);
         pm.registerEvents(new DimensionIslandListener(this), this);
+        pm.registerEvents(new TPAListener(this, tpaListGUI), this);
 
         getLogger().info("§a[FoliaSkyblock] All listeners registered.");
     }
