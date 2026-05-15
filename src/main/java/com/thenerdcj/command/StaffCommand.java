@@ -2,6 +2,8 @@ package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.manager.ChatManager;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.command.Command;
@@ -75,7 +77,7 @@ public class StaffCommand implements CommandExecutor {
                     if (speed > 1f) speed = 1f;
                     player.setFlySpeed(speed);
                     player.setWalkSpeed(speed);
-                    player.sendMessage("§aSpeed set to §e" + (int)(speed*10));
+                    player.sendMessage("§aSpeed set to §e" + (int) (speed * 10));
                 } catch (NumberFormatException e) {
                     player.sendMessage("§cInvalid speed value.");
                 }
@@ -137,7 +139,7 @@ public class StaffCommand implements CommandExecutor {
                     double x = Double.parseDouble(args[0]);
                     double y = Double.parseDouble(args[1]);
                     double z = Double.parseDouble(args[2]);
-                    player.teleport(player.getWorld().getBlockAt((int)x, (int)y, (int)z).getLocation());
+                    player.teleport(player.getWorld().getBlockAt((int) x, (int) y, (int) z).getLocation());
                     player.sendMessage("§aTeleported to coordinates.");
                 } catch (Exception e) {
                     player.sendMessage("§cInvalid coordinates.");
@@ -148,7 +150,6 @@ public class StaffCommand implements CommandExecutor {
             case "ban", "tempban":
                 handleBan(player, args, cmd.equals("tempban"));
                 break;
-
             case "kick":
                 if (args.length == 0) {
                     player.sendMessage("§cUsage: /kick <player> [reason]");
@@ -156,9 +157,16 @@ public class StaffCommand implements CommandExecutor {
                 }
                 Player kickTarget = Bukkit.getPlayer(args[0]);
                 if (kickTarget != null) {
-                    String reason = args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : "Kicked by staff";
-                    kickTarget.kickPlayer("§c" + reason);
+                    String reason = args.length > 1
+                            ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length))
+                            : "Kicked by staff";
+
+                    // Modern Adventure Component kick
+                    kickTarget.kick(Component.text("§c" + reason));
+
                     player.sendMessage("§aKicked §e" + kickTarget.getName());
+                } else {
+                    player.sendMessage("§cPlayer not found.");
                 }
                 break;
 
@@ -258,22 +266,36 @@ public class StaffCommand implements CommandExecutor {
                     player.sendMessage("§cUsage: /broadcast <message>");
                     return true;
                 }
-                String bc = "§6§l[ANNOUNCEMENT] §r" + String.join(" ", args);
-                Bukkit.broadcastMessage(bc);
+                String msg = String.join(" ", args);
+
+                Component announcement = Component.text()
+                        .append(Component.text("[ANNOUNCEMENT] ", NamedTextColor.GOLD))
+                        .append(Component.text(msg, NamedTextColor.WHITE))
+                        .build();
+
+                Bukkit.broadcast(announcement);
                 break;
 
             case "clear":
                 player.getInventory().clear();
                 player.sendMessage("§aYour inventory has been cleared.");
                 break;
-
             case "repair":
-                if (player.getInventory().getItemInMainHand().getType().isAir()) {
+                org.bukkit.inventory.ItemStack handItem = player.getInventory().getItemInMainHand();
+
+                if (handItem.getType().isAir()) {
                     player.sendMessage("§cYou must hold an item to repair.");
                     return true;
                 }
-                player.getInventory().getItemInMainHand().setDurability((short) 0);
-                player.sendMessage("§aItem repaired.");
+
+                // Modern way (no deprecation warning)
+                if (handItem.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable damageable) {
+                    damageable.setDamage(0);
+                    handItem.setItemMeta(damageable);
+                    player.sendMessage("§aItem repaired successfully.");
+                } else {
+                    player.sendMessage("§cThis item cannot be repaired.");
+                }
                 break;
 
             default:
@@ -316,10 +338,19 @@ public class StaffCommand implements CommandExecutor {
             return;
         }
         // TODO: Expand with proper punishment storage in DatabaseManager
+
         Player target = Bukkit.getPlayer(args[0]);
         if (target != null) {
-            String reason = args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, isTemp ? 2 : 1, args.length)) : "Banned by staff";
-            target.kickPlayer("§cYou have been " + (isTemp ? "temporarily " : "") + "banned.\n§eReason: §f" + reason);
+            String reason = args.length > (isTemp ? 2 : 1)
+                    ? String.join(" ", java.util.Arrays.copyOfRange(args, isTemp ? 2 : 1, args.length))
+                    : "Banned by staff";
+
+            // ✅ Modern fix - No more deprecation warning
+            target.kick(net.kyori.adventure.text.Component.text(
+                    "§cYou have been " + (isTemp ? "temporarily " : "") + "banned.\n" +
+                            "§eReason: §f" + reason
+            ));
+
             staff.sendMessage("§cBanned §e" + target.getName());
         } else {
             staff.sendMessage("§cPlayer not found.");
