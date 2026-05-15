@@ -296,4 +296,15 @@ public class RankManager {
         RankData data = rankDataMap.get(rankId.toLowerCase());
         return data != null && data.isDonor();
     }
+    /**
+     * Remove cached rank data for a player when they quit.
+     */
+    public void removePlayer(UUID uuid) {
+        playerRankIds.remove(uuid);
+    }
+
+    // Optional alias (for compatibility with earlier suggestions)
+    public void removeCachedPlayer(UUID uuid) {
+        removePlayer(uuid);
+    }
 }

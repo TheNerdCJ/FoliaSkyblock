@@ -35,6 +35,8 @@ commands:
     description: Staff panel and tools
     usage: /<command>
     permission: foliasb.staff
+    description: Advanced staff management panel
+    usage: /<command> [vanish|fly|god|heal|speed|gm|tp|tphere|ban|tempban|kick|mute|warn|invsee|endersee|freeze|sc|broadcast|clear|repair]
 
   setspawn:
     description: Set the server spawn location (admin only)
@@ -78,8 +80,11 @@ commands:
   pending:
     description: Show how many pending TPA requests you have
     usage: /<command>
+  vanish:
+    description: Toggle vanish mode
+    permission: foliasb.staff.vanish
 
-  # === Private Messaging ===
+    # === Private Messaging ===
   msg:
     description: Send a private message to a player
     usage: /<command> <player> <message>

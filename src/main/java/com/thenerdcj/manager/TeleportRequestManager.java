@@ -176,4 +176,25 @@ public class TeleportRequestManager {
     public Map<UUID, Map<UUID, Long>> getAllPendingRequests() {
         return pendingRequests;
     }
+    /**
+     * Clean up ALL data for a player when they quit.
+     * Removes them as sender + as target from all pending requests,
+     * clears ignore lists and cooldowns.
+     */
+    public void removePlayer(UUID uuid) {
+        // Remove as sender
+        pendingRequests.remove(uuid);
+        lastTpaTime.remove(uuid);
+
+        // Remove as target from every other player's pending requests
+        for (Map<UUID, Long> requests : pendingRequests.values()) {
+            requests.remove(uuid);
+        }
+
+        // Clean ignore list
+        ignoreLists.remove(uuid);
+
+        // Remove any empty request maps
+        pendingRequests.entrySet().removeIf(e -> e.getValue().isEmpty());
+    }
 }

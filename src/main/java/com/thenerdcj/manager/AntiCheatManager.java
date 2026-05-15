@@ -65,6 +65,7 @@ public class AntiCheatManager {
     private final Map<UUID, Long> lastCheckTime = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> violationCounts = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastViolationTime = new ConcurrentHashMap<>();
+    private final Set<UUID> staffBypassPlayers = ConcurrentHashMap.newKeySet();
 
     // Dupe / item
     private final Map<UUID, Long> lastItemActionTime = new ConcurrentHashMap<>();
@@ -136,6 +137,21 @@ public class AntiCheatManager {
         }, 12000L, 12000L);
     }
 
+    /**
+     * Programmatically enable/disable anti-cheat bypass for staff.
+     * Used by StaffCommand when toggling /vanish.
+     */
+    public void setStaffBypass(UUID uuid, boolean bypass) {
+        if (bypass) {
+            staffBypassPlayers.add(uuid);
+        } else {
+            staffBypassPlayers.remove(uuid);
+        }
+    }
+
+    public boolean hasStaffBypass(UUID uuid) {
+        return staffBypassPlayers.contains(uuid);
+    }
     // ==================== MAIN CHECK (called from listener with Folia schedulers) ====================
 
     public boolean checkPlayer(Player player) {
@@ -143,7 +159,7 @@ public class AntiCheatManager {
 
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
-
+        if (hasStaffBypass(uuid)) return true;
         if (lastCheckTime.containsKey(uuid) && now - lastCheckTime.get(uuid) < 800) return true;
         lastCheckTime.put(uuid, now);
 
@@ -586,6 +602,22 @@ public class AntiCheatManager {
         // (can be expanded with recentItemGains map if desired)
     }
 
-    // Helper to get island at location (assumes IslandManager has this or similar; fallback safe)
-    // If your IslandManager uses different method name, adjust here or in IslandManager.
+    /**
+     * Clean up all tracking data for a player when they quit.
+     * Prevents memory leaks from profiles, violations, XP tracking, etc.
+     */
+    public void removePlayer(UUID uuid) {
+        profiles.remove(uuid);
+        trustedHighEnchantPlayers.remove(uuid);
+        lastCheckTime.remove(uuid);
+        violationCounts.remove(uuid);
+        lastViolationTime.remove(uuid);
+        lastItemActionTime.remove(uuid);
+        recentItemGains.remove(uuid);
+        shulkerPlaceCount.remove(uuid);
+        recentXPGains.remove(uuid);
+        lastBlockBreakTime.remove(uuid);
+        lastBlockPlaceTime.remove(uuid);
+        staffBypassPlayers.remove(uuid);   // ← Add this
+    }
 }

@@ -6,14 +6,13 @@ import com.thenerdcj.bazaar.BazaarManager;
 import com.thenerdcj.boss.BossManager;
 import com.thenerdcj.challenge.ChallengeManager;
 import com.thenerdcj.command.*;
+import com.thenerdcj.island.IslandUpgradeGUI;
 import com.thenerdcj.quest.QuestManager;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.gui.*;
 import com.thenerdcj.hologram.HologramManager;
 import com.thenerdcj.island.generator.IslandGenerator;
-import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
-import com.thenerdcj.island.IslandUpgradeGUI;
 import com.thenerdcj.listener.*;
 import com.thenerdcj.manager.*;
 import com.thenerdcj.rank.RankManager;
@@ -47,8 +46,6 @@ public class FoliaSkyblock extends JavaPlugin {
     private ChatManager chatManager;
     private WorldManager worldManager;
     private IslandGenerator islandGenerator;
-    private ResetConfirmationGUI resetConfirmationGUI;
-    private BiomeSelectionGUI biomeSelectionGUI;
     private HologramManager hologramManager;
     private TeleportRequestManager teleportRequestManager;
 
@@ -60,6 +57,8 @@ public class FoliaSkyblock extends JavaPlugin {
     private EnchantingTableGUI enchantingTableGUI;
     private IslandChatManager islandChatManager;
     private IslandUpgradeGUI islandUpgradeGUI;
+    private ResetConfirmationGUI resetConfirmationGUI;
+    private BiomeSelectionGUI biomeSelectionGUI;
     private TPAListGUI tpaListGUI;
 
     @Override
@@ -92,7 +91,6 @@ public class FoliaSkyblock extends JavaPlugin {
         this.teleportRequestManager = new TeleportRequestManager(this);
         this.tpaListGUI = new TPAListGUI(this, teleportRequestManager);
 
-
         // === WorldManager (Custom Void Worlds) ===
         this.worldManager = new WorldManager(this);
         this.worldManager.initializeWorlds();
@@ -121,7 +119,7 @@ public class FoliaSkyblock extends JavaPlugin {
         // Load islands for online players
         Bukkit.getOnlinePlayers().forEach(player -> islandManager.loadPlayerIslands(player));
 
-        getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully on Folia!");
+        getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully on Folia! (v1.0.2)");
     }
 
     @Override
@@ -135,39 +133,76 @@ public class FoliaSkyblock extends JavaPlugin {
     private void registerCommands() {
         safeRegisterCommand("island", new IslandCommand(this));
         safeRegisterCommand("is", new IslandCommand(this));
-        safeRegisterCommand("balance", new BalanceCommand(this));
+
         safeRegisterCommand("bal", new BalanceCommand(this));
+        safeRegisterCommand("balance", new BalanceCommand(this));
+
         safeRegisterCommand("rank", new RankCommand(this));
-        safeRegisterCommand("challenge", new ChallengeCommand(this));
-        safeRegisterCommand("challenges", new ChallengeCommand(this));
+
         safeRegisterCommand("spawn", new PlayerCommand(this));
-        safeRegisterCommand("tpa", new PlayerCommand(this));
-        safeRegisterCommand("tpaccept", new PlayerCommand(this));
-        safeRegisterCommand("tpdeny", new PlayerCommand(this));
-        safeRegisterCommand("slayer", new SlayerCommand(this));
-        safeRegisterCommand("enchant", new EnchantCommand(this));
-        safeRegisterCommand("auction", new AuctionCommand(this));
-        safeRegisterCommand("bazaar", new BazaarCommand(this));
-        safeRegisterCommand("staff", new StaffCommand(this));
-        safeRegisterCommand("minions", new MinionsCommand(this));
-        safeRegisterCommand("setspawn", new StaffCommand(this));
-        safeRegisterCommand("mute", new StaffCommand(this));
-        safeRegisterCommand("unmute", new StaffCommand(this));
-        safeRegisterCommand("home", new IslandCommand(this));
-        safeRegisterCommand("pending", new PlayerCommand(this));
-        safeRegisterCommand("daily", new ChallengeCommand(this));
-        safeRegisterCommand("rules", new PlayerCommand(this));
+        safeRegisterCommand("home", new PlayerCommand(this)); // or IslandCommand if preferred
+
+        // Expanded TPA
         safeRegisterCommand("tpa", new PlayerCommand(this));
         safeRegisterCommand("tpaccept", new PlayerCommand(this));
         safeRegisterCommand("tpdeny", new PlayerCommand(this));
         safeRegisterCommand("tpignore", new PlayerCommand(this));
         safeRegisterCommand("tplist", new PlayerCommand(this));
+        safeRegisterCommand("pending", new PlayerCommand(this));
+
+        // Private Messaging
         safeRegisterCommand("msg", new PlayerCommand(this));
         safeRegisterCommand("r", new PlayerCommand(this));
+
+        // List & Help
         safeRegisterCommand("list", new PlayerCommand(this));
         safeRegisterCommand("online", new PlayerCommand(this));
         safeRegisterCommand("help", new PlayerCommand(this));
 
+        safeRegisterCommand("rules", new PlayerCommand(this));
+
+        safeRegisterCommand("challenge", new ChallengeCommand(this));
+        safeRegisterCommand("challenges", new ChallengeCommand(this));
+        safeRegisterCommand("daily", new ChallengeCommand(this));
+
+        safeRegisterCommand("slayer", new SlayerCommand(this));
+        safeRegisterCommand("enchant", new EnchantCommand(this));
+        safeRegisterCommand("auction", new AuctionCommand(this));
+        safeRegisterCommand("ah", new AuctionCommand(this));
+        safeRegisterCommand("bazaar", new BazaarCommand(this));
+        safeRegisterCommand("minions", new MinionsCommand(this));
+
+        // Staff Commands
+        StaffCommand staffCmd = new StaffCommand(this);
+        safeRegisterCommand("staff", staffCmd);
+        safeRegisterCommand("vanish", staffCmd);
+        safeRegisterCommand("fly", staffCmd);
+        safeRegisterCommand("god", staffCmd);
+        safeRegisterCommand("heal", staffCmd);
+        safeRegisterCommand("speed", staffCmd);
+        safeRegisterCommand("gm", staffCmd);
+        safeRegisterCommand("gamemode", staffCmd);
+        safeRegisterCommand("tp", staffCmd);
+        safeRegisterCommand("tphere", staffCmd);
+        safeRegisterCommand("tppos", staffCmd);
+        safeRegisterCommand("ban", staffCmd);
+        safeRegisterCommand("tempban", staffCmd);
+        safeRegisterCommand("kick", staffCmd);
+        safeRegisterCommand("mute", staffCmd);
+        safeRegisterCommand("unmute", staffCmd);
+        safeRegisterCommand("warn", staffCmd);
+        safeRegisterCommand("invsee", staffCmd);
+        safeRegisterCommand("endersee", staffCmd);
+        safeRegisterCommand("freeze", staffCmd);
+        safeRegisterCommand("sc", staffCmd);
+        safeRegisterCommand("staffchat", staffCmd);
+        safeRegisterCommand("broadcast", staffCmd);
+        safeRegisterCommand("announce", staffCmd);
+        safeRegisterCommand("clear", staffCmd);
+        safeRegisterCommand("repair", staffCmd);
+        safeRegisterCommand("setspawn", staffCmd);
+
+        // Trade GUI
         safeRegisterCommand("trade", (sender, cmd, label, args) -> {
             if (sender instanceof Player player) {
                 tradeGUI.openTradeGUI(player);
@@ -185,6 +220,9 @@ public class FoliaSkyblock extends JavaPlugin {
         var cmd = getCommand(name);
         if (cmd != null) {
             cmd.setExecutor(executor);
+            if (executor instanceof org.bukkit.command.TabCompleter tabCompleter) {
+                cmd.setTabCompleter(tabCompleter);
+            }
         } else {
             getLogger().warning("§e[FoliaSkyblock] Command '" + name + "' not found in plugin.yml.");
         }
@@ -205,6 +243,9 @@ public class FoliaSkyblock extends JavaPlugin {
         pm.registerEvents(new AnvilListener(this), this);
         pm.registerEvents(new DimensionIslandListener(this), this);
         pm.registerEvents(new TPAListener(this, tpaListGUI), this);
+
+        // Player Quit Listener for ChatManager & TPA
+        pm.registerEvents(new PlayerQuitListener(this), this); // Make sure this exists or add it
 
         getLogger().info("§a[FoliaSkyblock] All listeners registered.");
     }
@@ -232,6 +273,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandWarpManager getIslandWarpManager() { return islandWarpManager; }
     public ChallengeManager getChallengeManager() { return challengeManager; }
     public QuestManager getQuestManager() { return questManager; }
+    public TeleportRequestManager getTeleportRequestManager() { return teleportRequestManager; }
 
     // GUI Getters
     public SlayerGUI getSlayerGUI() { return slayerGUI; }
@@ -241,16 +283,11 @@ public class FoliaSkyblock extends JavaPlugin {
     public ResetConfirmationGUI getResetConfirmationGUI() { return resetConfirmationGUI; }
     public BiomeSelectionGUI getBiomeSelectionGUI() { return biomeSelectionGUI; }
     public IslandUpgradeGUI getIslandUpgradeGUI() { return islandUpgradeGUI; }
+    public TradeGUI getTradeGUI() { return tradeGUI; }
 
-    // ==================== WORLD MANAGER HELPERS ====================
-
-    /**
-     * Returns the custom Skyblock world for the given dimension.
-     * This coordinates with WorldManager and IslandGenerator.
-     */
+    // ==================== HELPERS ====================
     public World getSkyblockWorld(World.Environment environment) {
         if (worldManager == null) return null;
-
         return switch (environment) {
             case NORMAL -> Bukkit.getWorld("skyblock");
             case NETHER -> Bukkit.getWorld("skyblock_nether");
@@ -259,9 +296,6 @@ public class FoliaSkyblock extends JavaPlugin {
         };
     }
 
-    /**
-     * Checks if the plugin is running on Folia.
-     */
     public boolean isFolia() {
         try {
             Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
@@ -269,8 +303,5 @@ public class FoliaSkyblock extends JavaPlugin {
         } catch (ClassNotFoundException e) {
             return false;
         }
-    }
-
-    public TeleportRequestManager getTeleportRequestManager() {return teleportRequestManager;
     }
 }
