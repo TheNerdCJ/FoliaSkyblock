@@ -3,6 +3,11 @@
 # ================================================
 # Island Settings
 island:
+  reset:
+    enabled: true
+    cost: 5000                    # Island balance cost (0 = free)
+    cooldown-hours: 24            # Hours between resets (0 = disabled)
+    require-confirmation: true
   base-y: 80
   spawn-protection-radius: 150
   dimension_requirements:
@@ -58,13 +63,6 @@ economy:
 # Island Economy (bank for leveling/trades)
 island-economy:
   starting-balance: 500.0
-
-island:
-  reset:
-    enabled: true
-    cost: 5000                    # Island balance cost (0 = free)
-    cooldown-hours: 24            # Hours between resets (0 = disabled)
-    require-confirmation: true
 # ================================================
 # Messages (you can expand these later)
 # ================================================

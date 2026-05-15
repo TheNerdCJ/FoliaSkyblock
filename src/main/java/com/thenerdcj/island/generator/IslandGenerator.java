@@ -11,12 +11,10 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
-
 /**
  * ImprovedIslandGenerator - Expanded custom island generation with significantly increased
  * customization and randomization while strictly maintaining specific biome islands.
- *
+ * <p>
  * Key expansions:
  * - Per-biome templates now control size range, vegetation/pond/rock/special densities for easy customization.
  * - Seeded deterministic-yet-varied generation (based on island center + dimension) so islands are unique
@@ -30,11 +28,11 @@ import java.util.concurrent.ThreadLocalRandom;
  * - Full Folia RegionScheduler usage for all block edits (lag-free, thread-safe).
  * - Resource balance preserved: densities randomized slightly per island but expected value clamped to template averages.
  *   No donor/P2W advantage in resources — purely cosmetic variety and replayability.
- *
+ * <p>
  * References for design: Popular skyblock procedural gens (noise + features), Hypixel-style progression focus post-start,
  * forum feedback requesting unique but fair starters to boost engagement without early-game imbalance (addressed via
  * trading system for rare items).
- *
+ * <p>
  * Integrates unchanged with IslandManager (generateIsland signature preserved for compatibility),
  * BiomeSelectionGUI (donor choice), GridManager (placement), WorldManager (void worlds).
  */
@@ -179,6 +177,7 @@ public class IslandGenerator {
 
                 Block surface = world.getBlockAt(cx + x, topY + 1, cz + z);
                 surface.setType(template.getSurfaceBlock());
+                surface.setBiome(biome);
 
                 // Extra surface layer chance for dunes/hills
                 if (heightVar > 1 && rand.nextDouble() < 0.35) {
@@ -270,7 +269,7 @@ public class IslandGenerator {
     private void addBalancedOreVeins(World world, int cx, int cy, int cz, int radius,
                                      BiomeTemplate template, Random rand) {
         int numVeins = (int) (radius * template.getOreChance() * template.getOreDensityMultiplier() * (0.85 + rand.nextDouble() * 0.3));
-        numVeins = Math.max(2, Math.min(numVeins, (int)(radius * 1.2))); // clamp for balance
+        numVeins = Math.clamp(numVeins, 2, (int) (radius * 1.2)); // clamp for balance
 
         List<Material> ores = template.getAllowedOres();
         if (ores.isEmpty()) return;
@@ -298,7 +297,7 @@ public class IslandGenerator {
         if (template.getTreeLog() == null) return;
 
         int numTrees = (int) (radius * template.getTreeChance() * (0.75 + rand.nextDouble() * 0.5));
-        numTrees = Math.max(0, Math.min(numTrees, radius / 2 + 3));
+        numTrees = Math.clamp(numTrees, 0, radius / 2 + 3);
 
         List<Location> placed = new ArrayList<>();
         for (int i = 0; i < numTrees; i++) {
@@ -493,15 +492,27 @@ public class IslandGenerator {
             if (rand.nextDouble() < 0.25) inv.addItem(new ItemStack(Material.IRON_INGOT, 1));
         }
     }
-
     private void setBiomeInChunk(Location center, Biome biome) {
-        // Set biome for the island chunk area (visual)
+        if (biome == null) return;
+
         World world = center.getWorld();
-        int chunkX = center.getBlockX() >> 4;
-        int chunkZ = center.getBlockZ() >> 4;
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                world.setBiome(chunkX + dx, chunkZ + dz, biome);
+        int cx = center.getBlockX();
+        int cy = center.getBlockY();
+        int cz = center.getBlockZ();
+
+        // Modern non-deprecated replacement (Block#setBiome).
+        // We sample every 4 blocks vertically because biomes are stored in 4x4x4 sections.
+        // This covers the island + generous padding so the visual (grass color, foliage, etc.) applies correctly.
+        int radius = 24; // Safe for typical island sizes. Increase if you have very large templates.
+
+        for (int x = cx - radius; x <= cx + radius; x++) {
+            for (int z = cz - radius; z <= cz + radius; z++) {
+                for (int y = cy - 4; y <= cy + 16; y += 4) {
+                    if (y < world.getMinHeight() || y >= world.getMaxHeight()) continue;
+
+                    Block block = world.getBlockAt(x, y, z);
+                    block.setBiome(biome);
+                }
             }
         }
     }
