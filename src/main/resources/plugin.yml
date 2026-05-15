@@ -1,19 +1,19 @@
 name: FoliaSkyblock
-version: 1.0.1
+version: 1.0.2
 main: com.thenerdcj.FoliaSkyblock
 api-version: 1.21
 folia-supported: true
 author: TheNerdCJ
-description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, economy, trading, and Play-to-Win progression. Uses Folia API for region-safe operations.
+description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, economy, trading, Play-to-Win progression, and full EssentialsX-style QoL commands.
 
 commands:
   island:
-    description: Main island command with create, home, invite, etc.
-    usage: /<command> [create|home|tp|invite|accept|kick|rank|top|setspawn]
+    description: Main island command (create, reset, party, upgrades, etc.)
+    usage: /<command> [create|home|tp|invite|accept|kick|promote|demote|disband|top|browse|visit|reset|upgrades|settings]
     aliases: [is, skyblock, sb]
 
   bal:
-    description: Check your player balance
+    description: Check your player balance (used for Chest Shops)
     usage: /<command>
     aliases: [balance, money, coins]
 
@@ -22,12 +22,12 @@ commands:
     usage: /<command> [vote|top]
 
   mute:
-    description: Mute a player (staff)
+    description: Mute a player (staff only)
     usage: /<command> <player> [duration] [reason]
     permission: foliasb.staff.mute
 
   unmute:
-    description: Unmute a player (staff)
+    description: Unmute a player (staff only)
     usage: /<command> <player>
     permission: foliasb.staff.mute
 
@@ -37,60 +37,95 @@ commands:
     permission: foliasb.staff
 
   setspawn:
-    description: Set the server spawn location (admin)
+    description: Set the server spawn location (admin only)
     usage: /<command>
     permission: foliasb.admin.setspawn
     aliases: [spawnset]
 
   spawn:
-    description: Teleport to server spawn
+    description: Teleport to the default unclaimable spawn (0,0)
     usage: /<command>
     aliases: [lobby]
 
   home:
     description: Teleport to your island home
+    usage: /<command>
 
+  # === Expanded TPA System ===
   tpa:
-    description: Request to teleport to a player
+    description: Request to teleport to another player (with cooldown)
     usage: /<command> <player>
+    aliases: [tpask, call]
 
   tpaccept:
     description: Accept a teleport request
     usage: /<command>
+    aliases: [tpac, tpaaccept]
+
+  tpdeny:
+    description: Deny a teleport request
+    usage: /<command>
+    aliases: [tpdecline, tpno]
+
+  tpignore:
+    description: Toggle ignoring TPA requests from a specific player
+    usage: /<command> <player>
+
+  tplist:
+    description: Open interactive GUI of pending TPA requests (Left-click = Deny, Right-click = Accept)
+    usage: /<command>
 
   pending:
-    description: List your pending teleport requests
+    description: Show how many pending TPA requests you have
+    usage: /<command>
+
+  # === Private Messaging ===
+  msg:
+    description: Send a private message to a player
+    usage: /<command> <player> <message>
+    aliases: [tell, whisper, m, pm]
+
+  r:
+    description: Reply to your last private message
+    usage: /<command> <message>
+    aliases: [reply]
+
+  # === List & Help ===
+  list:
+    description: List all online players with their rank prefixes
+    usage: /<command>
+    aliases: [online, who, ls]
+
+  help:
+    description: Show the help menu with available commands
+    usage: /<command>
+    aliases: [commands, ?]
+
+  rules:
+    description: View the server rules
     usage: /<command>
 
   challenge:
-    description: View your daily and weekly challenges
+    description: View daily, weekly, and progression challenges
     usage: /<command>
     aliases: [challenges, daily]
-
-  daily:
-    description: View your daily challenges
-    usage: /<command>
 
   trade:
     description: Open the island trading GUI
     usage: /<command>
 
   enchant:
-    description: Open the custom enchanting table (no level limits!)
+    description: Open the custom enchanting table
     usage: /<command>
     aliases: [ench, etable]
 
-  rules:
-    description: View server rules
-    usage: /<command>
-
   auction:
-    description: Open the auction house
+    description: Open the Auction House
     usage: /<command>
     aliases: [ah]
 
   bazaar:
-    description: Open the bazaar (instant trading)
+    description: Open the Bazaar (instant buy/sell)
     usage: /<command>
     aliases: [bz]
 
@@ -101,15 +136,19 @@ commands:
 
 permissions:
   foliasb.staff.mute:
-    description: Allows staff to mute and unmute players
-    default: op
+  description: Allows muting and unmuting players
+  default: op
 
   foliasb.staff:
-    description: Grants access to the staff panel and tools
+    description: Access to staff panel and tools
+    default: op
+
+  foliasb.staff.spy:
+    description: Allows spying on private messages (/msg and /r)
     default: op
 
   foliasb.admin.setspawn:
-    description: Allows administrators to set the global server spawn location
+    description: Allows setting the global spawn location
     default: op
 
   foliasb.island.*:
@@ -117,59 +156,64 @@ permissions:
     default: true
 
   foliasb.balance:
-    description: Allows checking player and island balances
+    description: Access to player and island balances
     default: true
 
   foliasb.rank:
-    description: Allows viewing player ranks, voting, and leaderboards
+    description: View ranks, vote, and leaderboards
     default: true
 
   foliasb.challenge:
-    description: Allows viewing and participating in daily/weekly challenges
+    description: View and complete challenges
     default: true
 
   foliasb.trade:
-    description: Allows access to the island trading system/GUI
+    description: Access to trading system
     default: true
 
   foliasb.auction:
-    description: Allows access to the auction house
+    description: Access to auction house
     default: true
 
   foliasb.bazaar:
-    description: Allows access to the bazaar (instant buy/sell)
+    description: Access to bazaar
     default: true
 
   foliasb.enchant:
-    description: Allows use of the custom enchanting table
+    description: Use custom enchanting table
     default: true
 
   foliasb.spawn:
-    description: Allows teleporting to the server spawn
+    description: Teleport to spawn
     default: true
 
   foliasb.home:
-    description: Allows teleporting to your island home
+    description: Teleport to island home
     default: true
 
   foliasb.tpa:
-    description: Allows sending and accepting teleport requests
+    description: Use TPA commands and GUI
+    default: true
+
+  foliasb.msg:
+    description: Send and receive private messages
     default: true
 
   foliasb.rules:
-    description: Allows viewing the server rules
+    description: View server rules
     default: true
 
   foliasb.donor:
-    description: Donor perks (cosmetic biome choice, etc.)
+    description: Donor perks (biome selection, etc.)
     default: op
 
   foliasb.*:
-    description: Wildcard - grants all FoliaSkyblock permissions
+    description: Grants all FoliaSkyblock permissions
     default: op
     children:
       foliasb.staff.mute: true
       foliasb.staff: true
+      foliasb.staff.spy: true
       foliasb.admin.setspawn: true
       foliasb.island.*: true
       foliasb.donor: true
