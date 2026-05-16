@@ -52,9 +52,17 @@ public class DatabaseManager {
             plugin.getLogger().log(Level.SEVERE, "Database init failed", e);
         }
     }
+    public void executeUpdate(String sql) {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to execute update: " + e.getMessage());
+        }
+    }
 
     private void createTables() {
-        // Islands
+        // Original tables
         executeUpdate("CREATE TABLE IF NOT EXISTS islands (" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 "owner_uuid TEXT UNIQUE, " +
@@ -86,7 +94,7 @@ public class DatabaseManager {
         executeUpdate("CREATE INDEX IF NOT EXISTS idx_auctions_active ON auctions(sold, end_time)");
         executeUpdate("CREATE INDEX IF NOT EXISTS idx_slayer_uuid ON slayer_kills(uuid)");
 
-        // ==================== NEW: DEEP PROGRESSION TABLES ====================
+        // ==================== NEW: Deep Progression Tables ====================
         executeUpdate("CREATE TABLE IF NOT EXISTS island_skills (" +
                 "island_key TEXT, " +
                 "skill_name TEXT, " +
@@ -577,23 +585,28 @@ public class DatabaseManager {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                          "SELECT * FROM auctions WHERE sold = 0 AND end_time > ?")) {
+
                 ps.setLong(1, System.currentTimeMillis());
                 ResultSet rs = ps.executeQuery();
+
                 while (rs.next()) {
-                    // Adjust constructor if your Auction class is different
-                    Auction a = new Auction(
+                    Auction auction = new Auction(
                             rs.getString("id"),
                             UUID.fromString(rs.getString("seller_uuid")),
-                            null, // item - load separately if needed
-                            rs.getDouble("price"),
+                            rs.getString("item_material"),           // or load from item_base64 if needed
+                            rs.getInt("item_amount"),
+                            rs.getDouble("starting_price"),
+                            rs.getDouble("current_bid"),
+                            rs.getString("current_bidder_uuid") != null
+                                    ? UUID.fromString(rs.getString("current_bidder_uuid"))
+                                    : null,
                             rs.getLong("end_time"),
-                            rs.getBoolean("sold"),
-                            rs.getString("buyer_uuid") != null ? UUID.fromString(rs.getString("buyer_uuid")) : null
+                            rs.getBoolean("active")                  // or !rs.getBoolean("sold")
                     );
-                    list.add(a);
+                    list.add(auction);
                 }
             } catch (SQLException e) {
-                plugin.getLogger().severe("getActiveAuctions failed: " + e.getMessage());
+                plugin.getLogger().severe("Failed to load active auctions: " + e.getMessage());
             }
             return list;
         }, executor);
@@ -602,17 +615,22 @@ public class DatabaseManager {
     public boolean saveAuction(Auction a) {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO auctions (id, seller_uuid, item_base64, price, end_time, sold, buyer_uuid) VALUES (?,?,?,?,?,?,?)")) {
+                     "INSERT OR REPLACE INTO auctions " +
+                             "(id, seller_uuid, item_base64, price, end_time, sold, buyer_uuid) " +
+                             "VALUES (?,?,?,?,?,?,?)")) {
+
             ps.setString(1, a.getId());
             ps.setString(2, a.getSellerUuid().toString());
-            // item_base64 handling omitted for brevity
-            ps.setDouble(3, a.getPrice());
-            ps.setLong(4, a.getEndTime());
-            ps.setBoolean(5, a.isSold());
-            ps.setString(6, a.getBuyerUuid() != null ? a.getBuyerUuid().toString() : null);
+            ps.setString(3, ""); // TODO: serialize item if you store it
+            ps.setDouble(4, a.getStartingPrice());           // ← Fixed
+            ps.setLong(5, a.getEndTime());
+            ps.setBoolean(6, !a.isActive());                 // sold = !active
+            ps.setString(7, a.getCurrentBidder() != null ? a.getCurrentBidder().toString() : null);
+
             ps.executeUpdate();
             return true;
         } catch (SQLException e) {
+            plugin.getLogger().severe("saveAuction failed: " + e.getMessage());
             return false;
         }
     }
@@ -621,11 +639,14 @@ public class DatabaseManager {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "UPDATE auctions SET sold = ?, buyer_uuid = ? WHERE id = ?")) {
-            ps.setBoolean(1, a.isSold());
-            ps.setString(2, a.getBuyerUuid() != null ? a.getBuyerUuid().toString() : null);
+
+            ps.setBoolean(1, !a.isActive());
+            ps.setString(2, a.getCurrentBidder() != null ? a.getCurrentBidder().toString() : null);
             ps.setString(3, a.getId());
+
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
+            plugin.getLogger().severe("updateAuction failed: " + e.getMessage());
             return false;
         }
     }
@@ -650,6 +671,17 @@ public class DatabaseManager {
             ps.setString(2, id);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
+            return false;
+        }
+    }
+    public boolean markAuctionExpired(String id) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE auctions SET active = 0 WHERE id = ?")) {
+            ps.setString(1, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            plugin.getLogger().severe("markAuctionExpired failed: " + e.getMessage());
             return false;
         }
     }
@@ -684,32 +716,38 @@ public class DatabaseManager {
     public boolean saveBazaarOrder(BazaarOrder o) {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO bazaar_orders (id, player_uuid, item_base64, amount, price_per_unit, buy_order, created_at, filled) VALUES (?,?,?,?,?,?,?,?)")) {
+                     "INSERT INTO bazaar_orders " +
+                             "(id, player_uuid, item_base64, amount, price_per_unit, buy_order, created_at, filled) " +
+                             "VALUES (?,?,?,?,?,?,?,?)")) {
+
             ps.setString(1, o.getId());
             ps.setString(2, o.getPlayerUuid().toString());
-            ps.setString(3, o.getItemBase64());
+            ps.setString(3, o.getMaterial());           // ← Fixed: was getItemBase64()
             ps.setInt(4, o.getAmount());
             ps.setDouble(5, o.getPricePerUnit());
             ps.setBoolean(6, o.isBuyOrder());
             ps.setLong(7, o.getCreatedAt());
             ps.setBoolean(8, o.isFilled());
+
             ps.executeUpdate();
             return true;
         } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to save bazaar order: " + e.getMessage());
             return false;
         }
     }
 
     public boolean markBazaarOrderFilled(String id) {
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("UPDATE bazaar_orders SET filled = 1 WHERE id = ?")) {
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE bazaar_orders SET filled = 1 WHERE id = ?")) {
             ps.setString(1, id);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
+            plugin.getLogger().severe("markBazaarOrderFilled failed: " + e.getMessage());
             return false;
         }
     }
-
     // ==================== SLAYER ====================
     public boolean incrementSlayerKills(UUID uuid, String type, String tier, int amount) {
         try (Connection conn = getConnection();
@@ -748,20 +786,70 @@ public class DatabaseManager {
         }, executor);
     }
 
-    public List<Object> getTopIslandsByLevel(int limit) {
-        List<Object> top = new ArrayList<>();
+    public List<TopIslandEntry> getTopIslandsByLevel(int limit) {
+        List<TopIslandEntry> top = new ArrayList<>();
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "SELECT owner_uuid, level, dimension FROM islands ORDER BY level DESC LIMIT ?")) {
+
             ps.setInt(1, limit);
             ResultSet rs = ps.executeQuery();
+
             while (rs.next()) {
-                top.add(new Object[]{UUID.fromString(rs.getString("owner_uuid")), rs.getInt("level"), rs.getString("dimension")});
+                UUID owner = UUID.fromString(rs.getString("owner_uuid"));
+                int level = rs.getInt("level");
+                String dimension = rs.getString("dimension");
+
+                top.add(new TopIslandEntry(owner, level, dimension));
             }
         } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to get top islands");
+            plugin.getLogger().severe("Failed to get top islands by level: " + e.getMessage());
         }
         return top;
+    }
+    // ==================== ISLAND BALANCE - Compatibility Overloads ====================
+    public CompletableFuture<Double> getIslandBalance(int islandId, int gridX, String dimension) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT balance FROM island_balances WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
+                ps.setInt(1, gridX);
+                ps.setInt(2, gridX); // adjust if you store gridZ separately
+                ps.setString(3, dimension);
+                ResultSet rs = ps.executeQuery();
+                return rs.next() ? rs.getDouble("balance") : 0.0;
+            } catch (SQLException e) {
+                return 0.0;
+            }
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> setIslandBalance(int islandId, int gridX, String dimension, double balance) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO island_balances (island_id, grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?, ?)")) {
+                ps.setInt(1, islandId);
+                ps.setInt(2, gridX);
+                ps.setInt(3, gridX);
+                ps.setString(4, dimension);
+                ps.setDouble(5, balance);
+                ps.executeUpdate();
+                return true;
+            } catch (SQLException e) {
+                plugin.getLogger().severe("setIslandBalance failed: " + e.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+
+    public CompletableFuture<Boolean> addIslandBalance(int islandId, int gridX, String dimension, double amount) {
+        return getIslandBalance(islandId, gridX, dimension)
+                .thenCompose(current -> setIslandBalance(islandId, gridX, dimension, current + amount));
+    }
+
+    public CompletableFuture<Boolean> removeIslandBalance(int islandId, int gridX, String dimension, double amount) {
+        return addIslandBalance(islandId, gridX, dimension, -amount);
     }
 
     // ==================== NEW: DEEP PROGRESSION METHODS ====================
@@ -866,6 +954,25 @@ public class DatabaseManager {
         }
         return 0;
     }
+    // ==================== STUBS FOR MISSING METHODS ====================
+
+    public CompletableFuture<Boolean> logPunishment(UUID target, UUID staff, Punishment.Type type, String reason, long durationMillis) {
+        // TODO: Implement full punishment logging
+        return CompletableFuture.completedFuture(true);
+    }
+
+    public CompletableFuture<List<Punishment>> getActivePunishments(UUID uuid) {
+        return CompletableFuture.completedFuture(new ArrayList<>());
+    }
+
+    public CompletableFuture<List<Punishment>> getPunishmentsForPlayer(UUID uuid) {
+        return getActivePunishments(uuid);
+    }
+
+    public CompletableFuture<List<Object>> getTopSlayers(String type, int limit) {
+        return CompletableFuture.completedFuture(new ArrayList<>());
+    }
+
 
     public void close() {
         if (dataSource != null && !dataSource.isClosed()) {

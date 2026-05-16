@@ -188,7 +188,7 @@ public class HologramManager {
 
             if (type.contains("TOP_ISLANDS_LEVEL")) {
                 lines.add("&6&l★ Top Islands by Level ★");
-                List<TopIslandEntry> top = databaseManager.getTopIslandsByLevel(limit);
+                List<TopIslandEntry> top = databaseManager.getTopIslandsByLevel(10);
                 int rank = 1;
                 for (TopIslandEntry e : top) {
                     lines.add(getMedal(rank) + " " + (e.getOwnerName() != null ? e.getOwnerName() : "Unknown") + " &7- Lvl " + e.getLevel());
