@@ -1,6 +1,8 @@
 package com.thenerdcj;
 
 import com.thenerdcj.Trade.TradeGUI;
+import com.thenerdcj.auction.Auction;
+import com.thenerdcj.auction.AuctionGUI;
 import com.thenerdcj.auction.AuctionManager;
 import com.thenerdcj.bazaar.BazaarManager;
 import com.thenerdcj.boss.BossManager;
@@ -61,6 +63,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private ResetConfirmationGUI resetConfirmationGUI;
     private BiomeSelectionGUI biomeSelectionGUI;
     private TPAListGUI tpaListGUI;
+    private AuctionGUI auctionGUI;
 
     @Override
     public void onEnable() {
@@ -114,6 +117,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.resetConfirmationGUI = new ResetConfirmationGUI(this);
         this.biomeSelectionGUI = new BiomeSelectionGUI(this);
         this.islandUpgradeGUI = new IslandUpgradeGUI(this);
+        this.auctionGUI = new AuctionGUI(this, auctionManager);
 
         // === Register Commands & Listeners ===
         registerCommands();
@@ -246,6 +250,7 @@ public class FoliaSkyblock extends JavaPlugin {
         pm.registerEvents(new AnvilListener(this), this);
         pm.registerEvents(new DimensionIslandListener(this), this);
         pm.registerEvents(new TPAListener(this, tpaListGUI), this);
+        pm.registerEvents(new AuctionGUI(this, auctionManager),this);
 
         // Player Quit Listener for ChatManager & TPA
         pm.registerEvents(new PlayerQuitListener(this), this); // Make sure this exists or add it
@@ -311,4 +316,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public PunishmentManager getPunishmentManager() {
         return punishmentManager;
     }
+
+    public AuctionGUI getAuctionGUI() { return auctionGUI; }
 }

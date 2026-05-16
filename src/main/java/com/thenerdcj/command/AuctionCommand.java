@@ -24,16 +24,24 @@ public class AuctionCommand implements CommandExecutor {
         }
 
         if (args.length == 0) {
-            player.sendMessage("§6=== Auction Commands ===");
-            player.sendMessage("§e/auction create <price> §7- List held item for auction");
-            player.sendMessage("§e/auction bid <id> <amount> §7- Place a bid");
-            player.sendMessage("§e/auction list §7- View active auctions");
+            plugin.getAuctionGUI().open(player);
             return true;
         }
 
         String sub = args[0].toLowerCase();
 
         switch (sub) {
+            case "help":
+                if (args.length == 1) {
+                    player.sendMessage("§6=== Auction Commands ===");
+                    player.sendMessage("§e/auction create <price> §7- List held item for auction");
+                    player.sendMessage("§e/auction bid <id> <amount> §7- Place a bid");
+                    player.sendMessage("§e/auction list §7- View active auctions");
+                }
+                break;
+            case "open":
+                if (args.length == 1) {plugin.getAuctionGUI().open(player);}
+                break;
             case "create":
                 if (args.length < 2) {
                     player.sendMessage("§cUsage: /auction create <starting price>");
