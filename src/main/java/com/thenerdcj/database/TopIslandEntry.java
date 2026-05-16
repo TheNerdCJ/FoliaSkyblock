@@ -1,24 +1,35 @@
 package com.thenerdcj.database;
 
-/**
- * Data holder for top island leaderboard entries.
- * Adjust fields/methods to match your actual implementation in DatabaseManager.
- */
+import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
+
+import java.util.UUID;
+
 public class TopIslandEntry {
+    private final UUID ownerUuid;
+    private final int level;
+    private final String dimension;
+    private String ownerName; // cached for holograms
 
-    private String ownerName;
-    private int level;
-    private Integer xp; // nullable
-
-    public TopIslandEntry(String ownerName, int level, Integer xp) {
-        this.ownerName = ownerName;
+    public TopIslandEntry(UUID ownerUuid, int level, String dimension) {
+        this.ownerUuid = ownerUuid;
         this.level = level;
-        this.xp = xp;
+        this.dimension = dimension;
     }
 
-    public String getOwnerName() { return ownerName; }
+    public UUID getOwnerUuid() { return ownerUuid; }
     public int getLevel() { return level; }
-    public Integer getXp() { return xp; }
+    public String getDimension() { return dimension; }
 
-    // Add more fields if your DB query returns them (e.g. island id, members, etc.)
+    public String getOwnerName() {
+        if (ownerName != null) return ownerName;
+        if (ownerUuid == null) return "Unknown";
+        try {
+            OfflinePlayer op = Bukkit.getOfflinePlayer(ownerUuid);
+            ownerName = (op.getName() != null) ? op.getName() : ownerUuid.toString().substring(0, 8);
+        } catch (Exception e) {
+            ownerName = ownerUuid.toString().substring(0, 8);
+        }
+        return ownerName;
+    }
 }
