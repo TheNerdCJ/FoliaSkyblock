@@ -1,7 +1,10 @@
 package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.Punishment;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 
 import java.util.List;
 import java.util.UUID;
@@ -14,9 +17,12 @@ import java.util.concurrent.CompletableFuture;
 public class PunishmentManager {
 
     private final FoliaSkyblock plugin;
+    private final DatabaseManager databaseManager;
 
     public PunishmentManager(FoliaSkyblock plugin) {
+
         this.plugin = plugin;
+        this.databaseManager = plugin.getDatabaseManager(); // ← Important
     }
 
     /**
@@ -48,5 +54,23 @@ public class PunishmentManager {
      */
     public CompletableFuture<List<Punishment>> getPunishmentHistory(UUID uuid) {
         return plugin.getDatabaseManager().getPunishmentsForPlayer(uuid);
+    }
+    public CompletableFuture<Boolean> unbanPlayer(Player staff, UUID target) {
+        return databaseManager.unbanPlayer(target).thenApply(success -> {
+            if (success) {
+                if (staff != null && staff.isOnline()) {
+                    staff.sendMessage("§aSuccessfully unbanned player.");
+                }
+                // Optional: Broadcast to staff
+                Bukkit.getOnlinePlayers().stream()
+                        .filter(p -> p.hasPermission("foliasb.staff"))
+                        .forEach(p -> p.sendMessage("§7[Staff] §e" + staff.getName() + " §7unbanned §c" + Bukkit.getOfflinePlayer(target).getName()));
+            } else {
+                if (staff != null && staff.isOnline()) {
+                    staff.sendMessage("§cPlayer is not currently banned.");
+                }
+            }
+            return success;
+        });
     }
 }

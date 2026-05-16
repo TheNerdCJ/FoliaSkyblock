@@ -93,6 +93,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.tpaListGUI = new TPAListGUI(this, teleportRequestManager);
         this.punishmentManager = new PunishmentManager(this);
 
+
         // === WorldManager (Custom Void Worlds) ===
         this.worldManager = new WorldManager(this);
         this.worldManager.initializeWorlds();

@@ -621,14 +621,29 @@ public class DatabaseManager {
 
             ps.setString(1, a.getId());
             ps.setString(2, a.getSellerUuid().toString());
-            ps.setString(3, ""); // TODO: serialize item if you store it
-            ps.setDouble(4, a.getStartingPrice());           // ← Fixed
+
+            // ==================== Serialize Item ====================
+            String itemBase64 = "";
+            try {
+                if (a.getItemMaterial() != null) {
+                    org.bukkit.Material material = org.bukkit.Material.valueOf(a.getItemMaterial().toUpperCase());
+                    org.bukkit.inventory.ItemStack item = new org.bukkit.inventory.ItemStack(material, a.getItemAmount());
+                    itemBase64 = itemToBase64(item);
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("Failed to serialize auction item: " + e.getMessage());
+            }
+            ps.setString(3, itemBase64);
+            // ========================================================
+
+            ps.setDouble(4, a.getStartingPrice());
             ps.setLong(5, a.getEndTime());
-            ps.setBoolean(6, !a.isActive());                 // sold = !active
+            ps.setBoolean(6, !a.isActive());
             ps.setString(7, a.getCurrentBidder() != null ? a.getCurrentBidder().toString() : null);
 
             ps.executeUpdate();
             return true;
+
         } catch (SQLException e) {
             plugin.getLogger().severe("saveAuction failed: " + e.getMessage());
             return false;
@@ -956,17 +971,154 @@ public class DatabaseManager {
     }
     // ==================== STUBS FOR MISSING METHODS ====================
 
-    public CompletableFuture<Boolean> logPunishment(UUID target, UUID staff, Punishment.Type type, String reason, long durationMillis) {
-        // TODO: Implement full punishment logging
-        return CompletableFuture.completedFuture(true);
+    public CompletableFuture<Boolean> logPunishment(UUID target, UUID staff, Punishment.Type type,
+                                                    String reason, long durationMillis) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT INTO punishments (target_uuid, staff_uuid, type, reason, issued_at, duration_millis, active) " +
+                                 "VALUES (?, ?, ?, ?, ?, ?, 1)")) {
+
+                ps.setString(1, target.toString());
+                ps.setString(2, staff != null ? staff.toString() : null);
+                ps.setString(3, type.name());
+                ps.setString(4, reason);
+                ps.setLong(5, System.currentTimeMillis());
+                ps.setLong(6, durationMillis);
+                ps.executeUpdate();
+                return true;
+
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to log punishment: " + e.getMessage());
+                return false;
+            }
+        }, executor);
     }
 
+    /**
+     * Gets all currently active punishments for a player
+     */
     public CompletableFuture<List<Punishment>> getActivePunishments(UUID uuid) {
-        return CompletableFuture.completedFuture(new ArrayList<>());
+        return CompletableFuture.supplyAsync(() -> {
+            List<Punishment> punishments = new ArrayList<>();
+            long now = System.currentTimeMillis();
+
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT * FROM punishments WHERE target_uuid = ? AND active = 1")) {
+
+                ps.setString(1, uuid.toString());
+                ResultSet rs = ps.executeQuery();
+
+                while (rs.next()) {
+                    long issuedAt = rs.getLong("issued_at");
+                    long duration = rs.getLong("duration_millis");
+                    boolean isPermanent = duration <= 0;
+
+                    // Check if punishment has expired
+                    if (!isPermanent && (issuedAt + duration) < now) {
+                        // Auto-deactivate expired punishment
+                        deactivatePunishment(rs.getInt("id"));
+                        continue;
+                    }
+
+                    Punishment punishment = new Punishment(
+                            rs.getInt("id"),
+                            UUID.fromString(rs.getString("target_uuid")),
+                            rs.getString("staff_uuid") != null ? UUID.fromString(rs.getString("staff_uuid")) : null,
+                            Punishment.Type.valueOf(rs.getString("type")),
+                            rs.getString("reason"),
+                            issuedAt,
+                            duration,
+                            rs.getBoolean("active")
+                    );
+                    punishments.add(punishment);
+                }
+            } catch (SQLException | IllegalArgumentException e) {
+                plugin.getLogger().severe("Failed to get active punishments: " + e.getMessage());
+            }
+            return punishments;
+        }, executor);
     }
 
+    /**
+     * Gets punishment history for a player (including expired ones)
+     */
     public CompletableFuture<List<Punishment>> getPunishmentsForPlayer(UUID uuid) {
-        return getActivePunishments(uuid);
+        return CompletableFuture.supplyAsync(() -> {
+            List<Punishment> punishments = new ArrayList<>();
+
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT * FROM punishments WHERE target_uuid = ? ORDER BY issued_at DESC")) {
+
+                ps.setString(1, uuid.toString());
+                ResultSet rs = ps.executeQuery();
+
+                while (rs.next()) {
+                    Punishment punishment = new Punishment(
+                            rs.getInt("id"),
+                            UUID.fromString(rs.getString("target_uuid")),
+                            rs.getString("staff_uuid") != null ? UUID.fromString(rs.getString("staff_uuid")) : null,
+                            Punishment.Type.valueOf(rs.getString("type")),
+                            rs.getString("reason"),
+                            rs.getLong("issued_at"),
+                            rs.getLong("duration_millis"),
+                            rs.getBoolean("active")
+                    );
+                    punishments.add(punishment);
+                }
+            } catch (SQLException | IllegalArgumentException e) {
+                plugin.getLogger().severe("Failed to get punishment history: " + e.getMessage());
+            }
+            return punishments;
+        }, executor);
+    }
+
+    /**
+     * Deactivates a punishment (used for expired or manually removed punishments)
+     */
+    private void deactivatePunishment(int id) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE punishments SET active = 0 WHERE id = ?")) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to deactivate punishment: " + e.getMessage());
+        }
+    }
+
+    // ==================== UNBAN ====================
+    public CompletableFuture<Boolean> unbanPlayer(UUID target) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "UPDATE punishments SET active = 0 WHERE target_uuid = ? AND type = 'BAN' AND active = 1")) {
+                ps.setString(1, target.toString());
+                int updated = ps.executeUpdate();
+                return updated > 0;
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to unban player: " + e.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+    /**
+     * Manually deactivates a punishment by ID (for staff commands)
+     */
+    public CompletableFuture<Boolean> deactivatePunishmentById(int id) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "UPDATE punishments SET active = 0 WHERE id = ?")) {
+                ps.setInt(1, id);
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to deactivate punishment: " + e.getMessage());
+                return false;
+            }
+        }, executor);
     }
 
     public CompletableFuture<List<Object>> getTopSlayers(String type, int limit) {

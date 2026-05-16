@@ -144,7 +144,7 @@ public class Island {
         // Fixed: Now uses 512 to match GridManager
         int centerX = gridPosition.x() * 512 + 256;
         int centerZ = gridPosition.z() * 512 + 256;
-        int baseY = 80; // TODO: Pull from config via plugin if needed
+        int baseY = 80;
         return new Location(world, centerX, baseY, centerZ);
     }
 
@@ -191,8 +191,11 @@ public class Island {
             int oldLevel = level;
             xp -= getRequiredXpForLevel(level + 1);
             level++;
+
+            // Fire the custom event
             IslandLevelUpEvent event = new IslandLevelUpEvent(this, oldLevel, level, ownerUuid);
             Bukkit.getPluginManager().callEvent(event);
+
             checkMilestoneUnlocks();
         }
     }
@@ -265,7 +268,10 @@ public class Island {
         if (completedMilestones.add(milestoneId)) {
             addXp(bonusXp, getOnlineMemberCount());
             checkMilestoneUnlocks();
-            // TODO: Fire custom IslandMilestoneCompleteEvent
+
+            // Fire custom event
+            IslandMilestoneCompleteEvent event = new IslandMilestoneCompleteEvent(this, milestoneId, bonusXp);
+            Bukkit.getPluginManager().callEvent(event);
         }
     }
 

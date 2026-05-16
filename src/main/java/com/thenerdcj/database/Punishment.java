@@ -42,4 +42,5 @@ public class Punishment {
         if (durationMillis <= 0) return false; // permanent
         return System.currentTimeMillis() > (issuedAt + durationMillis);
     }
+
 }

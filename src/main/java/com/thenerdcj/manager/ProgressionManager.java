@@ -71,9 +71,14 @@ public class ProgressionManager {
 
             if (actor != null && actor.isOnline()) {
                 actor.sendMessage("§a§l[MILESTONE COMPLETE] §e" + def.description);
-                actor.sendMessage("§7" + def.unlockDescription);
             }
-            // TODO: plugin.getDatabaseManager().saveMilestone(...)
+
+            // Save asynchronously
+            String islandKey = island.getId();
+            Set<String> completed = new HashSet<>(island.getCompletedMilestones());
+
+            plugin.getDatabaseManager()
+                    .saveIslandMilestones(islandKey, completed);
         }
     }
 
