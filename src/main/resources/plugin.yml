@@ -31,13 +31,6 @@ commands:
     usage: /<command> <player>
     permission: foliasb.staff.mute
 
-  staff:
-    description: Staff panel and tools
-    usage: /<command>
-    permission: foliasb.staff
-    description: Advanced staff management panel
-    usage: /<command> [vanish|fly|god|heal|speed|gm|tp|tphere|ban|tempban|kick|mute|warn|invsee|endersee|freeze|sc|broadcast|clear|repair]
-
   setspawn:
     description: Set the server spawn location (admin only)
     usage: /<command>
@@ -138,6 +131,10 @@ commands:
     description: Open the minion management GUI
     usage: /<command>
     aliases: [minion]
+  isadmin:
+    description: Admin tools for fixing islands and balances
+    usage: /<command> <subcommand> ...
+    permission: foliasb.admin
 
 permissions:
   foliasb.staff.mute:

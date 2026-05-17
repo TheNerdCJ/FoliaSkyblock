@@ -208,6 +208,7 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("clear", staffCmd);
         safeRegisterCommand("repair", staffCmd);
         safeRegisterCommand("setspawn", staffCmd);
+        safeRegisterCommand("isadmin", new AdminCommand(this));
 
         // Trade GUI
         safeRegisterCommand("trade", (sender, cmd, label, args) -> {
