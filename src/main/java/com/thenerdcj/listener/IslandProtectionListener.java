@@ -2,12 +2,15 @@ package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
-import com.thenerdcj.island.IslandPermission;
 import com.thenerdcj.island.IslandManager;
+import com.thenerdcj.island.IslandPermission;
 import com.thenerdcj.manager.GridManager;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World.Environment;
-import org.bukkit.entity.Player;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
+import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -15,17 +18,15 @@ import org.bukkit.event.block.*;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.player.*;
+import org.bukkit.event.vehicle.VehicleCreateEvent;
+import org.bukkit.event.vehicle.VehicleDestroyEvent;
 import org.bukkit.event.world.PortalCreateEvent;
 
 /**
- * IslandProtectionListener - Highly optimized protection system for Folia 1.21+
+ * Comprehensive Island Protection Listener for FoliaSkyblock.
  *
- * Features:
- * - Cached island lookups (O(1) permission checks)
- * - Spawn protection at 0,0 (unclaimable admin island + nice generated platform)
- * - Full party permission support
- * - Prevents griefing from endermen, explosions, pistons, etc.
- * - Dimension-aware protection
+ * Handles protection for blocks, entities, redstone, explosions, pistons, endermen, etc.
+ * Uses centralized permission checks via Island.hasPermission().
  */
 public class IslandProtectionListener implements Listener {
 
@@ -41,101 +42,284 @@ public class IslandProtectionListener implements Listener {
         this.spawnProtectionRadius = plugin.getConfig().getInt("island.spawn-protection-radius", 128);
     }
 
-    // ==================== CORE PERMISSION CHECK ====================
+    // ==================== CENTRAL PERMISSION CHECK ====================
 
-    private boolean canPerformAction(Player player, Location location) {
+    /**
+     * Main permission check method.
+     * Returns true if the player is allowed to perform the action at the location.
+     */
+    private boolean canPerformAction(Player player, Location location, IslandPermission permission) {
         if (location.getWorld() == null) return true;
 
-        // Admin bypass (fastest check first)
+        // Admin bypass
         if (player.hasPermission("foliasb.admin.bypass")) {
             return true;
         }
 
         Environment env = location.getWorld().getEnvironment();
 
-        // === ENHANCED SPAWN PROTECTION at 0,0 (unclaimable admin area with nice platform) ===
+        // Spawn protection (0,0 area)
         if (env == Environment.NORMAL) {
-            // Check world origin distance (existing)
             double distance = location.distance(new Location(location.getWorld(), 0, location.getY(), 0));
             if (distance <= spawnProtectionRadius) {
                 if (!player.hasPermission("foliasb.admin.editspawn")) {
-                    player.sendMessage("§cThis is the protected default spawn area. Only admins can edit here.");
+                    player.sendMessage("§cYou cannot modify the protected spawn area.");
                     return false;
                 }
             }
 
-            // Also protect grid (0,0) center area explicitly (in case of alignment)
             var gridPos = gridManager.getGridPosition(location);
             if (gridManager.isSpawnGridPosition(gridPos)) {
                 if (!player.hasPermission("foliasb.admin.editspawn")) {
-                    player.sendMessage("§cYou cannot modify the default spawn island (grid 0,0). Admin permission required.");
+                    player.sendMessage("§cYou cannot modify the default spawn island.");
                     return false;
                 }
             }
         }
 
-        // Get cached island
-        Island island = islandManager.getIsland(player.getUniqueId(), env);
+        // Get island at location
+        Island island = islandManager.getIslandAt(location);
         if (island == null) {
-            return false; // No island = no build rights (except spawn bypass above)
-        }
-
-        // Check distance from island center (64 block radius)
-        Location center = island.getCenter(location.getWorld());
-        if (center == null || location.distance(center) > 64) {
+            // No island here → only allow if player has bypass or it's their own unclaimed area (rare)
             return false;
         }
 
-        return island.hasPermission(player.getUniqueId(), IslandPermission.BUILD);
+        // Check if player is within island bounds (64 block radius from center)
+        Location center = island.getCenter(location.getWorld());
+        if (center != null && location.distance(center) > 64) {
+            return false;
+        }
+
+        // Permission check
+        return island.hasPermission(player.getUniqueId(), permission);
     }
 
-    private boolean isSameIsland(Player p1, Player p2) {
-        Environment env = p1.getWorld().getEnvironment();
-        if (env != p2.getWorld().getEnvironment()) return false;
-
-        Island island1 = islandManager.getIsland(p1.getUniqueId(), env);
-        Island island2 = islandManager.getIsland(p2.getUniqueId(), env);
-
-        if (island1 == null || island2 == null) return false;
-
-        return island1.getGridPosition().equals(island2.getGridPosition());
+    /**
+     * Simplified version for BUILD actions.
+     */
+    private boolean canBuild(Player player, Location location) {
+        return canPerformAction(player, location, IslandPermission.BUILD);
     }
 
-    // ==================== BLOCK EVENTS (rest unchanged, but messages improved for spawn) ====================
+    /**
+     * Simplified version for INTERACT actions.
+     */
+    private boolean canInteract(Player player, Location location) {
+        return canPerformAction(player, location, IslandPermission.INTERACT);
+    }
+
+    // ==================== BLOCK EVENTS ====================
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onBlockBreak(BlockBreakEvent e) {
-        if (!canPerformAction(e.getPlayer(), e.getBlock().getLocation())) {
-            e.setCancelled(true);
-            // Message already sent in canPerformAction for spawn
-            if (!e.getPlayer().hasPermission("foliasb.admin.editspawn")) {
-                // generic message only if not spawn (to avoid double message)
-            } else {
-                e.getPlayer().sendMessage("§cYou cannot break blocks here!");
+    public void onBlockBreak(BlockBreakEvent event) {
+        if (!canBuild(event.getPlayer(), event.getBlock().getLocation())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§cYou cannot break blocks here!");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockPlace(BlockPlaceEvent event) {
+        if (!canBuild(event.getPlayer(), event.getBlock().getLocation())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§cYou cannot place blocks here!");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        if (event.getClickedBlock() == null) return;
+
+        // Allow some interactions even without full build (like buttons/levers if redstone is allowed)
+        if (!canInteract(event.getPlayer(), event.getClickedBlock().getLocation())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBucketEmpty(PlayerBucketEmptyEvent event) {
+        if (!canBuild(event.getPlayer(), event.getBlock().getLocation())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§cYou cannot use buckets here!");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBucketFill(PlayerBucketFillEvent event) {
+        if (!canBuild(event.getPlayer(), event.getBlock().getLocation())) {
+            event.setCancelled(true);
+        }
+    }
+
+    // ==================== ENTITY & HANGING ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onHangingBreak(HangingBreakByEntityEvent event) {
+        if (event.getRemover() instanceof Player player) {
+            if (!canBuild(player, event.getEntity().getLocation())) {
+                event.setCancelled(true);
             }
         }
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onBlockPlace(BlockPlaceEvent e) {
-        if (!canPerformAction(e.getPlayer(), e.getBlock().getLocation())) {
-            e.setCancelled(true);
-            e.getPlayer().sendMessage("§cYou cannot place blocks here!");
+    public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
+        Entity entity = event.getRightClicked();
+        if (entity instanceof ItemFrame || entity instanceof Painting || entity instanceof ArmorStand) {
+            if (!canInteract(event.getPlayer(), entity.getLocation())) {
+                event.setCancelled(true);
+            }
         }
     }
-
-    // ... (other handlers remain the same as original for brevity - they call canPerformAction which now has enhanced spawn logic)
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onPlayerInteract(PlayerInteractEvent e) {
-        if (e.getClickedBlock() == null) return;
-        if (!canPerformAction(e.getPlayer(), e.getClickedBlock().getLocation())) {
-            e.setCancelled(true);
+    public void onArmorStandManipulate(PlayerArmorStandManipulateEvent event) {
+        if (!canInteract(event.getPlayer(), event.getRightClicked().getLocation())) {
+            event.setCancelled(true);
         }
     }
 
-    // Include other original handlers here in real implementation (piston, explode, enderman, etc.)
-    // They are unchanged and still work with the improved canPerformAction.
+    // ==================== EXPLOSIONS ====================
 
-    // For completeness in this patch, assume all other @EventHandler methods from original are kept.
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityExplode(EntityExplodeEvent event) {
+        event.blockList().removeIf(block -> {
+            Island island = islandManager.getIslandAt(block.getLocation());
+            return island != null; // Prevent explosion damage on claimed islands
+        });
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onExplosionPrime(ExplosionPrimeEvent event) {
+        // Optional: prevent primed TNT/creepers near protected areas
+        Location loc = event.getEntity().getLocation();
+        Island island = islandManager.getIslandAt(loc);
+        if (island != null) {
+            // You can choose to cancel or reduce yield
+            // event.setCancelled(true);
+        }
+    }
+
+    // ==================== PISTONS ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPistonExtend(BlockPistonExtendEvent event) {
+        for (Block block : event.getBlocks()) {
+            Island island = islandManager.getIslandAt(block.getLocation());
+            if (island != null) {
+                // Check if the piston is on the same island
+                Island pistonIsland = islandManager.getIslandAt(event.getBlock().getLocation());
+                if (pistonIsland == null || !pistonIsland.getGridPosition().equals(island.getGridPosition())) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPistonRetract(BlockPistonRetractEvent event) {
+        for (Block block : event.getBlocks()) {
+            Island island = islandManager.getIslandAt(block.getLocation());
+            if (island != null) {
+                Island pistonIsland = islandManager.getIslandAt(event.getBlock().getLocation());
+                if (pistonIsland == null || !pistonIsland.getGridPosition().equals(island.getGridPosition())) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+        }
+    }
+
+    // ==================== ENDERMAN & ENTITY CHANGE ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityChangeBlock(EntityChangeBlockEvent event) {
+        if (event.getEntity() instanceof Enderman) {
+            Island island = islandManager.getIslandAt(event.getBlock().getLocation());
+            if (island != null) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    // ==================== FIRE & BURN ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockBurn(BlockBurnEvent event) {
+        Island island = islandManager.getIslandAt(event.getBlock().getLocation());
+        if (island != null) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockIgnite(BlockIgniteEvent event) {
+        if (event.getPlayer() != null) {
+            if (!canBuild(event.getPlayer(), event.getBlock().getLocation())) {
+                event.setCancelled(true);
+            }
+        } else {
+            // Natural fire (lightning, etc.)
+            Island island = islandManager.getIslandAt(event.getBlock().getLocation());
+            if (island != null) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    // ==================== VEHICLES ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onVehicleCreate(VehicleCreateEvent event) {
+        // Usually allowed, but you can restrict boat placement if desired
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onVehicleDestroy(VehicleDestroyEvent event) {
+        if (event.getAttacker() instanceof Player player) {
+            if (!canBuild(player, event.getVehicle().getLocation())) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    // ==================== PORTALS ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPortalCreate(PortalCreateEvent event) {
+        for (BlockState block : event.getBlocks()) {
+            Island island = islandManager.getIslandAt(block.getLocation());
+            if (island != null) {
+                event.setCancelled(true);
+                if (event.getEntity() instanceof Player player) {
+                    player.sendMessage("§cYou cannot create portals on someone else's island.");
+                }
+                return;
+            }
+        }
+    }
+
+    // ==================== COMBAT PROTECTION (Optional) ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+        if (event.getDamager() instanceof Player damager && event.getEntity() instanceof Player victim) {
+            // Optional: Prevent PvP between players on different islands
+            if (!isSameIsland(damager, victim)) {
+                // You can choose to allow or deny cross-island PvP
+                // event.setCancelled(true);
+            }
+        }
+    }
+
+    private boolean isSameIsland(Player p1, Player p2) {
+        if (p1.getWorld().getEnvironment() != p2.getWorld().getEnvironment()) return false;
+
+        Island island1 = islandManager.getIsland(p1.getUniqueId(), p1.getWorld().getEnvironment());
+        Island island2 = islandManager.getIsland(p2.getUniqueId(), p2.getWorld().getEnvironment());
+
+        if (island1 == null || island2 == null) return false;
+        return island1.getGridPosition().equals(island2.getGridPosition());
+    }
 }
