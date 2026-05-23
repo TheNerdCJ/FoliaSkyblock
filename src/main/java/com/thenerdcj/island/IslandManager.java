@@ -300,4 +300,24 @@ public class IslandManager {
         }
         return "PLAINS";
     }
+
+    public GridPosition getGridPosition(UUID ownerUuid, World.Environment dimension) {
+        Island island = getIsland(ownerUuid, dimension);
+        if (island == null) {
+            return null;
+        }
+        return island.getGridPosition();
+    }
+
+    /**
+     * Overloaded version that accepts dimension as String (for convenience).
+     */
+    public GridPosition getGridPosition(UUID ownerUuid, String dimensionName) {
+        try {
+            World.Environment env = World.Environment.valueOf(dimensionName.toUpperCase());
+            return getGridPosition(ownerUuid, env);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
 }
