@@ -14,7 +14,28 @@ island:
     nether: 20
     end: 50
   # Default starter items are handled in IslandManager.java
+# =============================================
+# Protection Settings
+# =============================================
+protection:
+  # Spawn protection at world 0,0
+  spawn-radius: 500
+  spawn-protected-worlds:
+    - "skyblock"
+    - "skyblock_nether"
+    - "skyblock_end"
 
+  # General island protection
+  wilderness-protection: true          # Prevent building in unclaimed areas
+  explosion-protection: true
+  piston-protection: true
+  fire-protection: true
+  enderman-grief: true
+
+  # Messages
+  messages:
+    no-build: "&cYou cannot build here!"
+    no-interact: "&cYou cannot interact here!"
 # Grid System
 grid:
   region-distance: 10   # Distance between islands (in chunks * 16)

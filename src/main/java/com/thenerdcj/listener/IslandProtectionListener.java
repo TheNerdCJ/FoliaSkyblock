@@ -4,10 +4,8 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.island.IslandPermission;
-import com.thenerdcj.database.GridPosition;
 import org.bukkit.Location;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockState;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -16,33 +14,50 @@ import org.bukkit.event.entity.*;
 import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.player.*;
-import org.bukkit.event.vehicle.VehicleCreateEvent;
-import org.bukkit.event.vehicle.VehicleDestroyEvent;
+import org.bukkit.event.vehicle.*;
 import net.kyori.adventure.text.Component;
-import org.bukkit.event.world.PortalCreateEvent;
-
-import java.util.UUID;
 
 public class IslandProtectionListener implements Listener {
 
     private final FoliaSkyblock plugin;
     private final IslandManager islandManager;
+    private final FileConfiguration config;
+
+    // Configurable values
+    private int spawnRadius;
+    private boolean wildernessProtection;
+    private boolean explosionProtection;
+    private boolean pistonProtection;
+    private boolean fireProtection;
+    private boolean endermanGrief;
 
     public IslandProtectionListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.islandManager = plugin.getIslandManager();
+        this.config = plugin.getConfig();
+        loadConfig();
+    }
+
+    public void loadConfig() {
+        this.spawnRadius = config.getInt("protection.spawn-radius", 50);
+        this.wildernessProtection = config.getBoolean("protection.wilderness-protection", true);
+        this.explosionProtection = config.getBoolean("protection.explosion-protection", true);
+        this.pistonProtection = config.getBoolean("protection.piston-protection", true);
+        this.fireProtection = config.getBoolean("protection.fire-protection", true);
+        this.endermanGrief = config.getBoolean("protection.enderman-grief", true);
     }
 
     private boolean canBuild(Player player, Location location) {
         if (player.hasPermission("foliasb.admin.bypass")) return true;
 
         Island island = islandManager.getIslandAt(location);
+
         if (island == null) {
-            // Spawn protection at 0,0
-            if (Math.abs(location.getBlockX()) <= 50 && Math.abs(location.getBlockZ()) <= 50) {
+            // Spawn protection
+            if (isSpawnProtected(location)) {
                 return false;
             }
-            return false; // Wilderness protection
+            return !wildernessProtection; // Allow build in wilderness if disabled
         }
 
         return island.hasPermission(player.getUniqueId(), IslandPermission.BUILD);
@@ -57,13 +72,18 @@ public class IslandProtectionListener implements Listener {
         return island.hasPermission(player.getUniqueId(), IslandPermission.INTERACT);
     }
 
+    private boolean isSpawnProtected(Location loc) {
+        return Math.abs(loc.getBlockX()) <= spawnRadius &&
+                Math.abs(loc.getBlockZ()) <= spawnRadius;
+    }
+
     // ==================== BLOCK EVENTS ====================
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent e) {
         if (!canBuild(e.getPlayer(), e.getBlock().getLocation())) {
             e.setCancelled(true);
-            e.getPlayer().sendActionBar(Component.text("§cYou cannot break blocks here!"));
+            e.getPlayer().sendActionBar(Component.text(config.getString("protection.messages.no-build", "§cYou cannot build here!")));
         }
     }
 
@@ -71,15 +91,16 @@ public class IslandProtectionListener implements Listener {
     public void onBlockPlace(BlockPlaceEvent e) {
         if (!canBuild(e.getPlayer(), e.getBlock().getLocation())) {
             e.setCancelled(true);
-            e.getPlayer().sendActionBar(Component.text("§cYou cannot place blocks here!"));
+            e.getPlayer().sendActionBar(Component.text(config.getString("protection.messages.no-build", "§cYou cannot build here!")));
         }
     }
 
     @EventHandler
-    public void onBlockInteract(PlayerInteractEvent e) {
+    public void onPlayerInteract(PlayerInteractEvent e) {
         if (e.getClickedBlock() == null) return;
         if (!canInteract(e.getPlayer(), e.getClickedBlock().getLocation())) {
             e.setCancelled(true);
+            e.getPlayer().sendActionBar(Component.text(config.getString("protection.messages.no-interact", "§cYou cannot interact here!")));
         }
     }
 
@@ -87,42 +108,36 @@ public class IslandProtectionListener implements Listener {
 
     @EventHandler
     public void onBucketEmpty(PlayerBucketEmptyEvent e) {
-        if (!canBuild(e.getPlayer(), e.getBlock().getLocation())) {
-            e.setCancelled(true);
-        }
+        if (!canBuild(e.getPlayer(), e.getBlock().getLocation())) e.setCancelled(true);
     }
 
     @EventHandler
     public void onBucketFill(PlayerBucketFillEvent e) {
-        if (!canBuild(e.getPlayer(), e.getBlock().getLocation())) {
-            e.setCancelled(true);
-        }
+        if (!canBuild(e.getPlayer(), e.getBlock().getLocation())) e.setCancelled(true);
     }
 
     // ==================== EXPLOSIONS ====================
 
     @EventHandler
-    public void onExplosion(EntityExplodeEvent e) {
-        e.blockList().removeIf(block -> {
-            Island island = islandManager.getIslandAt(block.getLocation());
-            return island == null || !island.isMember(UUID.fromString("00000000-0000-0000-0000-000000000000")); // Prevent all explosions in islands
-        });
+    public void onEntityExplode(EntityExplodeEvent e) {
+        if (explosionProtection) {
+            e.blockList().removeIf(block -> islandManager.getIslandAt(block.getLocation()) != null);
+        }
     }
 
     @EventHandler
     public void onBlockExplode(BlockExplodeEvent e) {
-        e.blockList().removeIf(block -> {
-            Island island = islandManager.getIslandAt(block.getLocation());
-            return island != null;
-        });
+        if (explosionProtection) {
+            e.blockList().removeIf(block -> islandManager.getIslandAt(block.getLocation()) != null);
+        }
     }
 
     // ==================== PISTONS ====================
 
     @EventHandler
     public void onPistonExtend(BlockPistonExtendEvent e) {
-        if (islandManager.getIslandAt(e.getBlock().getLocation()) != null) {
-            for (Block block : e.getBlocks()) {
+        if (pistonProtection && islandManager.getIslandAt(e.getBlock().getLocation()) != null) {
+            for (org.bukkit.block.Block block : e.getBlocks()) {
                 if (islandManager.getIslandAt(block.getLocation()) == null) {
                     e.setCancelled(true);
                     return;
@@ -133,8 +148,8 @@ public class IslandProtectionListener implements Listener {
 
     @EventHandler
     public void onPistonRetract(BlockPistonRetractEvent e) {
-        if (islandManager.getIslandAt(e.getBlock().getLocation()) != null) {
-            for (Block block : e.getBlocks()) {
+        if (pistonProtection && islandManager.getIslandAt(e.getBlock().getLocation()) != null) {
+            for (org.bukkit.block.Block block : e.getBlocks()) {
                 if (islandManager.getIslandAt(block.getLocation()) == null) {
                     e.setCancelled(true);
                     return;
@@ -143,16 +158,23 @@ public class IslandProtectionListener implements Listener {
         }
     }
 
-    // ==================== ENTITIES ====================
+    // ==================== VEHICLES ====================
 
     @EventHandler
-    public void onEntityDamageByEntity(EntityDamageByEntityEvent e) {
-        if (e.getDamager() instanceof Player player) {
-            if (!canBuild(player, e.getEntity().getLocation())) {
+    public void onVehicleCreate(VehicleCreateEvent e) {
+        // Optional wilderness control
+    }
+
+    @EventHandler
+    public void onVehicleDestroy(VehicleDestroyEvent e) {
+        if (e.getAttacker() instanceof Player player) {
+            if (!canBuild(player, e.getVehicle().getLocation())) {
                 e.setCancelled(true);
             }
         }
     }
+
+    // ==================== HANGING & ARMOR STAND ====================
 
     @EventHandler
     public void onHangingBreak(HangingBreakByEntityEvent e) {
@@ -177,11 +199,11 @@ public class IslandProtectionListener implements Listener {
         }
     }
 
-    // ==================== FIRE & ENDERMAN ====================
+    // ==================== FIRE & GRIEFING ====================
 
     @EventHandler
     public void onBlockBurn(BlockBurnEvent e) {
-        if (islandManager.getIslandAt(e.getBlock().getLocation()) != null) {
+        if (fireProtection && islandManager.getIslandAt(e.getBlock().getLocation()) != null) {
             e.setCancelled(true);
         }
     }
@@ -195,39 +217,9 @@ public class IslandProtectionListener implements Listener {
 
     @EventHandler
     public void onEntityChangeBlock(EntityChangeBlockEvent e) {
-        if (e.getEntity() instanceof org.bukkit.entity.Enderman) {
+        if (endermanGrief && e.getEntity() instanceof org.bukkit.entity.Enderman) {
             if (islandManager.getIslandAt(e.getBlock().getLocation()) != null) {
                 e.setCancelled(true);
-            }
-        }
-    }
-
-    // ==================== VEHICLES & PORTALS ====================
-
-    @EventHandler
-    public void onVehicleCreate(VehicleCreateEvent e) {
-        Island island = islandManager.getIslandAt(e.getVehicle().getLocation());
-        if (island == null) {
-            // Optional: Block vehicle creation in wilderness
-            // e.setCancelled(true);
-        }
-    }
-
-    @EventHandler
-    public void onVehicleDestroy(VehicleDestroyEvent e) {
-        if (e.getAttacker() instanceof Player player) {
-            if (!canBuild(player, e.getVehicle().getLocation())) {
-                e.setCancelled(true);
-            }
-        }
-    }
-
-    @EventHandler
-    public void onPortalCreate(PortalCreateEvent e) {
-        for (BlockState state : e.getBlocks()) {
-            if (islandManager.getIslandAt(state.getLocation()) != null) {
-                // Optional: Allow or block portal creation
-                // e.setCancelled(true); // Uncomment to disable portals on islands
             }
         }
     }
@@ -236,8 +228,10 @@ public class IslandProtectionListener implements Listener {
 
     @EventHandler
     public void onSpawnInteract(PlayerInteractEvent e) {
-        Location loc = e.getClickedBlock() != null ? e.getClickedBlock().getLocation() : e.getPlayer().getLocation();
-        if (Math.abs(loc.getBlockX()) <= 50 && Math.abs(loc.getBlockZ()) <= 50) {
+        Location loc = e.getClickedBlock() != null ?
+                e.getClickedBlock().getLocation() : e.getPlayer().getLocation();
+
+        if (isSpawnProtected(loc)) {
             if (!e.getPlayer().hasPermission("foliasb.admin.bypass")) {
                 e.setCancelled(true);
             }
