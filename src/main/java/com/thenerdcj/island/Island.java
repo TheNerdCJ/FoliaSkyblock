@@ -334,4 +334,23 @@ public class Island {
         if (levelData != null) this.skillLevels.putAll(levelData);
         if (milestones != null) this.completedMilestones.addAll(milestones);
     }
+    private final Map<IslandUpgrade, Integer> upgrades = new EnumMap<>(IslandUpgrade.class);
+
+    // Load upgrades when island is loaded
+    public void loadUpgrades(Map<IslandUpgrade, Integer> loaded) {
+        this.upgrades.clear();
+        this.upgrades.putAll(loaded);
+    }
+
+    public int getUpgradeLevel(IslandUpgrade upgrade) {
+        return upgrades.getOrDefault(upgrade, 0);
+    }
+
+    public void setUpgradeLevel(IslandUpgrade upgrade, int level) {
+        upgrades.put(upgrade, level);
+    }
+
+    public Map<IslandUpgrade, Integer> getUpgrades() {
+        return Collections.unmodifiableMap(upgrades);
+    }
 }

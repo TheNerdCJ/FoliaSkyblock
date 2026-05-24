@@ -6,6 +6,7 @@ import com.thenerdcj.bazaar.BazaarOrder;
 import com.thenerdcj.hologram.HologramData;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.Island.Skill;
+import com.thenerdcj.island.IslandUpgrade;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.Bukkit;
@@ -434,6 +435,71 @@ public class DatabaseManager {
         dirtySkills.clear();
 
         plugin.getLogger().info("§a[Database] Dirty caches flushed to disk.");
+    }
+    // ==================== ISLAND UPGRADES PERSISTENCE ====================
+
+    /**
+     * Save or update a single upgrade level for an island.
+     */
+    public CompletableFuture<Boolean> saveIslandUpgrade(String islandKey, IslandUpgrade upgrade, int level) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO island_upgrades (island_key, upgrade_type, level) VALUES (?, ?, ?)")) {
+                ps.setString(1, islandKey);
+                ps.setString(2, upgrade.name());
+                ps.setInt(3, level);
+                ps.executeUpdate();
+                return true;
+            } catch (SQLException e) {
+                plugin.getLogger().severe("saveIslandUpgrade failed: " + e.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+
+    /**
+     * Load all upgrades and their levels for an island.
+     */
+    public CompletableFuture<Map<IslandUpgrade, Integer>> loadIslandUpgrades(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<IslandUpgrade, Integer> upgrades = new EnumMap<>(IslandUpgrade.class);
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT upgrade_type, level FROM island_upgrades WHERE island_key = ?")) {
+                ps.setString(1, islandKey);
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    try {
+                        IslandUpgrade type = IslandUpgrade.valueOf(rs.getString("upgrade_type"));
+                        upgrades.put(type, rs.getInt("level"));
+                    } catch (IllegalArgumentException ignored) {
+                        // Unknown upgrade type in DB - skip
+                    }
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("loadIslandUpgrades failed: " + e.getMessage());
+            }
+            return upgrades;
+        }, executor);
+    }
+
+    /**
+     * Get a specific upgrade level for an island (returns 0 if not found).
+     */
+    public CompletableFuture<Integer> getIslandUpgradeLevel(String islandKey, IslandUpgrade upgrade) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT level FROM island_upgrades WHERE island_key = ? AND upgrade_type = ?")) {
+                ps.setString(1, islandKey);
+                ps.setString(2, upgrade.name());
+                ResultSet rs = ps.executeQuery();
+                return rs.next() ? rs.getInt("level") : 0;
+            } catch (SQLException e) {
+                return 0;
+            }
+        }, executor);
     }
 
     public void close() {

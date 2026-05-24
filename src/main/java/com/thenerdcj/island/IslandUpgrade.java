@@ -3,9 +3,9 @@ package com.thenerdcj.island;
 /**
  * Enum of all available island upgrades.
  * Each upgrade has a base cost, description, and is purchasable using island balance.
- * Effects are applied via IslandUpgradeManager, Island.java, PartyManager, etc.
- * 
- * Added: MINION_SLOTS and MEMBER_LIMIT for purchasable progression.
+ *
+ * Level tracking is handled per-island (in database / Island object),
+ * not inside this enum.
  */
 public enum IslandUpgrade {
 
@@ -16,11 +16,8 @@ public enum IslandUpgrade {
     AUTO_SELLER(4, 12000, "Auto-Seller", "Automatically sells crops every 30 minutes"),
     MOB_CAP(2, 4500, "Mob Cap", "Increases hostile mob spawn cap by 20%"),
     CROP_GROWTH(3, 6000, "Crop Growth", "Crops grow 25% faster on your island"),
-    ORE_GENERATOR(3, 15000, "Ore Generator", "Upgrades all cobblestone generators on the island to produce better ores more often. Scales with level (coal/iron early → diamonds/emeralds at high levels)"),
-    // NEW: Minion slots - purchasable upgrade for minion system (integrate with future MinionManager)
+    ORE_GENERATOR(3, 15000, "Ore Generator", "Upgrades all cobblestone generators on the island to produce better ores more often"),
     MINION_SLOTS(4, 10000, "Minion Slots", "Increases the maximum number of deployable minions by +1 per level"),
-    
-    // NEW: Member limit upgrade - makes party size purchasable beyond config base
     MEMBER_LIMIT(3, 6500, "Member Limit", "Increases the maximum number of island members/party size by +1 per level");
 
     private final int levelReq;
@@ -35,19 +32,45 @@ public enum IslandUpgrade {
         this.description = description;
     }
 
-    public int getLevelReq() { return levelReq; }
-    public int getBaseCost() { return baseCost; }
-    public String getDisplayName() { return displayName; }
-    public String getDescription() { return description; }
+    public int getLevelReq() {
+        return levelReq;
+    }
+
+    public int getBaseCost() {
+        return baseCost;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public String getDescription() {
+        return description;
+    }
 
     /**
-     * Calculates the cost for the next level of this upgrade.
+     * Calculates the cost for a specific level of this upgrade.
      */
     public int getCostForLevel(int currentLevel) {
         return (int) (baseCost * Math.pow(1.5, currentLevel));
     }
 
-    // Methods expected by IslandUpgradeGUI and manager
-    public double getCost() { return baseCost; }
-    public int getMaxLevel() { return 5; }
+    /**
+     * Returns the base cost (used by IslandUpgradeManager).
+     */
+    public double getCost() {
+        return baseCost;
+    }
+
+    /**
+     * Default max level for all upgrades (can be overridden per upgrade later if needed).
+     */
+    public int getMaxLevel() {
+        return 10; // You can customize this per upgrade if desired
+    }
+
+    @Override
+    public String toString() {
+        return displayName;
+    }
 }
