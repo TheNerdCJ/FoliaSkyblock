@@ -131,24 +131,14 @@ public class RankManager {
     // ====================== DATABASE INTEGRATION ======================
 
     public CompletableFuture<String> getCurrentRankId(UUID uuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                String rankId = plugin.getDatabaseManager().getCurrentRankId(uuid).join();
-                return rankExists(rankId) ? rankId : getDefaultRankId();
-            } catch (Exception e) {
-                return getDefaultRankId();
-            }
-        });
+        return plugin.getDatabaseManager().getCurrentRankId(uuid)
+                .thenApply(rankId -> rankExists(rankId) ? rankId : getDefaultRankId())
+                .exceptionally(ex -> getDefaultRankId());
     }
 
     public CompletableFuture<Integer> getUpvoteCount(UUID uuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return plugin.getDatabaseManager().getUpvoteCount(uuid).join();
-            } catch (Exception e) {
-                return 0;
-            }
-        });
+        return plugin.getDatabaseManager().getUpvoteCount(uuid)
+                .exceptionally(ex -> 0);
     }
 
     public void checkForAutoPromotion(UUID uuid) {

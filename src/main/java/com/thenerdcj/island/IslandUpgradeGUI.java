@@ -58,6 +58,13 @@ public class IslandUpgradeGUI implements Listener {
                     List<String> lore = new ArrayList<>();
                     lore.add("§7" + upgrade.getDescription());
                     lore.add("");
+
+                    // Show actual effect values (polished, reference: Iridium/Superior style)
+                    String effect = getEffectDescription(upgrade, currentLevel);
+                    if (!effect.isEmpty()) {
+                        lore.add("§aEffect: §f" + effect);
+                    }
+
                     lore.add("§7Level: §e" + currentLevel + "§7/§e" + upgrade.getMaxLevel());
                     lore.add("§7Cost: §e$" + String.format("%.0f", cost));
 
@@ -85,6 +92,20 @@ public class IslandUpgradeGUI implements Listener {
             case MOB_CAP -> Material.NETHERRACK;
             case HOPPER_LIMIT -> Material.ENDER_PEARL;
             default -> Material.PAPER;
+        };
+    }
+
+    private String getEffectDescription(IslandUpgrade upgrade, int level) {
+        if (level <= 0) return "";
+
+        return switch (upgrade) {
+            case CROP_GROWTH -> "+" + (level * 25) + "% growth speed";
+            case ORE_GENERATOR -> "Better ores from generators (Lv." + level + ")";
+            case ISLAND_SIZE -> "+" + (level * 8) + " block radius";
+            case MINION_SLOTS -> "+" + level + " minion slots";
+            case MEMBER_LIMIT -> "+" + level + " member limit";
+            case SPAWNER_RATE -> "+" + (level * 15) + "% spawner speed";
+            default -> "";
         };
     }
 

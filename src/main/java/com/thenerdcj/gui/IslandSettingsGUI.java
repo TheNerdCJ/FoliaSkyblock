@@ -29,7 +29,7 @@ public class IslandSettingsGUI implements Listener {
         GridPosition pos = island.getGridPosition();
 
         plugin.getIslandSettingsManager().getSettings(pos).thenAccept(settings -> {
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            plugin.getThreadSafety().runOnMainThread(() -> {
                 Inventory gui = Bukkit.createInventory(null, 54, "§6§lIsland Settings");
 
                 gui.setItem(4, createItem(Material.NETHER_STAR, "§6§lIsland Settings",
@@ -126,7 +126,7 @@ public class IslandSettingsGUI implements Listener {
     private void toggleSetting(Player player, GridPosition pos, String key, String name) {
         plugin.getIslandSettingsManager().toggleSetting(pos, key).thenAccept(newValue -> {
             player.sendMessage("§e" + name + " has been " + (newValue ? "§aenabled" : "§cdisabled") + "§e.");
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            plugin.getThreadSafety().runOnMainThread(() -> {
                 player.closeInventory();
                 Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
                 if (island != null) new IslandSettingsGUI(plugin).open(player, island);

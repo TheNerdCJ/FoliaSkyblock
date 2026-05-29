@@ -81,25 +81,27 @@ public class WorldManager {
                         .type(WorldType.FLAT)
                         .generator(new VoidChunkGenerator());
 
-                return Bukkit.getScheduler().callSyncMethod(plugin, () -> {
+                // Use Folia-aware scheduling for world creation
+                CompletableFuture<World> worldFuture = new CompletableFuture<>();
+                plugin.getThreadSafety().runOnMainThread(() -> {
                     World world = creator.createWorld();
                     if (world != null) {
                         world.setSpawnLocation(0, SPAWN_Y + 2, 0);
-
                         if (plugin.isFolia()) {
                             world.getChunkAtAsync(0, 0);
                         } else {
                             world.getChunkAt(0, 0);
                         }
                     }
-                    return world;
-                }).get();
+                    worldFuture.complete(world);
+                });
+                return worldFuture.get();
 
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "§cFailed to create world: " + worldName, e);
                 return null;
             }
-        }, runnable -> Bukkit.getScheduler().runTaskAsynchronously(plugin, runnable));
+        }, runnable -> plugin.getThreadSafety().runAsync(runnable));
     }
 
     /**
@@ -110,7 +112,7 @@ public class WorldManager {
 
         plugin.getLogger().info("§6[WorldManager] Generating spawn platform at 0,0...");
 
-        Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+        plugin.getThreadSafety().runAtLocation(new Location(world, 0, SPAWN_Y, 0), () -> {
             buildSpawnStructure(world, 0, SPAWN_Y, 0);
         });
     }

@@ -68,6 +68,24 @@ cooldowns:
   accept: 0
   deny: 0
   kick: 30
+
+# ================================================
+# Island Upgrades Configuration (Priority 2 - Polished)
+# ================================================
+# Inspired by SuperiorSkyblock2 (multipliers + limits) and IridiumSkyblock (enhancements)
+upgrades:
+  crop-growth:
+    multiplier-per-level: 0.25          # +25% growth speed per level
+  ore-generator:
+    bonus-per-level: 0.35               # Weight multiplier for better ores
+  island-size:
+    radius-per-level: 8                 # Extra blocks radius per level
+  spawner-rate:
+    speed-bonus-per-level: 0.15         # +15% spawner activation speed
+  mob-cap:
+    increase-per-level: 0.20            # +20% hostile mob cap per level
+
+  # Future: You can expand with more granular control per upgrade type.
   leave: 30
   setrank: 30
   members: 0
@@ -84,6 +102,24 @@ economy:
 # Island Economy (bank for leveling/trades)
 island-economy:
   starting-balance: 500.0
+
+# Minions Configuration (polished nice-to-haves)
+minions:
+  fuel:
+    coal: 50
+    charcoal: 40
+    coal_block: 450
+    blaze_rod: 120
+    lava_bucket: 300
+    wheat: 10
+    ender_pearl: 80
+  # Production multipliers per type (higher = better yields, slightly affects fuel cost)
+  production:
+    default: 1.0
+    diamond: 0.4
+    ender_pearl: 0.6
+    slime: 0.9
+    snow: 1.2
 # ================================================
 # Messages (you can expand these later)
 # ================================================

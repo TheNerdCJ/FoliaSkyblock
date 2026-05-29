@@ -36,7 +36,7 @@ AuctionGUI implements Listener {
         this.ACTION_KEY = new NamespacedKey(plugin, "auction_action");
         this.AUCTION_ID_KEY = new NamespacedKey(plugin, "auction_id");
         this.PAGE_KEY = new NamespacedKey(plugin, "auction_page");
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        // Self-registration removed to prevent double registration (now done centrally in FoliaSkyblock)
     }
 
     public static class AuctionGUIHolder implements InventoryHolder {

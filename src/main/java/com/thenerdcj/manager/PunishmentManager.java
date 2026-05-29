@@ -61,10 +61,11 @@ public class PunishmentManager {
                 if (staff != null && staff.isOnline()) {
                     staff.sendMessage("§aSuccessfully unbanned player.");
                 }
-                // Optional: Broadcast to staff
+                // Use NameCache (non-blocking) instead of Bukkit.getOfflinePlayer on async thread
+                String targetName = plugin.getNameCache().getName(target);
                 Bukkit.getOnlinePlayers().stream()
                         .filter(p -> p.hasPermission("foliasb.staff"))
-                        .forEach(p -> p.sendMessage("§7[Staff] §e" + staff.getName() + " §7unbanned §c" + Bukkit.getOfflinePlayer(target).getName()));
+                        .forEach(p -> p.sendMessage("§7[Staff] §e" + staff.getName() + " §7unbanned §c" + targetName));
             } else {
                 if (staff != null && staff.isOnline()) {
                     staff.sendMessage("§cPlayer is not currently banned.");

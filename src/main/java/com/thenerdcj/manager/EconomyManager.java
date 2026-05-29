@@ -76,15 +76,12 @@ public class EconomyManager {
      * Get island balance by owner + dimension (most common usage)
      */
     public CompletableFuture<Double> getIslandBalance(UUID ownerUuid, World.Environment dimension) {
-        // This assumes IslandManager can give us the GridPosition quickly.
-        // If you have a fast way to get GridPosition from owner+dimension, use it here.
-        // For now we delegate to a method that IslandManager can call.
-        return CompletableFuture.supplyAsync(() -> {
-            // Fallback: ask IslandManager for the position (you can optimize this later)
-            GridPosition pos = plugin.getIslandManager().getGridPosition(ownerUuid, dimension);
-            if (pos == null) return 0.0;
-            return databaseManager.getIslandBalance(pos).join();
-        });
+        GridPosition pos = plugin.getIslandManager().getGridPosition(ownerUuid, dimension);
+        if (pos == null) {
+            return CompletableFuture.completedFuture(0.0);
+        }
+        // Proper async chaining — no blocking join inside supplyAsync
+        return databaseManager.getIslandBalance(pos);
     }
 
     public CompletableFuture<Boolean> addIslandBalance(UUID ownerUuid, World.Environment dimension, double amount) {
@@ -123,5 +120,24 @@ public class EconomyManager {
                     }
                     return CompletableFuture.completedFuture(false);
                 });
+    }
+
+    // ==================== COMPATIBILITY ALIASES (for legacy code) ====================
+    // Many parts of the codebase were written expecting these simpler names.
+    // Prefer the getPlayerBalance / setPlayerBalance / removePlayerBalance methods going forward.
+
+    @Deprecated
+    public CompletableFuture<Double> getBalance(UUID uuid) {
+        return getPlayerBalance(uuid);
+    }
+
+    @Deprecated
+    public CompletableFuture<Boolean> setBalance(UUID uuid, double balance) {
+        return setPlayerBalance(uuid, balance);
+    }
+
+    @Deprecated
+    public CompletableFuture<Boolean> removeBalance(UUID uuid, double amount) {
+        return removePlayerBalance(uuid, amount);
     }
 }

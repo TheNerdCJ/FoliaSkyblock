@@ -2,7 +2,6 @@ package com.thenerdcj.challenge;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.*;
@@ -40,8 +39,8 @@ public class ChallengeManager {
         this.validator = new ChallengeValidator();
         updateThemedWeek();
 
-        // Update theme every 7 days
-        Bukkit.getScheduler().runTaskTimer(plugin, this::updateThemedWeek, 0L, 12096000L);
+        // Update theme every 7 days (use ThreadSafety for Folia compatibility)
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::updateThemedWeek, 0L, 12096000L);
     }
 
     /**

@@ -30,12 +30,17 @@ public class Hologram {
 
     /**
      * Removes all TextDisplay entities for this hologram.
-     * Must be called from the correct region thread (use EntityScheduler or RegionScheduler).
+     * On Folia, this should ideally be scheduled via EntityScheduler or RegionScheduler.
      */
     public void removeAll() {
         for (TextDisplay display : displays) {
             if (display != null && display.isValid()) {
-                display.remove();
+                if (display.getScheduler() != null) {
+                    // Best effort: try to remove on the entity's own scheduler
+                    display.getScheduler().run(null, t -> display.remove(), null);
+                } else {
+                    display.remove();
+                }
             }
         }
         displays.clear();
@@ -43,13 +48,17 @@ public class Hologram {
 
     /**
      * Updates the text of a specific line (by index).
-     * Caller must ensure this is executed on the region thread of the hologram location.
+     * On Folia, prefer scheduling via the entity's EntityScheduler.
      */
     public void updateLineText(int index, net.kyori.adventure.text.Component newText) {
         if (index >= 0 && index < displays.size()) {
             TextDisplay display = displays.get(index);
             if (display != null && display.isValid()) {
-                display.text(newText);
+                if (display.getScheduler() != null) {
+                    display.getScheduler().run(null, t -> display.text(newText), null);
+                } else {
+                    display.text(newText);
+                }
             }
         }
     }

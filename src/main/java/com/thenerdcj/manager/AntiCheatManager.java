@@ -23,17 +23,21 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Updated Anti-Cheat Manager for FoliaSkyblock
  *
- * Improvements in this update:
- * - Fully implemented fastbreak and fastplace detection (was config-only before)
- * - Basic xray heuristic using stone vs ore mining ratio + straight mining patterns
- * - Better Folia API usage notes and scheduler recommendations
- * - Enhanced integration with IslandOreGenerator / custom cobble gens (high ore rates on upgraded islands are legit)
- * - Stronger Play-to-Win protections: XP macro, dupe that ruins player/island economy & trading
- * - Reduced false positives for high-level / donor players (enchants, potions, elytra, speed pots)
- * - Full communication with other classes: IslandManager (location checks), IslandUpgradeManager (future gen level), IslandXPManager (via reportHighXPGain)
- * - No security vulnerabilities: explicit bypass perm only, admin checks for illegal enchants, no donor power creep in detection
+ * === IMPORTANT NOTE (Tier 3 review) ===
+ * This is an ADVANCED / EXPERIMENTAL anti-cheat module containing a hand-rolled neural network
+ * and detailed behavior profiling. While functional, it is over-engineered for most Skyblock servers.
  *
- * References popular skyblock (Hypixel Watchdog-style behavior + rules) and forums (strong dupe/xray/macro prevention requested).
+ * RECOMMENDED USAGE:
+ * - For serious servers: Replace with a proper established anti-cheat plugin (Matrix, Spartan, Grim, etc.)
+ * - Keep enabled only if you want the custom fastbreak/xray/dupe/XP heuristics tailored to this plugin's custom generators.
+ *
+ * The NeuralCheatDetector can be disabled via anticheat.yml or by commenting out its usage.
+ * This module adds non-trivial complexity and should be audited carefully during updates.
+ *
+ * Improvements in this update:
+ * - Fully implemented fastbreak and fastplace detection
+ * - Xray heuristics aware of custom IslandOreGenerator upgrades
+ * - Play-to-Win protections (XP macro, dupes)
  */
 public class AntiCheatManager {
 
@@ -54,6 +58,9 @@ public class AntiCheatManager {
 
     private boolean xrayEnabled;
     private int xrayMaxPerMinute;
+
+    // Neural detector is experimental — disabled by default after Tier 3 review
+    private boolean neuralDetectorEnabled;
 
     private String punishmentLevel1, punishmentLevel2, punishmentLevel3;
     private int banDurationHours;
@@ -117,6 +124,8 @@ public class AntiCheatManager {
         xrayEnabled = config.getBoolean("xray.enabled", true);
         xrayMaxPerMinute = config.getInt("xray.max-per-minute", 8);
 
+        neuralDetectorEnabled = config.getBoolean("neural-detector.enabled", false); // Disabled by default after Tier 3 review
+
         punishmentLevel1 = config.getString("punishment.level-1", "warn");
         punishmentLevel2 = config.getString("punishment.level-2", "kick");
         punishmentLevel3 = config.getString("punishment.level-3", "ban");
@@ -124,8 +133,7 @@ public class AntiCheatManager {
     }
 
     private void startCleanupTask() {
-        // Note: On Folia, prefer plugin.getServer().getGlobalRegionScheduler().runAtFixedRate for global tasks
-        Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+        plugin.getThreadSafety().runRepeatingOnMainThread(() -> {
             long now = System.currentTimeMillis();
             violationCounts.entrySet().removeIf(entry -> {
                 Long last = lastViolationTime.get(entry.getKey());
@@ -199,11 +207,13 @@ public class AntiCheatManager {
             flagViolation(player, "FastPlace", 3);
         }
 
-        double cheatProb = neuralDetector.getCheatProbability(profile);
-        if (cheatProb > 0.82) {
-            suspicious = true;
-            reasons.add("Neural detection (possible macro/xray/dupe pattern)");
-            flagViolation(player, "NeuralCheat", 5);
+        if (neuralDetectorEnabled) {
+            double cheatProb = neuralDetector.getCheatProbability(profile);
+            if (cheatProb > 0.82) {
+                suspicious = true;
+                reasons.add("Neural detection (possible macro/xray/dupe pattern)");
+                flagViolation(player, "NeuralCheat", 5);
+            }
         }
 
         // Xray heuristic (if high ore/low stone and not explained by island gen upgrade)

@@ -281,7 +281,7 @@ public class HologramCommand implements CommandExecutor {
             if (success) {
                 hologramManager.spawnHologram(data);
                 // Immediate first refresh so players see data right away
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                plugin.getThreadSafety().runOnMainThreadLater(() -> {
                     Hologram h = hologramManager.getHologramByName(name);
                     if (h != null && h.getData().isDynamic()) {
                         hologramManager.refreshDynamicContent(h);

@@ -38,7 +38,7 @@ public class QuestLogGUI implements Listener {
         }
 
         plugin.getQuestManager().getQuestsForIsland(islandId).thenAccept(quests -> {
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            plugin.getThreadSafety().runOnMainThread(() -> {
                 Inventory gui = Bukkit.createInventory(null, 54, "§6§lQuest Log");
 
                 gui.setItem(4, createItem(Material.BOOK, "§6§lQuest Log",
@@ -157,7 +157,7 @@ public class QuestLogGUI implements Listener {
             player.sendMessage("§aNew quests generated!");
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1.0f, 1.2f);
 
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            plugin.getThreadSafety().runOnMainThread(() -> {
                 player.closeInventory();
                 this.open(player, islandId);
             });
@@ -173,7 +173,7 @@ public class QuestLogGUI implements Listener {
 
             if (success) {
                 player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.getThreadSafety().runOnMainThread(() -> {
                     player.closeInventory();
                     this.open(player, islandId); // Refresh GUI
                 });

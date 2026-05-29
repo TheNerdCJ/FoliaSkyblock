@@ -105,7 +105,7 @@ public class TPAListGUI {
             viewer.sendMessage("§cDenied TPA from §e" + requesterName);
             viewer.closeInventory();
             // Reopen to refresh list
-            Bukkit.getScheduler().runTaskLater(plugin, () -> open(viewer), 1L);
+            plugin.getThreadSafety().runOnMainThreadLater(() -> open(viewer), 1L);
         } else if (click == ClickType.RIGHT) {
             // Accept
             boolean success = tpaManager.acceptRequest(viewer, requester);

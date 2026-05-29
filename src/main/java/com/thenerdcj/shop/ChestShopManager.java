@@ -180,135 +180,151 @@ public class ChestShopManager {
     }
 
     /**
-     * Handle player purchasing from shop
+     * Handle player purchasing from shop - fully async where possible.
      */
-    public boolean purchaseFromShop(Player buyer, Location signLocation, int amount) {
+    public CompletableFuture<Boolean> purchaseFromShop(Player buyer, Location signLocation, int amount) {
         ChestShop shop = activeShops.get(signLocation);
         if (shop == null) {
-            buyer.sendMessage("§cThis shop no longer exists!");
-            return false;
+            plugin.getThreadSafety().sendMessageSafely(buyer, "§cThis shop no longer exists!");
+            return CompletableFuture.completedFuture(false);
         }
 
-        // Can't buy from own shop
         if (shop.getOwner().equals(buyer.getUniqueId())) {
-            buyer.sendMessage("§cYou cannot buy from your own shop!");
-            return false;
+            plugin.getThreadSafety().sendMessageSafely(buyer, "§cYou cannot buy from your own shop!");
+            return CompletableFuture.completedFuture(false);
         }
 
-        // Check stock
         if (shop.getAmount() < amount) {
-            buyer.sendMessage("§cNot enough stock! Only " + shop.getAmount() + " available.");
-            return false;
+            plugin.getThreadSafety().sendMessageSafely(buyer, "§cNot enough stock! Only " + shop.getAmount() + " available.");
+            return CompletableFuture.completedFuture(false);
         }
 
         double totalPrice = shop.getBuyPrice() * amount;
 
-        // Check buyer has enough money
-        double buyerBalance = plugin.getEconomyManager().getPlayerBalance(buyer.getUniqueId()).join();
-        if (buyerBalance < totalPrice) {
-            buyer.sendMessage("§cYou need $" + String.format("%.2f", totalPrice) + " to buy " + amount + "!");
-            return false;
-        }
-
-        // Process transaction
-        plugin.getEconomyManager().removePlayerBalance(buyer.getUniqueId(), totalPrice);
-        plugin.getEconomyManager().addPlayerBalance(shop.getOwner(), totalPrice);
-
-        // Update stock
-        ChestShop updatedShop = new ChestShop(
-                shop.getOwner(),
-                shop.getChestLocation(),
-                shop.getSignLocation(),
-                shop.getItemType(),
-                shop.getBuyPrice(),
-                shop.getSellPrice(),
-                shop.getAmount() - amount
-        );
-        activeShops.put(signLocation, updatedShop);
-        updateSignDisplay(signLocation, updatedShop);
-        saveShopToDatabase(updatedShop);
-
-        // Give items to buyer
-        ItemStack items = new ItemStack(shop.getItemType(), amount);
-        Map<Integer, ItemStack> overflow = buyer.getInventory().addItem(items);
-        if (!overflow.isEmpty()) {
-            for (ItemStack item : overflow.values()) {
-                buyer.getWorld().dropItem(buyer.getLocation(), item);
+        return plugin.getEconomyManager().getPlayerBalance(buyer.getUniqueId()).thenCompose(buyerBalance -> {
+            if (buyerBalance < totalPrice) {
+                plugin.getThreadSafety().sendMessageSafely(buyer, "§cYou need $" + String.format("%.2f", totalPrice) + " to buy " + amount + "!");
+                return CompletableFuture.completedFuture(false);
             }
-            buyer.sendMessage("§eSome items dropped at your feet (inventory full)!");
-        }
 
-        // Notify seller
-        Player seller = Bukkit.getPlayer(shop.getOwner());
-        if (seller != null && seller.isOnline()) {
-            seller.sendMessage("§a" + buyer.getName() + " bought " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
-        }
+            // Economy mutations are thread-safe via DB layer
+            return plugin.getEconomyManager().removePlayerBalance(buyer.getUniqueId(), totalPrice)
+                    .thenCompose(removed -> plugin.getEconomyManager().addPlayerBalance(shop.getOwner(), totalPrice))
+                    .thenApply(success -> {
+                        if (!success) {
+                            // Refund if second leg failed (rare)
+                            plugin.getEconomyManager().addPlayerBalance(buyer.getUniqueId(), totalPrice);
+                            return false;
+                        }
 
-        buyer.sendMessage("§aPurchased " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
-        return true;
+                        // Schedule all world/inventory changes on main thread
+                        plugin.getThreadSafety().runOnMainThread(() -> {
+                            // Update stock
+                            ChestShop updatedShop = new ChestShop(
+                                    shop.getOwner(),
+                                    shop.getChestLocation(),
+                                    shop.getSignLocation(),
+                                    shop.getItemType(),
+                                    shop.getBuyPrice(),
+                                    shop.getSellPrice(),
+                                    shop.getAmount() - amount
+                            );
+                            activeShops.put(signLocation, updatedShop);
+                            updateSignDisplay(signLocation, updatedShop);
+                            saveShopToDatabase(updatedShop);
+
+                            // Give items to buyer
+                            ItemStack items = new ItemStack(shop.getItemType(), amount);
+                            Map<Integer, ItemStack> overflow = buyer.getInventory().addItem(items);
+                            if (!overflow.isEmpty()) {
+                                for (ItemStack item : overflow.values()) {
+                                    buyer.getWorld().dropItem(buyer.getLocation(), item);
+                                }
+                                plugin.getThreadSafety().sendMessageSafely(buyer, "§eSome items dropped at your feet (inventory full)!");
+                            }
+
+                            // Notify seller
+                            Player seller = Bukkit.getPlayer(shop.getOwner());
+                            if (seller != null && seller.isOnline()) {
+                                plugin.getThreadSafety().sendMessageSafely(seller,
+                                        "§a" + buyer.getName() + " bought " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
+                            }
+
+                            plugin.getThreadSafety().sendMessageSafely(buyer,
+                                    "§aPurchased " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
+                        });
+
+                        return true;
+                    });
+        });
     }
 
     /**
-     * Handle player selling to shop
+     * Handle player selling to shop - fully async where possible.
      */
-    public boolean sellToShop(Player seller, Location signLocation, int amount) {
+    public CompletableFuture<Boolean> sellToShop(Player seller, Location signLocation, int amount) {
         ChestShop shop = activeShops.get(signLocation);
         if (shop == null) {
-            seller.sendMessage("§cThis shop no longer exists!");
-            return false;
+            plugin.getThreadSafety().sendMessageSafely(seller, "§cThis shop no longer exists!");
+            return CompletableFuture.completedFuture(false);
         }
 
-        // Can't sell to own shop
         if (shop.getOwner().equals(seller.getUniqueId())) {
-            seller.sendMessage("§cYou cannot sell to your own shop!");
-            return false;
+            plugin.getThreadSafety().sendMessageSafely(seller, "§cYou cannot sell to your own shop!");
+            return CompletableFuture.completedFuture(false);
         }
 
-        // Check if seller has items
         int playerHas = countItemsInInventory(seller, shop.getItemType());
         if (playerHas < amount) {
-            seller.sendMessage("§cYou only have " + playerHas + " " + shop.getItemType().name() + "!");
-            return false;
+            plugin.getThreadSafety().sendMessageSafely(seller, "§cYou only have " + playerHas + " " + shop.getItemType().name() + "!");
+            return CompletableFuture.completedFuture(false);
         }
 
         double totalPrice = shop.getSellPrice() * amount;
 
-        // Check shop owner has enough money
-        double ownerBalance = plugin.getEconomyManager().getPlayerBalance(shop.getOwner()).join();
-        if (ownerBalance < totalPrice) {
-            seller.sendMessage("§cShop owner doesn't have enough money!");
-            return false;
-        }
+        return plugin.getEconomyManager().getPlayerBalance(shop.getOwner()).thenCompose(ownerBalance -> {
+            if (ownerBalance < totalPrice) {
+                plugin.getThreadSafety().sendMessageSafely(seller, "§cShop owner doesn't have enough money!");
+                return CompletableFuture.completedFuture(false);
+            }
 
-        // Process transaction
-        plugin.getEconomyManager().removePlayerBalance(shop.getOwner(), totalPrice);
-        plugin.getEconomyManager().addPlayerBalance(seller.getUniqueId(), totalPrice);
+            return plugin.getEconomyManager().removePlayerBalance(shop.getOwner(), totalPrice)
+                    .thenCompose(removed -> plugin.getEconomyManager().addPlayerBalance(seller.getUniqueId(), totalPrice))
+                    .thenApply(success -> {
+                        if (!success) {
+                            plugin.getEconomyManager().addPlayerBalance(shop.getOwner(), totalPrice); // refund
+                            return false;
+                        }
 
-        // Remove items from seller
-        removeItemsFromInventory(seller, shop.getItemType(), amount);
+                        plugin.getThreadSafety().runOnMainThread(() -> {
+                            removeItemsFromInventory(seller, shop.getItemType(), amount);
 
-        // Update stock
-        ChestShop updatedShop = new ChestShop(
-                shop.getOwner(),
-                shop.getChestLocation(),
-                shop.getSignLocation(),
-                shop.getItemType(),
-                shop.getBuyPrice(),
-                shop.getSellPrice(),
-                shop.getAmount() + amount
-        );
-        activeShops.put(signLocation, updatedShop);
-        updateSignDisplay(signLocation, updatedShop);
-        saveShopToDatabase(updatedShop);
+                            ChestShop updatedShop = new ChestShop(
+                                    shop.getOwner(),
+                                    shop.getChestLocation(),
+                                    shop.getSignLocation(),
+                                    shop.getItemType(),
+                                    shop.getBuyPrice(),
+                                    shop.getSellPrice(),
+                                    shop.getAmount() + amount
+                            );
+                            activeShops.put(signLocation, updatedShop);
+                            updateSignDisplay(signLocation, updatedShop);
+                            saveShopToDatabase(updatedShop);
 
-        // Notify shop owner
-        Player owner = Bukkit.getPlayer(shop.getOwner());
-        if (owner != null && owner.isOnline()) {
-            owner.sendMessage("§a" + seller.getName() + " sold " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
-        }
+                            Player owner = Bukkit.getPlayer(shop.getOwner());
+                            if (owner != null && owner.isOnline()) {
+                                plugin.getThreadSafety().sendMessageSafely(owner,
+                                        "§a" + seller.getName() + " sold " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
+                            }
 
-        seller.sendMessage("§aSold " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
-        return true;
+                            plugin.getThreadSafety().sendMessageSafely(seller,
+                                    "§aSold " + amount + "x " + shop.getItemType().name() + " for $" + String.format("%.2f", totalPrice));
+                        });
+
+                        return true;
+                    });
+        });
     }
 
     /**

@@ -165,7 +165,7 @@ public class EnchantingTableGUI implements Listener {
 
                 // Also deduct from player balance (hybrid cost)
                 double balanceCost = xpCost * 10; // $10 per XP level
-                plugin.getEconomyManager().removeBalance(player.getUniqueId(), balanceCost);
+                plugin.getEconomyManager().removePlayerBalance(player.getUniqueId(), balanceCost);
 
                 // Apply enchantment
                 enchant.apply(itemToEnchant, nextLevel);
@@ -181,7 +181,7 @@ public class EnchantingTableGUI implements Listener {
                         CustomEnchantment.toRoman(nextLevel) + " applied! §7(Cost: §e" + xpCost + " levels §7+ §e$" + (xpCost * 10) + "§7)");
 
                 // Reopen to refresh
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.getThreadSafety().runOnMainThread(() -> {
                     player.closeInventory();
                     open(player, itemToEnchant);
                 });

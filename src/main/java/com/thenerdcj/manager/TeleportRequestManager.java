@@ -28,8 +28,8 @@ public class TeleportRequestManager {
 
     public TeleportRequestManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        // Periodic cleanup of expired requests (Folia compatible scheduler)
-        Bukkit.getScheduler().runTaskTimer(plugin, this::cleanupExpiredRequests, 20L * 30, 20L * 30);
+        // Periodic cleanup of expired requests
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupExpiredRequests, 20L * 30, 20L * 30);
     }
 
     public long getCooldownMs() {

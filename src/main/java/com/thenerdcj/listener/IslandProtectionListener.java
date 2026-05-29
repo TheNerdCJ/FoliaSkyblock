@@ -22,6 +22,7 @@ public class IslandProtectionListener implements Listener {
     private final FoliaSkyblock plugin;
     private final IslandManager islandManager;
     private final FileConfiguration config;
+    private final com.thenerdcj.manager.IslandUpgradeManager upgradeManager;
 
     // Configurable values
     private int spawnRadius;
@@ -35,6 +36,7 @@ public class IslandProtectionListener implements Listener {
         this.plugin = plugin;
         this.islandManager = plugin.getIslandManager();
         this.config = plugin.getConfig();
+        this.upgradeManager = plugin.getIslandUpgradeManager();
         loadConfig();
     }
 
@@ -50,17 +52,32 @@ public class IslandProtectionListener implements Listener {
     private boolean canBuild(Player player, Location location) {
         if (player.hasPermission("foliasb.admin.bypass")) return true;
 
-        Island island = islandManager.getIslandAt(location);
+        // Use upgraded island size if the size upgrade is purchased
+        Island island = islandManager.isWithinUpgradedIslandArea(location) 
+                ? islandManager.getIslandAt(location) 
+                : null;
 
         if (island == null) {
             // Spawn protection
             if (isSpawnProtected(location)) {
+                // Use player scheduler for the message on Folia
+                sendProtectedMessage(player, "no-build");
                 return false;
             }
             return !wildernessProtection; // Allow build in wilderness if disabled
         }
 
         return island.hasPermission(player.getUniqueId(), IslandPermission.BUILD);
+    }
+
+    private void sendProtectedMessage(Player player, String messageKey) {
+        String msg = config.getString("protection.messages." + messageKey, "§cYou cannot build here!");
+        Component component = Component.text(msg);
+        if (plugin.isFolia()) {
+            player.getScheduler().run(plugin, t -> player.sendActionBar(component), null);
+        } else {
+            player.sendActionBar(component);
+        }
     }
 
     private boolean canInteract(Player player, Location location) {
@@ -83,7 +100,17 @@ public class IslandProtectionListener implements Listener {
     public void onBlockBreak(BlockBreakEvent e) {
         if (!canBuild(e.getPlayer(), e.getBlock().getLocation())) {
             e.setCancelled(true);
-            e.getPlayer().sendActionBar(Component.text(config.getString("protection.messages.no-build", "§cYou cannot build here!")));
+            sendProtectedMessage(e.getPlayer(), "no-build");
+            return;
+        }
+
+        // Decrement hopper counter when broken (HOPPER_LIMIT)
+        if (e.getBlock().getType() == org.bukkit.Material.HOPPER) {
+            Island island = islandManager.getIslandAt(e.getBlock().getLocation());
+            if (island != null) {
+                String islandId = islandManager.getIslandIdForHopperCount(island);
+                islandManager.decrementHopperCount(islandId);
+            }
         }
     }
 
@@ -91,7 +118,26 @@ public class IslandProtectionListener implements Listener {
     public void onBlockPlace(BlockPlaceEvent e) {
         if (!canBuild(e.getPlayer(), e.getBlock().getLocation())) {
             e.setCancelled(true);
-            e.getPlayer().sendActionBar(Component.text(config.getString("protection.messages.no-build", "§cYou cannot build here!")));
+            sendProtectedMessage(e.getPlayer(), "no-build");
+            return;
+        }
+
+        // HOPPER_LIMIT enforcement (Tier A)
+        if (e.getBlockPlaced().getType() == org.bukkit.Material.HOPPER) {
+            Island island = islandManager.getIslandAt(e.getBlock().getLocation());
+            if (island != null) {
+                String islandId = islandManager.getIslandIdForHopperCount(island);
+                int current = islandManager.getCurrentHopperCount(islandId);
+                int max = upgradeManager.getMaxHoppers(island);
+
+                if (current >= max) {
+                    e.setCancelled(true);
+                    e.getPlayer().sendMessage("§cYou have reached your hopper limit (" + max + "). Purchase Hopper Limit upgrades to place more.");
+                    return;
+                }
+
+                islandManager.incrementHopperCount(islandId);
+            }
         }
     }
 
@@ -100,7 +146,7 @@ public class IslandProtectionListener implements Listener {
         if (e.getClickedBlock() == null) return;
         if (!canInteract(e.getPlayer(), e.getClickedBlock().getLocation())) {
             e.setCancelled(true);
-            e.getPlayer().sendActionBar(Component.text(config.getString("protection.messages.no-interact", "§cYou cannot interact here!")));
+            sendProtectedMessage(e.getPlayer(), "no-interact");
         }
     }
 

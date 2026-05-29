@@ -37,6 +37,15 @@ public class HologramManager {
         databaseManager.loadAllHolograms().thenAccept(holoList -> {
             for (HologramData data : holoList) {
                 spawnHologram(data);
+
+                // Preload names for any top-islands dynamic holograms
+                if (data.isDynamic() && data.getDynamicType() != null &&
+                    data.getDynamicType().toUpperCase().contains("TOP_ISLANDS")) {
+                    List<TopIslandEntry> top = databaseManager.getTopIslandsByLevel(10);
+                    for (TopIslandEntry entry : top) {
+                        plugin.getNameCache().ensureCachedAsync(entry.getOwnerUuid());
+                    }
+                }
             }
             plugin.getLogger().info("§a[HologramManager] Loaded and spawned " + holoList.size() + " persistent holograms.");
         }).exceptionally(ex -> {
@@ -112,11 +121,17 @@ public class HologramManager {
         if (holo != null) {
             holo.getData().setLines(newLines);
             if (!holo.getDisplays().isEmpty()) {
-                Location loc = holo.getDisplays().get(0).getLocation();
-                plugin.getServer().getRegionScheduler().execute(plugin, loc, () -> {
+                TextDisplay primary = holo.getDisplays().get(0);
+                Runnable removalTask = () -> {
                     holo.removeAll();
                     spawnHologram(holo.getData());
-                });
+                };
+
+                if (primary.isValid() && primary.getScheduler() != null) {
+                    primary.getScheduler().run(plugin, t -> removalTask.run(), null);
+                } else {
+                    plugin.getServer().getRegionScheduler().execute(plugin, primary.getLocation(), removalTask);
+                }
             }
         }
         return databaseManager.updateHologramLines(id, newLines);
@@ -153,11 +168,32 @@ public class HologramManager {
         cancelDynamicTask(data.getId());
         int intervalTicks = Math.max(600, data.getUpdateInterval() * 20);
 
-        ScheduledTask task = plugin.getServer().getGlobalRegionScheduler().runAtFixedRate(plugin, t -> {
-            refreshDynamicContent(holo);
-        }, 20L, intervalTicks);
+        List<TextDisplay> displays = holo.getDisplays();
+        if (displays.isEmpty()) return;
 
-        dynamicTasks.put(data.getId(), task);
+        // Deeper Folia optimization: Attach the repeating refresh task to one of the TextDisplay entities
+        // using EntityScheduler. This is more precise than GlobalRegionScheduler for per-hologram ticking.
+        TextDisplay primaryDisplay = displays.get(0);
+
+        if (plugin.getThreadSafety().isFolia() && primaryDisplay.isValid()) {
+            ScheduledTask task = primaryDisplay.getScheduler().runAtFixedRate(
+                    plugin,
+                    t -> refreshDynamicContent(holo),
+                    null,                    // retired runnable
+                    20L,                     // initial delay
+                    intervalTicks
+            );
+            dynamicTasks.put(data.getId(), task);
+        } else {
+            // Fallback for non-Folia
+            ScheduledTask task = plugin.getServer().getGlobalRegionScheduler().runAtFixedRate(
+                    plugin,
+                    t -> refreshDynamicContent(holo),
+                    20L,
+                    intervalTicks
+            );
+            dynamicTasks.put(data.getId(), task);
+        }
     }
 
     private void cancelDynamicTask(int id) {
@@ -169,14 +205,24 @@ public class HologramManager {
         HologramData data = holo.getData();
         if (!data.isDynamic() || holo.getDisplays().isEmpty()) return;
 
-        Location loc = holo.getDisplays().get(0).getLocation();
+        List<TextDisplay> displays = holo.getDisplays();
+        Location loc = displays.get(0).getLocation();
 
         getDynamicLines(data).thenAccept(newLines -> {
-            plugin.getServer().getRegionScheduler().execute(plugin, loc, () -> {
+            // Prefer entity scheduler on the primary display for the actual update when possible
+            TextDisplay primary = displays.get(0);
+
+            Runnable updateTask = () -> {
                 holo.removeAll();
                 data.setLines(newLines);
                 spawnHologram(data);
-            });
+            };
+
+            if (plugin.getThreadSafety().isFolia() && primary.isValid()) {
+                primary.getScheduler().run(plugin, t -> updateTask.run(), null);
+            } else {
+                plugin.getServer().getRegionScheduler().execute(plugin, loc, updateTask);
+            }
         });
     }
 
@@ -189,9 +235,16 @@ public class HologramManager {
             if (type.contains("TOP_ISLANDS_LEVEL")) {
                 lines.add("&6&l★ Top Islands by Level ★");
                 List<TopIslandEntry> top = databaseManager.getTopIslandsByLevel(10);
+
+                // Use centralized NameCache for proper caching (much better than per-entry lazy lookup)
+                for (TopIslandEntry e : top) {
+                    plugin.getNameCache().ensureCachedAsync(e.getOwnerUuid());
+                }
+
                 int rank = 1;
                 for (TopIslandEntry e : top) {
-                    lines.add(getMedal(rank) + " " + (e.getOwnerName() != null ? e.getOwnerName() : "Unknown") + " &7- Lvl " + e.getLevel());
+                    String name = plugin.getNameCache().getName(e.getOwnerUuid());
+                    lines.add(getMedal(rank) + " " + name + " &7- Lvl " + e.getLevel());
                     rank++;
                 }
             } else if (type.contains("TOP_ISLANDS_XP")) {

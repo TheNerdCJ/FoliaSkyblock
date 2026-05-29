@@ -79,7 +79,7 @@ public class CombatListener implements Listener {
                 }, null);
             } else {
                 // Fallback for Paper/Spigot
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.getThreadSafety().runOnMainThread(() -> {
                     if (player.isOnline()) {
                         player.setHealth(0);
                         plugin.getLogger().info("§c" + player.getName() + " combat logged and was killed.");

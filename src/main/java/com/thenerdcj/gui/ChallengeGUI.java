@@ -164,7 +164,7 @@ public class ChallengeGUI implements Listener {
         claimReward(player, targetChallenge);
 
         // Refresh GUI
-        Bukkit.getScheduler().runTask(plugin, () -> open(player));
+        plugin.getThreadSafety().runOnMainThread(() -> open(player));
     }
 
     private void claimReward(Player player, Challenge challenge) {

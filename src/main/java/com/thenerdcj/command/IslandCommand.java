@@ -239,7 +239,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                 if (success) {
                     // Success message already sent inside IslandManager
                 } else {
-                    Bukkit.getScheduler().runTask(plugin, () -> 
+                    plugin.getThreadSafety().runOnMainThread(() -> 
                         player.sendMessage("§cIsland creation failed. Please try again or contact staff."));
                 }
             });
@@ -301,7 +301,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         }
 
         player.sendMessage("§6§l=== " + targetName + " Island Info ===");
-        player.sendMessage("§7Owner: §e" + Bukkit.getOfflinePlayer(island.getOwnerUuid()).getName());
+        player.sendMessage("§7Owner: §e" + plugin.getNameCache().getName(island.getOwnerUuid()));
         player.sendMessage("§7Dimension: §e" + island.getDimension().name());
         player.sendMessage("§7Biome: §e" + island.getBiomeName());
         player.sendMessage("§7Level: §a" + island.getLevel() + " §7(§f" + String.format("%.1f", island.getProgressToNextLevel() * 100) + "%§7 to next)");
@@ -318,7 +318,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
         player.sendMessage("§6§l=== Island Members ===");
         island.getMembers().forEach((uuid, rank) -> {
-            String name = Bukkit.getOfflinePlayer(uuid).getName();
+            String name = plugin.getNameCache().getName(uuid);
             String rankColor = rank == IslandRank.OWNER ? "§6" : (rank == IslandRank.MODERATOR ? "§b" : "§7");
             player.sendMessage(" §f" + name + " " + rankColor + "[" + rank.name() + "]");
         });

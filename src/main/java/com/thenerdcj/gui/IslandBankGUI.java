@@ -31,8 +31,13 @@ public class IslandBankGUI implements Listener {
         GridPosition pos = island.getGridPosition();
 
         plugin.getIslandBankManager().getBank(pos).thenAccept(bank -> {
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                Inventory gui = Bukkit.createInventory(null, 27, "§6§lIsland Bank");
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                // Dynamic size based on VAULT_SLOTS upgrade (Tier A)
+                int size = 27;
+                if (plugin.getIslandUpgradeManager() != null) {
+                    size = plugin.getIslandUpgradeManager().getVaultInventorySize(island);
+                }
+                Inventory gui = Bukkit.createInventory(null, size, "§6§lIsland Bank");
 
                 double balance = bank.getBalance();
 
@@ -53,10 +58,12 @@ public class IslandBankGUI implements Listener {
                 gui.setItem(18, createItem(Material.REDSTONE, "§c§lWithdraw $1,000", "§7Click to withdraw $1,000"));
 
                 // Info
-                gui.setItem(22, createItem(Material.BOOK, "§e§lHow Bank Works",
+                int infoSlot = Math.min(22, size - 5);
+                gui.setItem(infoSlot, createItem(Material.BOOK, "§e§lHow Bank Works",
                         "§7• Deposit money from your balance",
                         "§7• Withdraw to your personal balance",
-                        "§7• Use for island upgrades"));
+                        "§7• Use for island upgrades",
+                        "§7• Larger vault with Vault Slots upgrade"));
 
                 // Fill empty slots
                 for (int i = 0; i < 27; i++) {
@@ -112,12 +119,12 @@ public class IslandBankGUI implements Listener {
 
             // Check player has enough money
             final double finalAmount = amount;
-            plugin.getEconomyManager().getBalance(player.getUniqueId()).thenAccept(playerBalance -> {
+            plugin.getEconomyManager().getPlayerBalance(player.getUniqueId()).thenAccept(playerBalance -> {
                 if (playerBalance >= finalAmount) {
                     plugin.getEconomyManager().removePlayerBalance(player.getUniqueId(), finalAmount);
                     plugin.getIslandBankManager().deposit(pos, finalAmount);
                     player.sendMessage("§aDeposited $" + String.format("%,.2f", finalAmount) + " to island bank!");
-                    Bukkit.getScheduler().runTask(plugin, () -> {
+                    plugin.getThreadSafety().runOnMainThread(() -> {
                         player.closeInventory();
                         // Reopen GUI
                         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
@@ -142,7 +149,7 @@ public class IslandBankGUI implements Listener {
                 if (success) {
                     plugin.getEconomyManager().addPlayerBalance(player.getUniqueId(), finalAmount);
                     player.sendMessage("§aWithdrew $" + String.format("%,.2f", finalAmount) + " from island bank!");
-                    Bukkit.getScheduler().runTask(plugin, () -> {
+                    plugin.getThreadSafety().runOnMainThread(() -> {
                         player.closeInventory();
                         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
                         if (island != null) new IslandBankGUI(plugin).open(player, island);

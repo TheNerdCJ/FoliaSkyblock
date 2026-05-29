@@ -260,12 +260,22 @@ public class IslandXPListener implements Listener {
         // Level up check
         int newLevel = island.getLevel();
         if (newLevel > currentLevel) {
-            // Notify all island members (Folia safe - use global or region scheduler if heavy)
+            // Notify all island members using EntityScheduler for Folia correctness and performance
             String levelUpMsg = "§a§lISLAND LEVEL UP! §7Your island reached Level §e" + newLevel + "§7! (+" + String.format("%.1f", xp) + " XP from " + source + ")";
             island.getOnlineMembers().forEach(member -> {
-                if (member.isOnline()) member.sendMessage(levelUpMsg);
+                if (member.isOnline()) {
+                    if (plugin.isFolia()) {
+                        member.getScheduler().run(plugin, t -> member.sendMessage(levelUpMsg), null);
+                    } else {
+                        member.sendMessage(levelUpMsg);
+                    }
+                }
             });
-            player.sendMessage(levelUpMsg);
+            if (plugin.isFolia()) {
+                player.getScheduler().run(plugin, t -> player.sendMessage(levelUpMsg), null);
+            } else {
+                player.sendMessage(levelUpMsg);
+            }
 
             // Check for dimension unlocks / boss access (communicates with BossManager / DimensionIslandListener)
             checkDimensionUnlocks(island, player, newLevel);

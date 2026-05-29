@@ -48,3 +48,10 @@ punishment:
   level-3: ban
   ban-duration-hours: 24
   broadcast-to-staff: true
+
+# === Experimental Neural Detector (Tier 3 review) ===
+# The neural network component is DISABLED by default.
+# It is over-engineered for most servers. Use the fastbreak/xray/dupe heuristics instead,
+# or replace this entire module with a professional anti-cheat plugin.
+neural-detector:
+  enabled: false

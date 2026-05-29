@@ -32,7 +32,7 @@ public class ChestShopListener implements Listener {
 
     public ChestShopListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        // Registration handled centrally in FoliaSkyblock
     }
 
     /**
@@ -154,11 +154,11 @@ public class ChestShopListener implements Listener {
         event.setCancelled(true);
 
         if (event.getAction() == Action.LEFT_CLICK_BLOCK) {
-            // BUY
-            handleBuy(player, shop);
+            // BUY - delegate to async manager
+            plugin.getChestShopManager().purchaseFromShop(player, shop.getSignLocation(), shop.getAmount());
         } else {
-            // SELL
-            handleSell(player, shop);
+            // SELL - delegate to async manager
+            plugin.getChestShopManager().sellToShop(player, shop.getSignLocation(), shop.getAmount());
         }
     }
 
@@ -169,34 +169,35 @@ public class ChestShopListener implements Listener {
         }
 
         double cost = shop.getBuyTotal();
-        double balance = plugin.getEconomyManager().getBalance(buyer.getUniqueId()).join();
 
-        if (balance < cost) {
-            buyer.sendMessage("§cYou don't have enough money! Cost: §6$" + cost);
-            return;
-        }
+        // Do balance check + transaction asynchronously to avoid blocking main thread
+        plugin.getEconomyManager().getPlayerBalance(buyer.getUniqueId()).thenAccept(balance -> {
+            if (balance < cost) {
+                plugin.getThreadSafety().sendMessageSafely(buyer, "§cYou don't have enough money! Cost: §6$" + cost);
+                return;
+            }
 
-        // Check if chest has items
-        Chest chest = (Chest) shop.getChestLocation().getBlock().getState();
-        Inventory chestInv = chest.getInventory();
+            // Schedule chest + inventory work on main thread
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                Chest chest = (Chest) shop.getChestLocation().getBlock().getState();
+                Inventory chestInv = chest.getInventory();
 
-        if (!chestInv.contains(shop.getItemType())) {
-            buyer.sendMessage("§cThis shop is out of stock!");
-            return;
-        }
+                if (!chestInv.contains(shop.getItemType())) {
+                    buyer.sendMessage("§cThis shop is out of stock!");
+                    return;
+                }
 
-        // Complete transaction
-        plugin.getEconomyManager().removePlayerBalance(buyer.getUniqueId(), cost).join();
-        plugin.getEconomyManager().addPlayerBalance(shop.getOwner(), cost).join();
+                // Perform the actual transaction (still on main)
+                plugin.getEconomyManager().removePlayerBalance(buyer.getUniqueId(), cost);
+                plugin.getEconomyManager().addPlayerBalance(shop.getOwner(), cost);
 
-        // Give item to buyer
-        buyer.getInventory().addItem(new ItemStack(shop.getItemType(), shop.getAmount()));
+                buyer.getInventory().addItem(new ItemStack(shop.getItemType(), shop.getAmount()));
+                chestInv.removeItem(new ItemStack(shop.getItemType(), shop.getAmount()));
 
-        // Remove item from chest
-        chestInv.removeItem(new ItemStack(shop.getItemType(), shop.getAmount()));
-
-        buyer.sendMessage("§aBought §e" + shop.getAmount() + "x " + shop.getItemType().name() +
-                "§a for §6$" + cost);
+                buyer.sendMessage("§aBought §e" + shop.getAmount() + "x " + shop.getItemType().name() +
+                        "§a for §6$" + cost);
+            });
+        });
     }
 
     private void handleSell(Player seller, ChestShop shop) {
@@ -211,25 +212,28 @@ public class ChestShopListener implements Listener {
         }
 
         double earnings = shop.getSellTotal();
+        ItemStack toSell = new ItemStack(shop.getItemType(), shop.getAmount());
 
-        // Check if seller has the item
+        // Check inventory on main thread, then do economy async
         if (!seller.getInventory().contains(shop.getItemType())) {
             seller.sendMessage("§cYou don't have any " + shop.getItemType().name() + " to sell!");
             return;
         }
 
-        // Complete transaction
-        plugin.getEconomyManager().addPlayerBalance(seller.getUniqueId(), earnings).join();
+        // Remove item first on main (to prevent duplication exploits during async window)
+        seller.getInventory().removeItem(toSell);
 
-        // Remove item from seller
-        seller.getInventory().removeItem(new ItemStack(shop.getItemType(), shop.getAmount()));
+        // Then do the economy transfer asynchronously
+        plugin.getEconomyManager().addPlayerBalance(seller.getUniqueId(), earnings).thenRun(() -> {
+            // Add to chest on main thread
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                Chest chest = (Chest) shop.getChestLocation().getBlock().getState();
+                chest.getInventory().addItem(new ItemStack(shop.getItemType(), shop.getAmount()));
 
-        // Add item to chest
-        Chest chest = (Chest) shop.getChestLocation().getBlock().getState();
-        chest.getInventory().addItem(new ItemStack(shop.getItemType(), shop.getAmount()));
-
-        seller.sendMessage("§aSold §e" + shop.getAmount() + "x " + shop.getItemType().name() +
-                "§a for §6$" + earnings);
+                plugin.getThreadSafety().sendMessageSafely(seller,
+                        "§aSold §e" + shop.getAmount() + "x " + shop.getItemType().name() + "§a for §6$" + earnings);
+            });
+        });
     }
 
     private Block getAttachedChest(Block signBlock) {

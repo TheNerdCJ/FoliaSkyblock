@@ -15,6 +15,7 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.UUID;
 
@@ -42,6 +43,10 @@ public class IslandOreGenerator {
     private final GridManager gridManager;
     private final IslandUpgradeManager upgradeManager;
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
+
+    // Short-lived cache for effective ore weights per island (keyed by islandId + level)
+    // Dramatically reduces repeated weight calculations in the hot cobble gen path
+    private final ConcurrentHashMap<String, Map<Material, Double>> effectiveOreWeightsCache = new ConcurrentHashMap<>();
 
     // Ore pools per dimension/environment. Probabilities scale with upgrade level (0-5)
     // Format: Material -> baseWeight (higher = more common). Weights multiplied by level factor.
@@ -114,9 +119,12 @@ public class IslandOreGenerator {
             return false; // no upgrade purchased, normal cobble
         }
 
-        // Get appropriate ore pool for dimension
+        // Get appropriate ore pool for dimension (use cached effective weights for performance)
         World.Environment env = world.getEnvironment();
-        Map<Material, Double> weights = BASE_ORE_WEIGHTS.getOrDefault(env, BASE_ORE_WEIGHTS.get(World.Environment.NORMAL));
+        String cacheKey = islandId + ":" + level + ":" + env.name();
+        Map<Material, Double> weights = effectiveOreWeightsCache.computeIfAbsent(cacheKey, k ->
+            computeEffectiveWeights(env, level)
+        );
 
         // Select ore based on weighted random, scaled by upgrade level
         Material chosen = selectWeightedOre(weights, level);
@@ -135,6 +143,29 @@ public class IslandOreGenerator {
      * Weighted random selection. Higher level increases chance of better ores
      * by boosting their weights and reducing cobble weight slightly.
      */
+    private Map<Material, Double> computeEffectiveWeights(World.Environment env, int level) {
+        Map<Material, Double> baseWeights = BASE_ORE_WEIGHTS.getOrDefault(env, BASE_ORE_WEIGHTS.get(World.Environment.NORMAL));
+        if (baseWeights == null || baseWeights.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        double levelFactor = 1.0 + (level * 0.35);
+        double cobbleReduction = Math.max(0.4, 1.0 - (level * 0.12));
+
+        Map<Material, Double> effective = new EnumMap<>(Material.class);
+        for (Map.Entry<Material, Double> entry : baseWeights.entrySet()) {
+            Material mat = entry.getKey();
+            double w = entry.getValue();
+            if (mat == Material.COBBLESTONE || mat == Material.NETHERRACK || mat == Material.END_STONE) {
+                w *= cobbleReduction;
+            } else {
+                w *= levelFactor;
+            }
+            effective.put(mat, w);
+        }
+        return effective;
+    }
+
     private Material selectWeightedOre(Map<Material, Double> baseWeights, int level) {
         double levelFactor = 1.0 + (level * 0.35); // e.g. level 5 ~ +1.75x on rare ores
         double cobbleReduction = Math.max(0.4, 1.0 - (level * 0.12)); // less cobble at high levels
@@ -174,19 +205,20 @@ public class IslandOreGenerator {
      * This enables exact matching in anticheat for whitelisting legit Play-to-Win yields.
      * Called after setType() in processCobbleFormation.
      */
+    private static final NamespacedKey GENERATOR_ORES_KEY = new NamespacedKey("foliasb", "generator_ores"); // plugin instance not needed for NamespacedKey in modern API
+
     private void tagGeneratorOre(Block block) {
         if (block == null || plugin == null) return;
         Chunk chunk = block.getChunk();
         PersistentDataContainer pdc = chunk.getPersistentDataContainer();
-        NamespacedKey key = new NamespacedKey(plugin, "generator_ores");
-        List<String> positions = pdc.get(key, PersistentDataType.LIST.strings());
+        List<String> positions = pdc.get(GENERATOR_ORES_KEY, PersistentDataType.LIST.strings());
         if (positions == null) {
-            positions = new ArrayList<>();
+            positions = new ArrayList<>(4); // small initial capacity for typical generator ore tags
         }
         String posKey = block.getX() + ":" + block.getY() + ":" + block.getZ();
         if (!positions.contains(posKey)) {
             positions.add(posKey);
-            pdc.set(key, PersistentDataType.LIST.strings(), positions);
+            pdc.set(GENERATOR_ORES_KEY, PersistentDataType.LIST.strings(), positions);
         }
     }
 

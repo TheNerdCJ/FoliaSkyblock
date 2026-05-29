@@ -18,6 +18,7 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -296,6 +297,31 @@ public class BazaarGUI implements Listener {
         event.setResult(new ItemStack(Material.PAPER));
     }
 
+    @EventHandler
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) return;
+
+        // Clean up pending state if they close any of our GUIs mid-flow
+        InventoryHolder holder = event.getInventory().getHolder();
+        if (holder instanceof BazaarGUIHolder) {
+            // Only remove pending if they are not in the middle of anvil input for our keys
+            // (anvil close is handled in the click path or on error)
+            // For safety we leave pending until explicit consumption or explicit close action
+        }
+
+        // If they close the anvil while we were waiting for input, clean pending for hygiene
+        if (event.getInventory().getType() == InventoryType.ANVIL) {
+            ItemStack first = event.getInventory().getItem(0);
+            if (first != null && first.hasItemMeta()) {
+                PersistentDataContainer pdc = first.getItemMeta().getPersistentDataContainer();
+                if ("anvil_input".equals(pdc.get(ACTION_KEY, PersistentDataType.STRING))) {
+                    pendingOrders.remove(player.getUniqueId());
+                    openGUIs.remove(player.getUniqueId());
+                }
+            }
+        }
+    }
+
     // ==================== CLICK HANDLER (Main Logic) ====================
     @EventHandler
     public void onBazaarClick(InventoryClickEvent event) {
@@ -325,6 +351,7 @@ public class BazaarGUI implements Listener {
             case "close":
                 player.closeInventory();
                 openGUIs.remove(player.getUniqueId());
+                pendingOrders.remove(player.getUniqueId());
                 break;
 
             case "prev":
@@ -359,14 +386,14 @@ public class BazaarGUI implements Listener {
             case "instant_buy":
                 if (material != null) {
                     player.closeInventory();
-                    openInstantConfirm(player, material, true);
+                    startInstantTrade(player, material, true);
                 }
                 break;
 
             case "instant_sell":
                 if (material != null) {
                     player.closeInventory();
-                    openInstantConfirm(player, material, false);
+                    startInstantTrade(player, material, false);
                 }
                 break;
 
@@ -400,8 +427,15 @@ public class BazaarGUI implements Listener {
 
             case "fulfill_order":
                 if (orderId != null && material != null) {
-                    // TODO: Implement fulfill logic (match against existing orders or instant)
-                    player.sendMessage("§eFulfill order feature coming soon! (Order ID: " + orderId + ")");
+                    // Fulfill the order - player takes the opposite side
+                    final boolean buyOrders = "buy".equals(guiHolder.getPendingAction());
+                    bazaarManager.fulfillOrder(orderId, player).thenAccept(success -> {
+                        if (success) {
+                            plugin.getThreadSafety().runOnMainThread(() -> {
+                                openOrdersView(player, material, buyOrders, 0);
+                            });
+                        }
+                    });
                     player.closeInventory();
                 }
                 break;
@@ -409,25 +443,57 @@ public class BazaarGUI implements Listener {
             case "back":
                 if (material != null) {
                     player.closeInventory();
+                    pendingOrders.remove(player.getUniqueId());
                     openItemDetail(player, material);
                 }
                 break;
 
             case "confirm_instant_buy":
+            case "confirm_instant_sell":
                 if (material != null) {
+                    PendingOrder p = pendingOrders.remove(player.getUniqueId());
+                    int qty = (p != null && p.amount != null && p.amount > 0) ? p.amount : 1;
+                    boolean isBuy = "confirm_instant_buy".equals(action);
+
                     player.closeInventory();
-                    bazaarManager.instantBuy(player, material, 1).thenAccept(success -> {
-                        if (success) openItemDetail(player, material);
+                    CompletableFuture<Boolean> fut = isBuy
+                            ? bazaarManager.instantBuy(player, material, qty)
+                            : bazaarManager.instantSell(player, material, qty);
+
+                    fut.thenAccept(success -> {
+                        if (success) {
+                            plugin.getThreadSafety().runOnMainThread(() -> openItemDetail(player, material));
+                        }
                     });
                 }
                 break;
 
-            case "confirm_instant_sell":
+            case "confirm_create_order":
                 if (material != null) {
+                    PendingOrder pending = pendingOrders.remove(player.getUniqueId());
                     player.closeInventory();
-                    bazaarManager.instantSell(player, material, 1).thenAccept(success -> {
-                        if (success) openItemDetail(player, material);
-                    });
+                    openGUIs.remove(player.getUniqueId());
+
+                    if (pending == null || pending.amount == null || pending.pricePerUnit == null) {
+                        player.sendMessage("§cOrder data lost. Please try again.");
+                        return;
+                    }
+
+                    if ("buy_order".equals(pending.type)) {
+                        bazaarManager.createBuyOrder(player, material, pending.amount, pending.pricePerUnit)
+                                .thenAccept(createdOrderId -> {
+                                    if (createdOrderId != null) {
+                                        plugin.getThreadSafety().runOnMainThread(() -> openItemDetail(player, material));
+                                    }
+                                });
+                    } else {
+                        bazaarManager.createSellOrder(player, material, pending.amount, pending.pricePerUnit)
+                                .thenAccept(createdOrderId -> {
+                                    if (createdOrderId != null) {
+                                        plugin.getThreadSafety().runOnMainThread(() -> openItemDetail(player, material));
+                                    }
+                                });
+                    }
                 }
                 break;
         }
@@ -445,32 +511,46 @@ public class BazaarGUI implements Listener {
     }
 
     // ==================== CONFIRMATION DIALOGS ====================
-    private void openInstantConfirm(Player player, String material, boolean isBuy) {
+    /**
+     * Opens instant trade confirmation. Uses the amount from the PendingOrder map when available,
+     * otherwise defaults to 1.
+     */
+    private void openInstantConfirm(Player player, String material, boolean isBuy, int amount) {
         BazaarItem item = bazaarManager.getBazaarItem(material);
         if (item == null) return;
 
+        double unitPrice = isBuy ? item.getBuyPrice() : item.getSellPrice();
+        double gross = unitPrice * amount;
+        double tax = isBuy ? 0.0 : gross * 0.0125;
+        double total = isBuy ? gross : gross - tax;
+
         String action = isBuy ? "confirm_instant_buy" : "confirm_instant_sell";
-        String title = isBuy ? "§aConfirm Instant Buy?" : "§cConfirm Instant Sell?";
-        double price = isBuy ? item.getBuyPrice() : item.getSellPrice();
+        String title = isBuy ? "§aConfirm Instant Buy" : "§cConfirm Instant Sell";
+        String qtyLine = "§e" + amount + "x " + item.getDisplayName();
 
         Inventory confirm = Bukkit.createInventory(
-                new BazaarGUIHolder("confirm", material, 0, null, isBuy ? "buy" : "sell"),
+                new BazaarGUIHolder("confirm_instant", material, 0, null, isBuy ? "buy" : "sell"),
                 27,
                 title
         );
 
         ItemStack info = new ItemStack(Material.valueOf(material));
         ItemMeta infoMeta = info.getItemMeta();
-        infoMeta.setDisplayName("§e1x " + item.getDisplayName());
+        infoMeta.setDisplayName(qtyLine);
         List<String> lore = new ArrayList<>();
-        lore.add("§7Price: §6$" + String.format("%.2f", price));
+        lore.add("§7Unit Price: §6$" + String.format("%.2f", unitPrice));
+        if (!isBuy) {
+            lore.add("§7Gross: §6$" + String.format("%,.0f", gross));
+            lore.add("§7Tax (1.25%): §c-$" + String.format("%,.0f", tax));
+        }
+        lore.add("§7Total: §a$" + String.format("%,.0f", total));
         infoMeta.setLore(lore);
         info.setItemMeta(infoMeta);
         confirm.setItem(13, info);
 
         ItemStack confirmBtn = new ItemStack(isBuy ? Material.GREEN_WOOL : Material.RED_WOOL);
         ItemMeta cMeta = confirmBtn.getItemMeta();
-        cMeta.setDisplayName(isBuy ? "§a§lCONFIRM BUY" : "§c§lCONFIRM SELL");
+        cMeta.setDisplayName((isBuy ? "§a§lCONFIRM BUY " : "§c§lCONFIRM SELL ") + amount + "x");
         PersistentDataContainer cPdc = cMeta.getPersistentDataContainer();
         cPdc.set(ACTION_KEY, PersistentDataType.STRING, action);
         cPdc.set(MATERIAL_KEY, PersistentDataType.STRING, material);
@@ -489,6 +569,11 @@ public class BazaarGUI implements Listener {
         openGUIs.put(player.getUniqueId(), (BazaarGUIHolder) confirm.getHolder());
     }
 
+    // Overload for legacy / simple calls (defaults to 1)
+    private void openInstantConfirm(Player player, String material, boolean isBuy) {
+        openInstantConfirm(player, material, isBuy, 1);
+    }
+
     // ==================== ORDER CREATION WITH ANVIL INPUT ====================
     private void startOrderCreation(Player player, String material, String orderType) {
         PendingOrder pending = new PendingOrder(material, orderType);
@@ -497,6 +582,18 @@ public class BazaarGUI implements Listener {
         // First ask for amount
         openAnvilInput(player, material, "amount", orderType);
         player.sendMessage("§ePlease enter the §6amount §ein the Anvil and click the output slot.");
+    }
+
+    /**
+     * Starts instant buy or sell flow by first prompting for quantity via Anvil.
+     */
+    private void startInstantTrade(Player player, String material, boolean isBuy) {
+        String type = isBuy ? "instant_buy" : "instant_sell";
+        PendingOrder pending = new PendingOrder(material, type);
+        pendingOrders.put(player.getUniqueId(), pending);
+
+        openAnvilInput(player, material, "amount", type);
+        player.sendMessage("§eEnter the §6amount §eyou want to " + (isBuy ? "buy" : "sell") + " instantly.");
     }
 
     @EventHandler
@@ -513,16 +610,19 @@ public class BazaarGUI implements Listener {
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         if (!"anvil_input".equals(pdc.get(ACTION_KEY, PersistentDataType.STRING))) return;
 
+        event.setCancelled(true);
+
         String material = pdc.get(MATERIAL_KEY, PersistentDataType.STRING);
         String inputType = pdc.get(INPUT_TYPE_KEY, PersistentDataType.STRING);
         PendingOrder pending = pendingOrders.get(player.getUniqueId());
 
         if (pending == null || !pending.material.equals(material)) {
             player.closeInventory();
+            pendingOrders.remove(player.getUniqueId());
             return;
         }
 
-        // Get the text the player typed in the Anvil
+        // Get the text the player typed in the Anvil (result slot)
         String inputText = event.getInventory().getItem(2) != null &&
                 event.getInventory().getItem(2).hasItemMeta()
                 ? event.getInventory().getItem(2).getItemMeta().getDisplayName()
@@ -537,16 +637,23 @@ public class BazaarGUI implements Listener {
             if ("amount".equals(inputType)) {
                 pending.amount = Integer.parseInt(inputText.replaceAll("[^0-9]", ""));
                 player.closeInventory();
-                // Now ask for price
-                openAnvilInput(player, material, "price", pending.type);
-                player.sendMessage("§eNow enter the §6price per unit§e in the Anvil.");
+
+                if (pending.type.startsWith("instant_")) {
+                    // Instant trade: show confirm with live pricing from BazaarItem
+                    openInstantConfirm(player, pending.material, "instant_buy".equals(pending.type), pending.amount);
+                    // pending stays in map so confirm handler can read the chosen amount
+                } else {
+                    // Limit order: next collect price per unit
+                    openAnvilInput(player, material, "price", pending.type);
+                    player.sendMessage("§eNow enter the §6price per unit§e in the Anvil.");
+                }
             } else if ("price".equals(inputType)) {
                 pending.pricePerUnit = Double.parseDouble(inputText.replaceAll("[^0-9.]", ""));
                 player.closeInventory();
 
                 // Final confirmation + create order
                 createOrderWithConfirmation(player, pending);
-                pendingOrders.remove(player.getUniqueId());
+                // pending stays until the confirm click consumes it
             }
         } catch (NumberFormatException e) {
             player.sendMessage("§cInvalid number. Please try again.");
@@ -558,13 +665,18 @@ public class BazaarGUI implements Listener {
     private void createOrderWithConfirmation(Player player, PendingOrder pending) {
         if (pending.amount == null || pending.pricePerUnit == null) {
             player.sendMessage("§cOrder creation failed. Missing amount or price.");
+            pendingOrders.remove(player.getUniqueId());
             return;
         }
 
-        String actionName = pending.type.equals("buy_order") ? "Buy Order" : "Sell Order";
+        String actionName = "buy_order".equals(pending.type) ? "Buy Order" : "Sell Order";
         double total = pending.pricePerUnit * pending.amount;
 
-        Inventory confirm = Bukkit.createInventory(null, 27, "§6§lConfirm " + actionName);
+        Inventory confirm = Bukkit.createInventory(
+                new BazaarGUIHolder("confirm_create", pending.material, 0, null, pending.type),
+                27,
+                "§6§lConfirm " + actionName
+        );
 
         ItemStack info = new ItemStack(Material.valueOf(pending.material));
         ItemMeta meta = info.getItemMeta();
@@ -572,6 +684,10 @@ public class BazaarGUI implements Listener {
         List<String> lore = new ArrayList<>();
         lore.add("§7Price per unit: §a$" + String.format("%.2f", pending.pricePerUnit));
         lore.add("§7Total Value: §6$" + String.format("%,.0f", total));
+        if ("sell_order".equals(pending.type)) {
+            double tax = total * 0.0125;
+            lore.add("§7You will receive: §a$" + String.format("%,.0f", total - tax) + " §7(after tax)");
+        }
         meta.setLore(lore);
         info.setItemMeta(meta);
         confirm.setItem(13, info);
@@ -582,7 +698,6 @@ public class BazaarGUI implements Listener {
         PersistentDataContainer cPdc = cMeta.getPersistentDataContainer();
         cPdc.set(ACTION_KEY, PersistentDataType.STRING, "confirm_create_order");
         cPdc.set(MATERIAL_KEY, PersistentDataType.STRING, pending.material);
-        // We use pendingOrders map instead of storing everything in PDC for simplicity
         confirmBtn.setItemMeta(cMeta);
         confirm.setItem(11, confirmBtn);
 
@@ -595,46 +710,11 @@ public class BazaarGUI implements Listener {
         confirm.setItem(15, cancel);
 
         player.openInventory(confirm);
+        openGUIs.put(player.getUniqueId(), (BazaarGUIHolder) confirm.getHolder());
     }
 
-    @EventHandler
-    public void onConfirmCreateOrder(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) return;
-
-        InventoryHolder holder = event.getInventory().getHolder();
-        // We can also check title or use a specific holder if needed
-        if (event.getView().getTitle().contains("Confirm")) {
-            // This is a bit loose — in production use a proper holder or map check
-        }
-
-        ItemStack clicked = event.getCurrentItem();
-        if (clicked == null) return;
-
-        ItemMeta meta = clicked.getItemMeta();
-        if (meta == null) return;
-
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        String action = pdc.get(ACTION_KEY, PersistentDataType.STRING);
-        if (!"confirm_create_order".equals(action)) return;
-
-        event.setCancelled(true);
-        String material = pdc.get(MATERIAL_KEY, PersistentDataType.STRING);
-        PendingOrder pending = pendingOrders.remove(player.getUniqueId());
-
-        if (pending == null || pending.amount == null || pending.pricePerUnit == null) {
-            player.sendMessage("§cOrder data lost. Please try again.");
-            player.closeInventory();
-            return;
-        }
-
-        player.closeInventory();
-
-        if ("buy_order".equals(pending.type)) {
-            bazaarManager.createBuyOrder(player, material, pending.amount, pending.pricePerUnit);
-        } else {
-            bazaarManager.createSellOrder(player, material, pending.amount, pending.pricePerUnit);
-        }
-    }
+    // NOTE: Order confirmation handling consolidated into onBazaarClick using proper BazaarGUIHolder + pendingOrders map.
+    // The previous loose title-sniffing handler has been removed to prevent duplicate processing.
 
     // ==================== UTILITY ====================
     private ItemStack createGlassPane() {
@@ -664,6 +744,10 @@ public class BazaarGUI implements Listener {
         pdc.set(PAGE_KEY, PersistentDataType.INTEGER, currentPage);
         item.setItemMeta(meta);
         return item;
+    }
+
+    private boolean isBuyOrdersFromContext(BazaarGUIHolder holder) {
+        return "buy".equals(holder != null ? holder.getPendingAction() : null);
     }
 
     public void open(Player player) {

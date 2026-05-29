@@ -38,7 +38,7 @@ public class ResetConfirmationGUI implements Listener {
         CompletableFuture<Double> balanceFuture = plugin.getEconomyManager().getBalance(player.getUniqueId());
 
         balanceFuture.thenAccept(balance -> {
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            plugin.getThreadSafety().runOnMainThread(() -> {
                 Inventory gui = Bukkit.createInventory(null, 27, GUI_TITLE);
 
                 // Warning
@@ -136,33 +136,41 @@ public class ResetConfirmationGUI implements Listener {
                 return;
             }
 
-            if (cost > 0) {
-                double currentBalance = plugin.getEconomyManager().getBalance(player.getUniqueId()).join();
-                if (currentBalance < cost) {
-                    player.sendMessage("§cYou need at least §e" + cost + "§c to reset your island.");
-                    return;
-                }
-                plugin.getEconomyManager().removeBalance(player.getUniqueId(), cost);
-                player.sendMessage("§a§l" + cost + "§a has been deducted from your balance.");
-            }
-
-            // Read target dimension from the confirm button's PersistentDataContainer
-            World.Environment targetDim = World.Environment.NORMAL;
+            // Read target dimension first (safe on main thread)
             ItemMeta meta = clicked.getItemMeta();
+            World.Environment computedDim = player.getWorld().getEnvironment();
             if (meta != null) {
                 String dimStr = meta.getPersistentDataContainer().get(
                         new NamespacedKey(plugin, "target_dimension"), PersistentDataType.STRING);
                 if (dimStr != null) {
                     try {
-                        targetDim = World.Environment.valueOf(dimStr);
-                    } catch (IllegalArgumentException e) {
-                        // fallback to current world if invalid
-                        targetDim = player.getWorld().getEnvironment();
-                    }
+                        computedDim = World.Environment.valueOf(dimStr);
+                    } catch (IllegalArgumentException ignored) {}
                 }
             }
+            final World.Environment targetDim = computedDim;
 
-            // Open biome selection for the correct dimension (isReset=true)
+            if (cost > 0) {
+                // Async economy check + deduction
+                plugin.getEconomyManager().getBalance(player.getUniqueId()).thenAccept(currentBalance -> {
+                    if (currentBalance < cost) {
+                        plugin.getThreadSafety().sendMessageSafely(player, "§cYou need at least §e" + cost + "§c to reset your island.");
+                        return;
+                    }
+
+                    plugin.getEconomyManager().removeBalance(player.getUniqueId(), cost).thenRun(() -> {
+                        plugin.getThreadSafety().sendMessageSafely(player, "§a§l" + cost + "§a has been deducted from your balance.");
+
+                        // Open biome GUI on main thread
+                        plugin.getThreadSafety().runOnMainThread(() -> {
+                            plugin.getBiomeSelectionGUI().open(player, true, targetDim);
+                        });
+                    });
+                });
+                return;
+            }
+
+            // No cost - open biome GUI directly
             plugin.getBiomeSelectionGUI().open(player, true, targetDim);
         }
         else if (clicked.getType() == Material.REDSTONE_BLOCK) {

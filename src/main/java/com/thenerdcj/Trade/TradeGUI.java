@@ -302,22 +302,27 @@ public class TradeGUI implements Listener {
             return;
         }
 
-        double islandBalance = plugin.getEconomyManager().getIslandBalance(island.getGridPosition()).join();
-        if (islandBalance < trade.cost) {
-            player.sendMessage("§cNot enough island funds! Need §e$" + trade.cost);
-            return;
-        }
+        // Do economy work asynchronously, then schedule final actions on main thread (Folia-safe)
+        plugin.getEconomyManager().getIslandBalance(island.getGridPosition()).thenAccept(islandBalance -> {
+            if (islandBalance < trade.cost) {
+                plugin.getThreadSafety().sendMessageSafely(player, "§cNot enough island funds! Need §e$" + trade.cost);
+                return;
+            }
 
-        plugin.getEconomyManager().removeIslandBalance(island.getGridPosition(), trade.cost).join();
-
-        ItemStack purchasedItem = new ItemStack(trade.material);
-        ItemMeta meta = purchasedItem.getItemMeta();
-        meta.setDisplayName(trade.name);
-        purchasedItem.setItemMeta(meta);
-
-        player.getInventory().addItem(purchasedItem);
-        player.sendMessage("§aPurchased §e" + trade.name + " §afor §6$" + trade.cost);
-        player.sendMessage("§7Remaining island balance: §6$" + String.format("%.2f", islandBalance - trade.cost));
+            plugin.getEconomyManager().removeIslandBalance(island.getGridPosition(), trade.cost).thenRun(() -> {
+                plugin.getThreadSafety().runOnMainThread(() -> {
+                    ItemStack purchasedItem = new ItemStack(trade.material);
+                    ItemMeta meta = purchasedItem.getItemMeta();
+                    if (meta != null) {
+                        meta.setDisplayName(trade.name);
+                        purchasedItem.setItemMeta(meta);
+                    }
+                    player.getInventory().addItem(purchasedItem);
+                    player.sendMessage("§aPurchased §e" + trade.name + " §afor §6$" + trade.cost);
+                    player.sendMessage("§7Remaining island balance: §6$" + String.format("%.2f", islandBalance - trade.cost));
+                });
+            });
+        });
     }
 
     private static class TradeItem {

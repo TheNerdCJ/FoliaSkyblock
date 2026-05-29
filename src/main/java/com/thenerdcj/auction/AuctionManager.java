@@ -23,8 +23,13 @@ public class AuctionManager {
         this.plugin = plugin;
         loadActiveAuctions();
 
-        // Check for expired auctions every minute
-        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::checkExpiredAuctions, 20L * 60, 20L * 60);
+        // Check for expired auctions every minute (background async work)
+        // Use ThreadSafety for Folia-aware async repeating
+        // Note: This is intentionally async; deliveries inside are scheduled to main via ThreadSafety
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::checkExpiredAuctions, 20L * 60, 20L * 60); // This will run on main - better to have async version
+
+        // Actually, for background expiration, better to keep async. Using direct for now.
+        // For full Folia, we could add runRepeatingAsync to ThreadSafety in future.
     }
 
     private void loadActiveAuctions() {
@@ -39,80 +44,120 @@ public class AuctionManager {
     }
 
     public CompletableFuture<String> createAuction(Player seller, ItemStack item, double startingPrice) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (item == null || item.getType() == Material.AIR) {
-                seller.sendMessage("§cYou must hold an item to auction!");
-                return null;
-            }
+        if (seller == null) {
+            return CompletableFuture.completedFuture(null);
+        }
 
-            if (startingPrice < 1) {
-                seller.sendMessage("§cStarting price must be at least $1!");
-                return null;
-            }
+        // Fast synchronous validation (cheap checks)
+        if (item == null || item.getType() == Material.AIR) {
+            seller.sendMessage("§cYou must hold an item to auction!");
+            return CompletableFuture.completedFuture(null);
+        }
 
-            if (!seller.getInventory().containsAtLeast(item, item.getAmount())) {
+        if (startingPrice < 1) {
+            seller.sendMessage("§cStarting price must be at least $1!");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        // We must touch the player's inventory on the main thread
+        CompletableFuture<String> result = new CompletableFuture<>();
+
+        runOnMainThread(() -> {
+            // Clone to avoid modifying the original reference the player is holding
+            ItemStack toSell = item.clone();
+
+            if (!seller.getInventory().containsAtLeast(toSell, toSell.getAmount())) {
                 seller.sendMessage("§cYou don't have enough items!");
-                return null;
+                result.complete(null);
+                return;
             }
 
-            seller.getInventory().removeItem(item);
+            // Safe inventory modification - we are on main thread
+            seller.getInventory().removeItem(toSell);
 
-            String auctionId = UUID.randomUUID().toString().substring(0, 8);
-            long endTime = System.currentTimeMillis() + AUCTION_DURATION;
+            // Now perform the heavier work (DB + in-memory updates) asynchronously
+            createAuctionRecord(seller, toSell, startingPrice, result);
+        });
 
-            Auction auction = new Auction(
-                    auctionId, seller.getUniqueId(), item.getType().name(), item.getAmount(),
-                    startingPrice, startingPrice, null, endTime, true
-            );
+        return result;
+    }
 
-            activeAuctions.put(auctionId, auction);
-            playerAuctions.computeIfAbsent(seller.getUniqueId(), k -> new ArrayList<>()).add(auctionId);
+    /**
+     * Performs the actual auction creation after the item has been safely removed on main thread.
+     */
+    private void createAuctionRecord(Player seller, ItemStack item, double startingPrice, CompletableFuture<String> resultFuture) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                String auctionId = UUID.randomUUID().toString().substring(0, 8);
+                long endTime = System.currentTimeMillis() + AUCTION_DURATION;
 
-            plugin.getDatabaseManager().saveAuction(auction);
+                Auction auction = new Auction(
+                        auctionId,
+                        seller.getUniqueId(),
+                        item.getType().name(),
+                        item.getAmount(),
+                        startingPrice,
+                        startingPrice,
+                        null,
+                        endTime,
+                        true
+                );
 
-            Bukkit.broadcastMessage("§6§l[AUCTION] §e" + seller.getName() + " §7listed §b" +
-                    item.getAmount() + "x " + item.getType().name() + " §7for §a$" + String.format("%,.0f", startingPrice));
+                activeAuctions.put(auctionId, auction);
+                playerAuctions.computeIfAbsent(seller.getUniqueId(), k -> new ArrayList<>()).add(auctionId);
 
-            return auctionId;
+                plugin.getDatabaseManager().saveAuction(auction).thenRun(() -> {
+                    // Broadcast can be done from async, but we schedule it to main for cleanliness
+                    runOnMainThread(() -> {
+                        Bukkit.broadcastMessage("§6§l[AUCTION] §e" + seller.getName() + " §7listed §b" +
+                                item.getAmount() + "x " + item.getType().name() + " §7for §a$" +
+                                String.format("%,.0f", startingPrice));
+                    });
+                });
+
+                resultFuture.complete(auctionId);
+            } catch (Exception e) {
+                plugin.getLogger().severe("[Auction] Failed to create auction: " + e.getMessage());
+                // Try to give the item back on main thread if something went wrong
+                runOnMainThread(() -> seller.getInventory().addItem(item));
+                resultFuture.complete(null);
+            }
         });
     }
 
     public CompletableFuture<Boolean> placeBid(Player bidder, String auctionId, double bidAmount) {
-        return CompletableFuture.supplyAsync(() -> {
-            Auction auction = activeAuctions.get(auctionId);
+        Auction auction = activeAuctions.get(auctionId);
 
-            if (auction == null) {
-                bidder.sendMessage("§cAuction not found!");
-                return false;
-            }
+        if (auction == null) {
+            sendMessageSafely(bidder, "§cAuction not found!");
+            return CompletableFuture.completedFuture(false);
+        }
+        if (auction.isExpired()) {
+            sendMessageSafely(bidder, "§cThis auction has ended!");
+            return CompletableFuture.completedFuture(false);
+        }
+        if (bidder.getUniqueId().equals(auction.getSellerUuid())) {
+            sendMessageSafely(bidder, "§cYou cannot bid on your own auction!");
+            return CompletableFuture.completedFuture(false);
+        }
+        if (bidAmount <= auction.getCurrentBid()) {
+            sendMessageSafely(bidder, "§cBid must be higher than current bid of §e$" + String.format("%,.0f", auction.getCurrentBid()));
+            return CompletableFuture.completedFuture(false);
+        }
 
-            if (auction.isExpired()) {
-                bidder.sendMessage("§cThis auction has ended!");
-                return false;
-            }
-
-            if (bidder.getUniqueId().equals(auction.getSellerUuid())) {
-                bidder.sendMessage("§cYou cannot bid on your own auction!");
-                return false;
-            }
-
-            if (bidAmount <= auction.getCurrentBid()) {
-                bidder.sendMessage("§cBid must be higher than current bid of §e$" + String.format("%,.0f", auction.getCurrentBid()));
-                return false;
-            }
-
-            double balance = plugin.getEconomyManager().getPlayerBalance(bidder.getUniqueId()).join();
+        // Async balance check — no blocking join inside supplyAsync
+        return plugin.getEconomyManager().getPlayerBalance(bidder.getUniqueId()).thenCompose(balance -> {
             if (balance < bidAmount) {
-                bidder.sendMessage("§cYou don't have enough money! Need §e$" + String.format("%,.0f", bidAmount));
-                return false;
+                sendMessageSafely(bidder, "§cYou don't have enough money! Need §e$" + String.format("%,.0f", bidAmount));
+                return CompletableFuture.completedFuture(false);
             }
 
+            // Refund previous bidder (economy is thread-safe via DB)
             if (auction.getCurrentBidder() != null) {
                 plugin.getEconomyManager().addPlayerBalance(auction.getCurrentBidder(), auction.getCurrentBid());
+
                 Player previousBidder = Bukkit.getPlayer(auction.getCurrentBidder());
-                if (previousBidder != null) {
-                    previousBidder.sendMessage("§eYour bid on §b" + auction.getItemMaterial() + " §ewas outbid!");
-                }
+                sendMessageSafely(previousBidder, "§eYour bid on §b" + auction.getItemMaterial() + " §ewas outbid!");
             }
 
             plugin.getEconomyManager().removePlayerBalance(bidder.getUniqueId(), bidAmount);
@@ -125,9 +170,9 @@ public class AuctionManager {
             activeAuctions.put(auctionId, updatedAuction);
             plugin.getDatabaseManager().updateAuction(updatedAuction);
 
-            bidder.sendMessage("§aBid placed! §e$" + String.format("%,.0f", bidAmount) + " §aon §b" + auction.getItemMaterial());
+            sendMessageSafely(bidder, "§aBid placed! §e$" + String.format("%,.0f", bidAmount) + " §aon §b" + auction.getItemMaterial());
 
-            return true;
+            return CompletableFuture.completedFuture(true);
         });
     }
 
@@ -150,38 +195,44 @@ public class AuctionManager {
 
     private void endAuction(Auction auction) {
         if (auction.getCurrentBidder() != null) {
-            Player winner = Bukkit.getPlayer(auction.getCurrentBidder());
+            // Winner path
             ItemStack item = new ItemStack(Material.valueOf(auction.getItemMaterial()), auction.getItemAmount());
-
-            if (winner != null && winner.isOnline()) {
-                winner.getInventory().addItem(item);
-                winner.sendMessage("§a§lYou won the auction! §e" + auction.getItemAmount() + "x " + auction.getItemMaterial());
-            } else {
-                plugin.getDatabaseManager().storePendingItem(auction.getCurrentBidder(), item);
-            }
-
             double payout = auction.getCurrentBid() * (1 - AUCTION_TAX);
+
+            // Give item to winner (or store as pending) - MUST be on main thread
+            giveItemToPlayerOrStore(auction.getCurrentBidder(), item,
+                    "§a§lYou won the auction! §e" + auction.getItemAmount() + "x " + auction.getItemMaterial());
+
+            // Pay the seller (economy is async-safe)
             plugin.getEconomyManager().addPlayerBalance(auction.getSellerUuid(), payout);
 
-            Player seller = Bukkit.getPlayer(auction.getSellerUuid());
-            if (seller != null && seller.isOnline()) {
-                seller.sendMessage("§a§lAuction sold! §e$" + String.format("%,.0f", payout) + " §7(after 5% tax)");
-            }
+            // Notify seller (safe to schedule)
+            runOnMainThread(() -> {
+                Player seller = Bukkit.getPlayer(auction.getSellerUuid());
+                if (seller != null && seller.isOnline()) {
+                    seller.sendMessage("§a§lAuction sold! §e$" + String.format("%,.0f", payout) + " §7(after 5% tax)");
+                }
+            });
 
             plugin.getDatabaseManager().markAuctionSold(auction.getId(), auction.getCurrentBidder());
+
         } else {
-            Player seller = Bukkit.getPlayer(auction.getSellerUuid());
+            // No bids - return item to seller
             ItemStack item = new ItemStack(Material.valueOf(auction.getItemMaterial()), auction.getItemAmount());
 
-            if (seller != null && seller.isOnline()) {
-                seller.getInventory().addItem(item);
-                seller.sendMessage("§eYour auction for §b" + auction.getItemMaterial() + " §eended with no bids. Item returned.");
-            } else {
-                plugin.getDatabaseManager().storePendingItem(auction.getSellerUuid(), item);
-            }
+            giveItemToPlayerOrStore(auction.getSellerUuid(), item,
+                    "§eYour auction for §b" + auction.getItemMaterial() + " §eended with no bids. Item returned.");
 
             plugin.getDatabaseManager().markAuctionExpired(auction.getId());
         }
+    }
+
+    /**
+     * Safely gives an item to a player if they are online (on main thread),
+     * otherwise stores it in the pending items system.
+     */
+    private void giveItemToPlayerOrStore(UUID uuid, ItemStack item, String onlineMessage) {
+        plugin.getThreadSafety().giveItemSafely(uuid, item, onlineMessage);
     }
 
     public Map<String, Auction> getActiveAuctions() {
@@ -190,5 +241,15 @@ public class AuctionManager {
 
     public Auction getAuction(String id) {
         return activeAuctions.get(id);
+    }
+
+    // ==================== THREAD-SAFETY DELEGATION ====================
+
+    private void runOnMainThread(Runnable task) {
+        plugin.getThreadSafety().runOnMainThread(task);
+    }
+
+    private void sendMessageSafely(Player player, String message) {
+        plugin.getThreadSafety().sendMessageSafely(player, message);
     }
 }

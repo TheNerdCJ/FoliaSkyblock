@@ -28,27 +28,8 @@ public class IslandWarpManager {
     public IslandWarpManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
-        createWarpTable();
-        Bukkit.getScheduler().runTaskTimer(plugin, this::cleanupCache, 36000L, 36000L);
-    }
-
-    private void createWarpTable() {
-        String sql = """
-            CREATE TABLE IF NOT EXISTS island_warps (
-                grid_x INTEGER,
-                grid_z INTEGER,
-                dimension TEXT,
-                world TEXT,
-                x REAL,
-                y REAL,
-                z REAL,
-                yaw REAL,
-                pitch REAL,
-                enabled BOOLEAN DEFAULT 0,
-                PRIMARY KEY (grid_x, grid_z, dimension)
-            )
-            """;
-        databaseManager.executeUpdate(sql);
+        // Table creation is now centralized in DatabaseManager.createTables()
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCache, 36000L, 36000L);
     }
 
     public CompletableFuture<IslandWarp> getWarp(GridPosition pos) {

@@ -51,6 +51,9 @@ public class FoliaSkyblock extends JavaPlugin {
     private HologramManager hologramManager;
     private TeleportRequestManager teleportRequestManager;
     private PunishmentManager punishmentManager;
+    private AutoSellerManager autoSellerManager;
+    private com.thenerdcj.util.ThreadSafety threadSafety;
+    private com.thenerdcj.util.NameCache nameCache;
 
     // ==================== GUI INSTANCES ====================
     private TradeGUI tradeGUI;
@@ -64,6 +67,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private BiomeSelectionGUI biomeSelectionGUI;
     private TPAListGUI tpaListGUI;
     private AuctionGUI auctionGUI;
+    private com.thenerdcj.bazaar.BazaarGUI bazaarGUI;
 
     @Override
     public void onEnable() {
@@ -82,6 +86,11 @@ public class FoliaSkyblock extends JavaPlugin {
         this.questManager = new QuestManager(this);
         this.bossManager = new BossManager(this);
         this.antiCheatManager = new AntiCheatManager(this);
+
+        // Create ThreadSafety and NameCache VERY early so other managers can safely use them
+        this.threadSafety = new com.thenerdcj.util.ThreadSafety(this);
+        this.nameCache = new com.thenerdcj.util.NameCache(this);
+
         this.islandUpgradeManager = new IslandUpgradeManager(this);
         this.islandSettingsManager = new IslandSettingsManager(this);
         this.islandBankManager = new IslandBankManager(this);
@@ -95,6 +104,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.teleportRequestManager = new TeleportRequestManager(this);
         this.tpaListGUI = new TPAListGUI(this, teleportRequestManager);
         this.punishmentManager = new PunishmentManager(this);
+        this.autoSellerManager = new AutoSellerManager(this);
 
 
         // === WorldManager (Custom Void Worlds) ===
@@ -118,6 +128,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.biomeSelectionGUI = new BiomeSelectionGUI(this);
         this.islandUpgradeGUI = new IslandUpgradeGUI(this);
         this.auctionGUI = new AuctionGUI(this, auctionManager);
+        this.bazaarGUI = new com.thenerdcj.bazaar.BazaarGUI(this, bazaarManager);
 
         // === Register Commands & Listeners ===
         registerCommands();
@@ -243,6 +254,7 @@ public class FoliaSkyblock extends JavaPlugin {
         pm.registerEvents(new IslandXPListener(this), this);
         pm.registerEvents(new ChallengeProgressListener(this), this);
         pm.registerEvents(new CobbleGeneratorListener(this, gridManager, islandUpgradeManager), this);
+        pm.registerEvents(new com.thenerdcj.listener.CropGrowthListener(this, islandUpgradeManager), this);
         pm.registerEvents(new ChestShopListener(this), this);
         pm.registerEvents(new IslandProtectionListener(this), this);
         pm.registerEvents(new AntiCheatListener(this), this);
@@ -251,7 +263,8 @@ public class FoliaSkyblock extends JavaPlugin {
         pm.registerEvents(new AnvilListener(this), this);
         pm.registerEvents(new DimensionIslandListener(this), this);
         pm.registerEvents(new TPAListener(this, tpaListGUI), this);
-        pm.registerEvents(new AuctionGUI(this, auctionManager),this);
+        // Register the single canonical AuctionGUI instance (prevents double-listener bug)
+        pm.registerEvents(auctionGUI, this);
 
         // Player Quit Listener for ChatManager & TPA
         pm.registerEvents(new PlayerQuitListener(this), this); // Make sure this exists or add it
@@ -318,5 +331,19 @@ public class FoliaSkyblock extends JavaPlugin {
         return punishmentManager;
     }
 
+    public AutoSellerManager getAutoSellerManager() {
+        return autoSellerManager;
+    }
+
+    public com.thenerdcj.util.ThreadSafety getThreadSafety() {
+        return threadSafety;
+    }
+
+    public com.thenerdcj.util.NameCache getNameCache() {
+        return nameCache;
+    }
+
     public AuctionGUI getAuctionGUI() { return auctionGUI; }
+
+    public com.thenerdcj.bazaar.BazaarGUI getBazaarGUI() { return bazaarGUI; }
 }

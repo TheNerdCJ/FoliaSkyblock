@@ -25,23 +25,8 @@ public class IslandRatingManager {
     public IslandRatingManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
-        createRatingTable();
-        Bukkit.getScheduler().runTaskTimer(plugin, this::cleanupCache, 36000L, 36000L);
-    }
-
-    private void createRatingTable() {
-        String sql = """
-            CREATE TABLE IF NOT EXISTS island_ratings (
-                grid_x INTEGER,
-                grid_z INTEGER,
-                dimension TEXT,
-                player_uuid TEXT,
-                rating INTEGER,
-                timestamp INTEGER,
-                PRIMARY KEY (grid_x, grid_z, dimension, player_uuid)
-            )
-            """;
-        databaseManager.executeUpdate(sql);
+        // Table creation is now centralized in DatabaseManager.createTables()
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCache, 36000L, 36000L);
     }
 
     public CompletableFuture<Void> rateIsland(GridPosition pos, UUID playerUuid, int rating) {

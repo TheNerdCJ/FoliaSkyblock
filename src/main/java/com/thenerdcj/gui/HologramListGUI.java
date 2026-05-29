@@ -143,7 +143,7 @@ public class HologramListGUI implements InventoryHolder, Listener {
                         if (success) {
                             player.sendMessage("§cDeleted hologram: " + holoName);
                             // Re-open GUI after delete
-                            Bukkit.getScheduler().runTask(plugin, () -> new HologramListGUI(plugin).open(player));
+                            plugin.getThreadSafety().runOnMainThread(() -> new HologramListGUI(plugin).open(player));
                         }
                     });
         }

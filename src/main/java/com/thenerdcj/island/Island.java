@@ -353,4 +353,19 @@ public class Island {
     public Map<IslandUpgrade, Integer> getUpgrades() {
         return Collections.unmodifiableMap(upgrades);
     }
+
+    // ==================== UPGRADE EFFECTS (polished) ====================
+
+    /**
+     * Returns extra build/protection radius granted by ISLAND_SIZE upgrade.
+     * The authoritative value comes from IslandUpgradeManager (config-driven).
+     * This is a convenience fallback.
+     */
+    public int getExtraBuildRadius() {
+        return getUpgradeLevel(IslandUpgrade.ISLAND_SIZE) * 8;
+    }
+
+    public int getEffectiveIslandRadius() {
+        return 256 + getExtraBuildRadius();
+    }
 }

@@ -24,6 +24,11 @@
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
+        <!-- Required for MockBukkit -->
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -41,6 +46,31 @@
             <artifactId>HikariCP</artifactId>
             <version>5.1.0</version>
         </dependency>
+
+        <!-- ==================== TEST DEPENDENCIES ==================== -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.11.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- H2 in-memory database for realistic DatabaseManager testing -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.2.224</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- MockBukkit is available via the "with-mockbukkit" profile (see <profiles>) for realistic cycle tests. -->
+
     </dependencies>
 
     <build>
@@ -55,6 +85,13 @@
                     <target>${java.version}</target>
                     <release>${java.version}</release>
                 </configuration>
+            </plugin>
+
+            <!-- JUnit 5 test runner -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
             </plugin>
 
             <plugin>
@@ -87,4 +124,40 @@
             </resource>
         </resources>
     </build>
+
+    <!--
+      Profile for enabling MockBukkit (realistic AutoSeller and other cycle/integration tests).
+      Usage:  mvn test -Pwith-mockbukkit
+
+      NOTE: MockBukkit is extremely sensitive to the exact paper-api version.
+      You may need to temporarily change <paper.api.version> to a build that matches
+      the MockBukkit artifact you activate here. Once a compatible pair is found,
+      the addPlayer() / ServerMock helpers in TestBase + the patterns in
+      AutoSellerManagerTest become fully realistic (real inventories, getOnlinePlayers(), etc.).
+    -->
+    <profiles>
+        <profile>
+            <id>with-mockbukkit</id>
+            <dependencies>
+                <dependency>
+                    <groupId>com.github.seeseemelk</groupId>
+                    <artifactId>MockBukkit-v1.21</artifactId>
+                    <version>3.133.2</version>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <!-- When running with the profile you can also limit to specific realistic tests -->
+                            <!-- <includes><include>**/*AutoSeller*Test.java</include></includes> -->
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

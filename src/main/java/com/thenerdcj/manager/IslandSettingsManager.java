@@ -23,32 +23,8 @@ public class IslandSettingsManager {
     public IslandSettingsManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
-        createSettingsTable();
-        Bukkit.getScheduler().runTaskTimer(plugin, this::cleanupCache, 36000L, 36000L);
-    }
-
-    private void createSettingsTable() {
-        String sql = """
-            CREATE TABLE IF NOT EXISTS island_settings (
-                grid_x INTEGER,
-                grid_z INTEGER,
-                dimension TEXT,
-                pvp_enabled BOOLEAN DEFAULT 0,
-                visitors_allowed BOOLEAN DEFAULT 1,
-                explosions_enabled BOOLEAN DEFAULT 0,
-                fire_spread_enabled BOOLEAN DEFAULT 0,
-                mob_spawning_enabled BOOLEAN DEFAULT 1,
-                crop_trampling_enabled BOOLEAN DEFAULT 1,
-                animal_spawning_enabled BOOLEAN DEFAULT 1,
-                leaf_decay_enabled BOOLEAN DEFAULT 1,
-                border_color TEXT DEFAULT 'BLUE',
-                border_size INTEGER DEFAULT 100,
-                warp_enabled BOOLEAN DEFAULT 0,
-                warp_description TEXT DEFAULT '',
-                PRIMARY KEY (grid_x, grid_z, dimension)
-            )
-            """;
-        databaseManager.executeUpdate(sql);
+        // Table creation is now centralized in DatabaseManager.createTables()
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCache, 36000L, 36000L);
     }
 
     public CompletableFuture<IslandSettings> getSettings(GridPosition pos) {

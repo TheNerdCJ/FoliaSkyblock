@@ -26,6 +26,20 @@ public class IslandManager {
     private final Map<UUID, Map<World.Environment, Island>> playerIslands = new ConcurrentHashMap<>();
     private final Map<UUID, UUID> pendingInvites = new ConcurrentHashMap<>(); // inviter -> target
 
+    /**
+     * Smart reverse cache: GridPosition → Island for O(1) lookups in hot paths.
+     * This is the primary optimization for protection, ore gen, crop growth, etc.
+     * Kept in sync on load/create/reset.
+     */
+    private final Map<GridPosition, Island> positionToIslandCache = new ConcurrentHashMap<>();
+
+    // Short-lived per-tick cache for extremely hot repeated lookups in the same tick (protection/ore gen spam)
+    private final Map<GridPosition, Island> shortLivedTickCache = new ConcurrentHashMap<>();
+    private long lastTickCacheClear = 0;
+
+    // Lightweight in-memory hopper counter for HOPPER_LIMIT upgrade enforcement (Tier A)
+    private final Map<String, Integer> islandHopperCounts = new ConcurrentHashMap<>();
+
     public IslandManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
@@ -79,7 +93,18 @@ public class IslandManager {
                 Island island = databaseManager.getIslandByOwner(player.getUniqueId(), dim);
 
                 if (island != null) {
+                    // Load upgrades from database
+                    String islandKey = island.getId();
+                    plugin.getDatabaseManager().loadIslandUpgrades(islandKey).thenAccept(loadedUpgrades -> {
+                        island.loadUpgrades(loadedUpgrades);
+                    });
                     cacheIsland(player.getUniqueId(), island);
+
+                    // Load minion data and respawn entities (nice-to-have)
+                    plugin.getMinionManager().loadMinionDataForIsland(islandKey);
+                    plugin.getThreadSafety().runOnMainThread(() -> {
+                        plugin.getMinionManager().respawnMinionsForIsland(island);
+                    });
                 }
 
             } catch (Exception e) {
@@ -91,12 +116,43 @@ public class IslandManager {
     private void cacheIsland(UUID owner, Island island) {
         playerIslands.computeIfAbsent(owner, k -> new EnumMap<>(World.Environment.class))
                 .put(island.getDimension(), island);
+
+        // Populate the smart position cache for fast lookups
+        positionToIslandCache.put(island.getGridPosition(), island);
     }
 
     // ==================== GETTERS ====================
     public Island getIsland(UUID owner, World.Environment dimension) {
         Map<World.Environment, Island> map = playerIslands.get(owner);
         return (map != null) ? map.get(dimension) : null;
+    }
+
+    /**
+     * Checks if a location is within an island's effective (upgraded) build/protection radius.
+     * Used for size upgrade effects.
+     */
+    public boolean isWithinUpgradedIslandArea(Location location) {
+        Island island = getIslandAt(location);
+        if (island == null) return false;
+
+        Location center = island.getCenter(location.getWorld());
+        if (center == null) return false;
+
+        int radius = island.getEffectiveIslandRadius();
+        double distance = center.distance(location);
+        return distance <= radius;
+    }
+
+    /**
+     * Returns a snapshot of all currently loaded islands.
+     * Used by IslandUpgradeManager for fast non-blocking upgrade lookups.
+     */
+    public Map<UUID, Island> getAllLoadedIslands() {
+        Map<UUID, Island> snapshot = new java.util.HashMap<>();
+        playerIslands.forEach((owner, dimMap) -> {
+            dimMap.values().forEach(island -> snapshot.put(owner, island));
+        });
+        return snapshot;
     }
 
     public Island getIslandAt(Location location) {
@@ -106,12 +162,25 @@ public class IslandManager {
 
     public Island getIslandByPosition(GridPosition position) {
         if (position == null) return null;
-        for (Map<World.Environment, Island> map : playerIslands.values()) {
-            for (Island island : map.values()) {
-                if (island.getGridPosition().equals(position)) return island;
-            }
+
+        long currentTick = plugin.getServer().getCurrentTick();
+
+        // Clear short-lived cache once per tick
+        if (currentTick != lastTickCacheClear) {
+            shortLivedTickCache.clear();
+            lastTickCacheClear = currentTick;
         }
-        return null;
+
+        // Check short-lived tick cache first (very cheap for repeated lookups in same tick)
+        Island cached = shortLivedTickCache.get(position);
+        if (cached != null) return cached;
+
+        // Fall back to main smart cache
+        Island island = positionToIslandCache.get(position);
+        if (island != null) {
+            shortLivedTickCache.put(position, island); // populate short cache
+        }
+        return island;
     }
 
     public boolean hasIsland(UUID uuid, World.Environment dimension) {
@@ -147,6 +216,16 @@ public class IslandManager {
             inviter.sendMessage("§cYou can't invite yourself.");
             return;
         }
+
+        Island island = getIsland(inviter.getUniqueId(), inviter.getWorld().getEnvironment());
+        if (island != null) {
+            int maxMembers = 3 + plugin.getIslandUpgradeManager().getUpgradeLevel(island.getId(), com.thenerdcj.island.IslandUpgrade.MEMBER_LIMIT);
+            if (island.getMemberCount() >= maxMembers) {
+                inviter.sendMessage("§cYou have reached your member limit (" + maxMembers + "). Purchase Member Limit upgrades to invite more.");
+                return;
+            }
+        }
+
         pendingInvites.put(target.getUniqueId(), inviter.getUniqueId());
         target.sendMessage("§a" + inviter.getName() + " invited you to their island party!");
         target.sendMessage("§eType §b/is accept §eto join or §b/is deny §eto decline.");
@@ -167,6 +246,12 @@ public class IslandManager {
         Island island = getIsland(inviterUuid, player.getWorld().getEnvironment());
         if (island == null) {
             player.sendMessage("§cInviter no longer has an island.");
+            return;
+        }
+
+        int maxMembers = 3 + plugin.getIslandUpgradeManager().getUpgradeLevel(island.getId(), com.thenerdcj.island.IslandUpgrade.MEMBER_LIMIT);
+        if (island.getMemberCount() >= maxMembers) {
+            player.sendMessage("§cThis island has reached its member limit.");
             return;
         }
 
@@ -222,6 +307,11 @@ public class IslandManager {
 
     // ==================== RESET & COOLDOWN ====================
     public void resetIslandWithBiome(Player player, String biomeName, World.Environment dimension) {
+        Island oldIsland = getIsland(player.getUniqueId(), dimension);
+        if (oldIsland != null) {
+            positionToIslandCache.remove(oldIsland.getGridPosition());
+        }
+
         databaseManager.deleteIsland(player.getUniqueId(), dimension).thenAccept(deleted -> {
             if (deleted) {
                 gridManager.deletePlayerIsland(player.getUniqueId(), dimension);
@@ -318,6 +408,45 @@ public class IslandManager {
             return getGridPosition(ownerUuid, env);
         } catch (IllegalArgumentException e) {
             return null;
+        }
+    }
+
+    /**
+     * Test helper - creates a minimal island for unit testing without full generation.
+     * Only for use in tests.
+     */
+    public Island createIslandForTesting(org.bukkit.entity.Player player, World.Environment dimension, String biome) {
+        GridPosition pos = new GridPosition(0, 0, dimension);
+        Island island = new Island(pos, player.getUniqueId(), biome, dimension);
+        cacheIsland(player.getUniqueId(), island);
+        return island;
+    }
+
+    // ==================== HOPPER LIMIT HELPERS (Tier A) ====================
+
+    public String getIslandIdForHopperCount(Island island) {
+        if (island == null) return null;
+        return island.getGridPosition().getX() + "," + island.getGridPosition().getZ();
+    }
+
+    public int getCurrentHopperCount(String islandId) {
+        return islandHopperCounts.getOrDefault(islandId, 0);
+    }
+
+    public void incrementHopperCount(String islandId) {
+        if (islandId == null) return;
+        islandHopperCounts.merge(islandId, 1, Integer::sum);
+    }
+
+    public void decrementHopperCount(String islandId) {
+        if (islandId == null) return;
+        islandHopperCounts.computeIfPresent(islandId, (k, v) -> Math.max(0, v - 1));
+    }
+
+    /** Call when an island is deleted/reset to clean up counters */
+    public void clearHopperCount(String islandId) {
+        if (islandId != null) {
+            islandHopperCounts.remove(islandId);
         }
     }
 }

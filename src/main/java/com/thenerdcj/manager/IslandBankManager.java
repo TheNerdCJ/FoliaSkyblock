@@ -26,21 +26,8 @@ public class IslandBankManager {
     public IslandBankManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
-        createBankTable();
-        Bukkit.getScheduler().runTaskTimer(plugin, this::cleanupCache, 36000L, 36000L);
-    }
-
-    private void createBankTable() {
-        String sql = """
-            CREATE TABLE IF NOT EXISTS island_banks (
-                grid_x INTEGER,
-                grid_z INTEGER,
-                dimension TEXT,
-                balance REAL DEFAULT 0.0,
-                PRIMARY KEY (grid_x, grid_z, dimension)
-            )
-            """;
-        databaseManager.executeUpdate(sql);
+        // Table creation is now centralized in DatabaseManager.createTables()
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCache, 36000L, 36000L);
     }
 
     public CompletableFuture<IslandBank> getBank(GridPosition pos) {

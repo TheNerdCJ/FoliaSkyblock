@@ -157,7 +157,7 @@ public class AdminCommand implements CommandExecutor {
             return;
         }
 
-        plugin.getEconomyManager().setBalance(target.getUniqueId(), amount);
+        plugin.getEconomyManager().setPlayerBalance(target.getUniqueId(), amount);
         sender.sendMessage("§aSet " + target.getName() + "'s balance to §e$" + amount);
     }
 
@@ -209,11 +209,16 @@ public class AdminCommand implements CommandExecutor {
         }
 
         plugin.getDatabaseManager().getPendingItems(target.getUniqueId()).thenAccept(items -> {
-            for (var item : items) {
-                target.getInventory().addItem(item);
-            }
-            sender.sendMessage("§aGave pending items to " + target.getName());
-            target.sendMessage("§aYou received your pending items from admin.");
+            // Must give items on main thread
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                for (var item : items) {
+                    target.getInventory().addItem(item);
+                }
+                sender.sendMessage("§aGave pending items to " + target.getName());
+                if (target.isOnline()) {
+                    target.sendMessage("§aYou received your pending items from admin.");
+                }
+            });
         });
     }
 

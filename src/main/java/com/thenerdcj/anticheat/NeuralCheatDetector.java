@@ -5,22 +5,18 @@ import java.util.*;
 /**
  * Simple Neural Network for Cheat Detection (Updated)
  *
+ * === TIER 3 REVIEW DECISION ===
+ * This is an experimental, hand-written neural network (MLP).
+ * It is kept for advanced users but is NOT recommended for most servers.
+ *
+ * Strong recommendation: Disable the neural component in production or replace the entire
+ * AntiCheat system with a mature plugin. The custom heuristics in AntiCheatManager
+ * (fastbreak, xray, dupe, XP) are more valuable than the NN for a Skyblock context.
+ *
+ * The network does NOT persist learned weights between restarts.
+ *
  * Lightweight MLP that learns legitimate vs cheating behavior in FoliaSkyblock.
- * Designed to work with custom island ore generators and Play-to-Win progression.
- * High ore rates from upgraded IslandOreGenerator + CobbleGeneratorListener are
- * treated as legitimate (profile + manager adjust thresholds via whitelist).
- *
- * Architecture:
- * - Input Layer: 8 features (speed, stddev, attack rate, ore rate, enchants, potions, flags, xray-ish stone/ore ratio)
- * - Hidden Layer: 6 neurons ReLU
- * - Output: sigmoid (cheat prob)
- *
- * Communicates with:
- * - PlayerBehaviorProfile (feature extraction)
- * - AntiCheatManager (training + probability queries)
- * - IslandOreGenerator (via whitelist logic in recordBlockBreak)
- *
- * Online learning allows adaptation to server meta (donor perks, gen upgrades, etc.).
+ * High ore rates from upgraded IslandOreGenerator are treated as legitimate.
  */
 public class NeuralCheatDetector {
 

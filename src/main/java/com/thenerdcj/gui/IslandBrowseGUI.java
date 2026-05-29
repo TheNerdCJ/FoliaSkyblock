@@ -46,7 +46,7 @@ public class IslandBrowseGUI implements Listener {
         plugin.getIslandRatingManager().getTopRatedIslands(100).thenAccept(topRated -> {
             // Get all islands with warps
             plugin.getIslandWarpManager().getAllPublicWarps().thenAccept(allWarps -> {
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.getThreadSafety().runOnMainThread(() -> {
                     // Combine and sort: top rated first, then others
                     List<GridPosition> sortedIslands = new ArrayList<>();
 
@@ -124,7 +124,7 @@ public class IslandBrowseGUI implements Listener {
         try {
             Island island = plugin.getIslandManager().getIslandByPosition(pos);
             if (island != null) {
-                ownerName = Bukkit.getOfflinePlayer(island.getOwnerUuid()).getName();
+                ownerName = plugin.getNameCache().getName(island.getOwnerUuid());
             }
         } catch (Exception e) {
             // Owner name remains "Unknown"

@@ -33,7 +33,7 @@ public class AnvilListener implements Listener {
 
     public AnvilListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        // Registration handled centrally in FoliaSkyblock to avoid double-listener issues
     }
 
     @EventHandler
@@ -108,42 +108,43 @@ public class AnvilListener implements Listener {
         int xpCost = Math.max(1, cost / 10); // 1 XP level per $10
         double balanceCost = cost;
 
-        double playerBalance = plugin.getEconomyManager().getBalance(player.getUniqueId()).join();
-
-        if (player.getLevel() < xpCost) {
-            player.sendMessage("§cYou need §e" + xpCost + " XP levels§c to use the anvil!");
-            event.setCancelled(true);
-            return;
-        }
-
-        if (playerBalance < balanceCost) {
-            player.sendMessage("§cYou need §e$" + balanceCost + "§c to use the anvil!");
-            event.setCancelled(true);
-            return;
-        }
-
-        // Deduct XP levels
-        player.setLevel(player.getLevel() - xpCost);
-
-        // Deduct from player balance
-        plugin.getEconomyManager().removeBalance(player.getUniqueId(), balanceCost).thenAccept(success -> {
-            if (success) {
-                // Play sound
-                player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 1.0f, 1.0f);
-
-                // Remove input items
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    anvil.setItem(0, null);
-                    if (second != null) {
-                        second.setAmount(second.getAmount() - 1);
-                        if (second.getAmount() <= 0) {
-                            anvil.setItem(1, null);
-                        }
-                    }
-                });
-
-                player.sendMessage("§a§lAnvil used! §7Cost: §e" + xpCost + " levels §7+ §e$" + balanceCost);
+        // Async balance check to avoid blocking main thread
+        plugin.getEconomyManager().getBalance(player.getUniqueId()).thenAccept(playerBalance -> {
+            if (player.getLevel() < xpCost) {
+                plugin.getThreadSafety().sendMessageSafely(player, "§cYou need §e" + xpCost + " XP levels§c to use the anvil!");
+                event.setCancelled(true);
+                return;
             }
+
+            if (playerBalance < balanceCost) {
+                plugin.getThreadSafety().sendMessageSafely(player, "§cYou need §e$" + balanceCost + "§c to use the anvil!");
+                event.setCancelled(true);
+                return;
+            }
+
+            // Deduct XP levels (must be on main)
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                player.setLevel(player.getLevel() - xpCost);
+            });
+
+            // Deduct from player balance (async is fine)
+            plugin.getEconomyManager().removeBalance(player.getUniqueId(), balanceCost).thenAccept(success -> {
+                if (success) {
+                    player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 1.0f, 1.0f);
+
+                    plugin.getThreadSafety().runOnMainThread(() -> {
+                        anvil.setItem(0, null);
+                        if (second != null) {
+                            second.setAmount(second.getAmount() - 1);
+                            if (second.getAmount() <= 0) {
+                                anvil.setItem(1, null);
+                            }
+                        }
+                    });
+
+                    plugin.getThreadSafety().sendMessageSafely(player, "§a§lAnvil used! §7Cost: §e" + xpCost + " levels §7+ §e$" + balanceCost);
+                }
+            });
         });
     }
 
