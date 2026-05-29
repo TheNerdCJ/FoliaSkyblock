@@ -1,0 +1,63 @@
+package com.thenerdcj.manager;
+
+import org.bukkit.Material;
+
+/**
+ * Enum defining all available minion types in FoliaSkyblock.
+ * Each type has a display name, icon, produced resource, and base production rate.
+ */
+public enum MinionType {
+    WHEAT("Wheat", Material.WHEAT, Material.WHEAT, 1.0),
+    COBBLESTONE("Cobblestone", Material.COBBLESTONE, Material.COBBLESTONE, 1.0),
+    IRON("Iron", Material.IRON_INGOT, Material.IRON_INGOT, 0.8),
+    GOLD("Gold", Material.GOLD_INGOT, Material.GOLD_INGOT, 0.7),
+    DIAMOND("Diamond", Material.DIAMOND, Material.DIAMOND, 0.4),
+    EMERALD("Emerald", Material.EMERALD, Material.EMERALD, 0.5),
+    ENDER_PEARL("Ender Pearl", Material.ENDER_PEARL, Material.ENDER_PEARL, 0.6),
+    SLIME("Slime", Material.SLIME_BALL, Material.SLIME_BALL, 0.9),
+    SNOW("Snow", Material.SNOWBALL, Material.SNOWBALL, 1.2),
+    CLAY("Clay", Material.CLAY_BALL, Material.CLAY, 0.85),
+    FISHING("Fishing", Material.COD, Material.COD, 0.95),
+    MOB("Mob", Material.ROTTEN_FLESH, Material.ROTTEN_FLESH, 0.75);
+
+    private final String displayName;
+    private final Material icon;
+    private final Material resource;
+    private final double productionMultiplier; // Higher = faster/better yields
+
+    MinionType(String displayName, Material icon, Material resource, double productionMultiplier) {
+        this.displayName = displayName;
+        this.icon = icon;
+        this.resource = resource;
+        this.productionMultiplier = productionMultiplier;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public Material getIcon() {
+        return icon;
+    }
+
+    public Material getResource() {
+        return resource;
+    }
+
+    public double getProductionMultiplier() {
+        return productionMultiplier;
+    }
+
+    public static MinionType fromString(String name) {
+        if (name == null) return WHEAT;
+        try {
+            return valueOf(name.toUpperCase().replace(" ", "_"));
+        } catch (IllegalArgumentException e) {
+            return WHEAT;
+        }
+    }
+
+    public String getKey() {
+        return name();
+    }
+}
