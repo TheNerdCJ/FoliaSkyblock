@@ -198,6 +198,16 @@ public class IslandXPListener implements Listener {
         // Party XP balance
         if (island.getMemberCount() > 1) xp *= 0.9;
 
+        // Apply ISLAND_XP booster
+        if (plugin.getBoosterManager() != null) {
+            xp *= plugin.getBoosterManager().getBoosterMultiplier(island, com.thenerdcj.booster.BoosterType.ISLAND_XP);
+        }
+
+        // Apply Prestige multiplier (layers on top of everything)
+        if (plugin.getPrestigeManager() != null) {
+            xp *= plugin.getPrestigeManager().getPrestigeMultiplier(island, com.thenerdcj.manager.PrestigeManager.PrestigeMultiplierType.XP);
+        }
+
         addIslandXP(island, xp, player, "§7Mob Kill: " + type.name().toLowerCase().replace('_', ' '));
     }
 
@@ -252,6 +262,11 @@ public class IslandXPListener implements Listener {
     // Communicates with: Island (addXp, getLevel, levelUp), DatabaseManager (via IslandManager), BossManager/Dimension for unlocks
     private void addIslandXP(Island island, double xp, Player player, String source) {
         if (island == null || xp <= 0) return;
+
+        // Apply Prestige XP multiplier (affects everything)
+        if (plugin.getPrestigeManager() != null) {
+            xp *= plugin.getPrestigeManager().getPrestigeMultiplier(island, com.thenerdcj.manager.PrestigeManager.PrestigeMultiplierType.XP);
+        }
 
         double currentXP = island.getXp();
         int currentLevel = island.getLevel();

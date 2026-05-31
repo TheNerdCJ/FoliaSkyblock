@@ -23,8 +23,14 @@ public class BiomeSelectionGUI implements Listener {
     private static final String GUI_TITLE = "§6§lSelect Your Island Biome";
 
     public BiomeSelectionGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public BiomeSelectionGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player, boolean isReset, World.Environment dimension) {

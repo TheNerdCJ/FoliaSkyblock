@@ -44,6 +44,12 @@ public class CropGrowthListener implements Listener {
         if (island == null) return;
 
         double multiplier = upgradeManager.getCropGrowthMultiplier(island);
+
+        // Apply active booster on top of upgrade
+        if (plugin.getBoosterManager() != null) {
+            multiplier *= plugin.getBoosterManager().getBoosterMultiplier(island, com.thenerdcj.booster.BoosterType.CROP_GROWTH);
+        }
+
         if (multiplier <= 1.0) return;
 
         // Chance to grant extra growth tick(s) based on multiplier

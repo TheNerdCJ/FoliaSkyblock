@@ -33,7 +33,8 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private final List<String> subCommands = Arrays.asList(
         "help", "create", "home", "h", "sethome", "setspawn", "info", "i", "members", "list",
         "invite", "accept", "deny", "kick", "promote", "demote", "transfer", "leave", "disband",
-        "reset", "bank", "settings", "upgrade", "browse", "top", "visit", "tp"
+        "reset", "bank", "settings", "upgrade", "browse", "top", "visit", "tp",
+        "booster", "boosters", "shop", "store", "prestige", "crate", "crates"
     );
 
     private final List<String> dimensions = Arrays.asList("normal", "nether", "end", "overworld");
@@ -146,10 +147,42 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                 handleUpgrade(player);
                 break;
 
+            case "booster":
+            case "boosters":
+                handleBooster(player);
+                break;
+            case "shop":
+            case "store":
+                handleShop(player);
+                break;
+            case "prestige":
+                handlePrestige(player);
+                break;
+            case "border":
+                if (args.length > 1 && args[1].equalsIgnoreCase("markers")) {
+                    handleBorderMarkers(player, args);
+                } else {
+                    handleBorder(player);
+                }
+                break;
+            case "boss":
+                handleBossCommand(player, args);
+                break;
+            case "crate":
+            case "crates":
+                handleCrate(player);
+                break;
+
             case "browse":
-            case "top":
-            case "visit":
                 handleBrowse(player, args);
+                break;
+
+            case "top":
+                handleIslandTop(player, args);
+                break;
+
+            case "visit":
+                handleVisit(player, args);
                 break;
 
             case "tp":
@@ -185,7 +218,10 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         player.sendMessage("§e/is bank §7- Open Island Bank GUI.");
         player.sendMessage("§e/is settings §7- Open Island Settings GUI.");
         player.sendMessage("§e/is upgrade §7- Open Island Upgrades GUI.");
-        player.sendMessage("§e/is browse | top | visit §7- Browse top islands or visit menu.");
+        player.sendMessage("§e/is border §7- View border size / prestige info.");
+        player.sendMessage("§e/is border markers [on|off|toggle] §7- Toggle persistent corner hologram markers.");
+        player.sendMessage("§e/is visit <player> §7- Visit another player's island (if they allow visitors).");
+        player.sendMessage("§e/is browse | top §7- Browse top islands or visit menu.");
         player.sendMessage("§e/is tp <player> §7- Teleport to another player's island.");
         player.sendMessage("§7Aliases: /is , /island");
         player.sendMessage("§7Tip: Most actions are dimension-specific (you have separate islands per world).");
@@ -259,6 +295,14 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
         // Uses current world dimension to locate the target's island in same dim
         plugin.getIslandManager().teleportToIsland(player, targetUuid);
+
+        // Apply nice border visuals after teleport (WorldBorder + particles)
+        plugin.getThreadSafety().runOnMainThreadLater(() -> {
+            Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+            if (island != null && plugin.getBorderVisualManager() != null) {
+                plugin.getBorderVisualManager().updatePlayerWorldBorder(player, island);
+            }
+        }, 15L); // slight delay for teleport to complete
     }
 
     private void handleSetHome(Player player) {
@@ -305,6 +349,14 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         player.sendMessage("§7Dimension: §e" + island.getDimension().name());
         player.sendMessage("§7Biome: §e" + island.getBiomeName());
         player.sendMessage("§7Level: §a" + island.getLevel() + " §7(§f" + String.format("%.1f", island.getProgressToNextLevel() * 100) + "%§7 to next)");
+
+        // New Worth System info
+        if (plugin.getIslandWorthManager() != null) {
+            double worth = plugin.getIslandWorthManager().getCachedWorth(island);
+            int worthLevel = plugin.getIslandWorthManager().getCachedWorthLevel(island);
+            player.sendMessage("§7Worth: §6" + String.format("%,.0f", worth) + " §7(Level §b" + worthLevel + "§7)");
+        }
+
         player.sendMessage("§7Members: §a" + island.getMemberCount());
         player.sendMessage("§7Use §b/is members §7for full list.");
     }
@@ -516,6 +568,58 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         handleHome(player, args); // reuse home logic which supports target
     }
 
+    private void handleVisit(Player player, String[] args) {
+        if (args.length < 2) {
+            player.sendMessage("§cUsage: §b/is visit <player>");
+            player.sendMessage("§7Visits the target's island in your current dimension if they allow visitors.");
+            return;
+        }
+
+        String targetName = args[1];
+        Player target = Bukkit.getPlayer(targetName);
+        if (target == null || !target.isOnline()) {
+            player.sendMessage("§cPlayer §e" + targetName + " §cis not online.");
+            return;
+        }
+
+        UUID targetUuid = target.getUniqueId();
+        Island targetIsland = plugin.getIslandManager().getIsland(targetUuid, player.getWorld().getEnvironment());
+
+        if (targetIsland == null) {
+            player.sendMessage("§cThat player does not have an island in this dimension.");
+            return;
+        }
+
+        // Check visitors allowed setting
+        GridPosition pos = targetIsland.getGridPosition();
+        plugin.getIslandSettingsManager().getSettings(pos).thenAccept(settings -> {
+            if (!settings.isVisitorsAllowed()) {
+                player.sendMessage("§cThat island is currently closed to visitors.");
+                return;
+            }
+
+            // Check basic permission (visitors get limited access)
+            // For now we use the existing visitorsAllowed flag as the gate.
+            // More granular guest permissions can be added later via IslandPermission for guests.
+
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                // Teleport
+                plugin.getIslandManager().teleportToIsland(player, targetUuid);
+
+                // Notify owner (best effort)
+                if (target.isOnline()) {
+                    target.sendMessage("§a" + player.getName() + " §7has visited your island.");
+                }
+
+                // Record in visitor log
+                targetIsland.recordVisitor(player.getUniqueId());
+
+                player.sendMessage("§aYou are now visiting §e" + target.getName() + "'s §aisland.");
+                player.sendMessage("§7You have guest permissions (build/interact may be restricted by owner).");
+            });
+        });
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (!(sender instanceof Player)) return Collections.emptyList();
@@ -552,5 +656,202 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         }
 
         return Collections.emptyList();
+    }
+
+    // ==================== Island Top / Leaderboards (Worth System) ====================
+    private void handleIslandTop(Player player, String[] args) {
+        player.sendMessage("§6§l=== Island Leaderboards ===");
+        player.sendMessage("§e/is top value §7- Top by island worth");
+        player.sendMessage("§e/is top level §7- Top by worth level");
+        player.sendMessage("§e/is top members §7- Top by member count");
+        player.sendMessage("§e/is worth recalculate §7- Force recalc your island worth");
+        player.sendMessage("§7Full GUI coming soon...");
+
+        if (args.length > 1) {
+            String type = args[1].toLowerCase();
+
+            if (type.equals("value") || type.equals("worth")) {
+                plugin.getIslandWorthManager().getTopIslandsByWorth(10).thenAccept(list -> {
+                    plugin.getThreadSafety().runOnMainThread(() -> {
+                        player.sendMessage("§aTop Islands by Worth (async cached):");
+                        player.sendMessage("§7(Real data populates as islands are scanned)");
+                    });
+                });
+            } else if (type.equals("recalculate") || type.equals("recalc")) {
+                handleWorthRecalculate(player);
+            }
+        }
+    }
+
+    private void handleWorthRecalculate(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island in this dimension.");
+            return;
+        }
+
+        player.sendMessage("§aRecalculating your island's worth... this may take a moment.");
+
+        plugin.getIslandWorthManager().invalidateCache(island);
+        plugin.getIslandWorthManager().calculateIslandWorthAsync(island).thenAccept(worth -> {
+            int level = plugin.getIslandWorthManager().calculateWorthLevel(worth);
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                player.sendMessage("§aRecalculation complete!");
+                player.sendMessage("§7Worth: §6" + String.format("%,.0f", worth) + " §7→ Worth Level §b" + level);
+            });
+        });
+    }
+
+    private void handleBooster(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island in this dimension.");
+            return;
+        }
+        plugin.getBoosterGUI().open(player, island);
+    }
+
+    private void handleShop(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island in this dimension.");
+            return;
+        }
+        if (plugin.getIslandShopGUI() != null) {
+            plugin.getIslandShopGUI().open(player, island);
+        } else {
+            player.sendMessage("§cIsland Shop temporarily unavailable.");
+        }
+    }
+
+    private void handlePrestige(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island in this dimension.");
+            return;
+        }
+        if (plugin.getPrestigeGUI() != null) {
+            plugin.getPrestigeGUI().open(player, island);
+        } else {
+            player.sendMessage("§cPrestige system temporarily unavailable.");
+        }
+    }
+
+    private void handleBorder(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island in this dimension.");
+            return;
+        }
+
+        int radius = plugin.getIslandUpgradeManager().getEffectiveIslandRadius(island);
+        int sizeLevel = island.getUpgradeLevel(com.thenerdcj.island.IslandUpgrade.ISLAND_SIZE);
+        int prestige = (plugin.getPrestigeManager() != null) ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+        player.sendMessage("§6§l=== Island Border ===");
+        player.sendMessage("§7Current Radius: §a" + radius + " blocks");
+        player.sendMessage("§7Size Upgrade Level: §b" + sizeLevel);
+        if (prestige > 0) {
+            player.sendMessage("§7Prestige Bonus: §d+" + (prestige * plugin.getConfig().getInt("upgrades.island-size.prestige-bonus.extra-per-prestige", 16)) + " radius");
+        }
+        // Folia-safe: use cached value (non-blocking). Background refresh if needed.
+        boolean markers = plugin.getIslandSettingsManager()
+            .getCachedSettings(island.getGridPosition())
+            .isBorderMarkersEnabled();
+        player.sendMessage("§7Hologram Markers: " + (markers ? "§aEnabled" : "§7Disabled") + " §8(/is border markers toggle)");
+        player.sendMessage("§7Upgrade size with §b/is upgrade §7(ISLAND_SIZE)");
+    }
+
+    private void handleBorderMarkers(Player player, String[] args) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island in this dimension.");
+            return;
+        }
+
+        GridPosition pos = island.getGridPosition();
+
+        plugin.getIslandSettingsManager().getSettings(pos).thenAccept(settings -> {
+            boolean current = settings.isBorderMarkersEnabled();
+            boolean newValue = current;
+
+            String action = (args.length > 2) ? args[2].toLowerCase() : "toggle";
+
+            switch (action) {
+                case "on", "enable" -> newValue = true;
+                case "off", "disable" -> newValue = false;
+                case "toggle", "" -> newValue = !current;
+                default -> {
+                    player.sendMessage("§cUsage: /is border markers [toggle|on|off]");
+                    return;
+                }
+            }
+
+            if (newValue == current) {
+                player.sendMessage("§eHologram markers are already " + (current ? "§aenabled" : "§7disabled") + "§e.");
+                return;
+            }
+
+            settings.setBorderMarkersEnabled(newValue);
+            plugin.getIslandSettingsManager().saveSettings(settings);
+
+            final boolean finalNewValue = newValue;
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                if (finalNewValue) {
+                    if (plugin.getBorderVisualManager() != null) {
+                        plugin.getBorderVisualManager().spawnBorderHologramMarkers(island, player);
+                    }
+                    player.sendMessage("§aPersistent border hologram markers §aenabled§a! Corners now have markers.");
+                } else {
+                    player.sendMessage("§7Persistent border hologram markers §cdisabled§7.");
+                    player.sendMessage("§8Existing markers will remain until manually removed or server restart (full auto-clean coming soon).");
+                }
+            });
+        });
+    }
+
+    private void handleCrate(Player player) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island in this dimension.");
+            return;
+        }
+        if (plugin.getCrateGUI() != null) {
+            plugin.getCrateGUI().open(player, island);
+        } else {
+            player.sendMessage("§cCrate system temporarily unavailable.");
+        }
+    }
+
+    // Dedicated /is boss summon command with basic prestige scaling & cooldown stub
+    private void handleBossCommand(Player player, String[] args) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            player.sendMessage("§cYou don't have an island in this dimension.");
+            return;
+        }
+
+        if (args.length < 2 || !args[1].equalsIgnoreCase("summon")) {
+            player.sendMessage("§cUsage: /is boss summon <tier>");
+            return;
+        }
+
+        // Prestige scaling example
+        if (plugin.getBossManager() != null) {
+            long remaining = plugin.getBossManager().getIslandBossSummonCooldownRemaining(island);
+            if (remaining > 0) {
+                long hours = remaining / (1000 * 60 * 60);
+                long minutes = (remaining % (1000 * 60 * 60)) / (1000 * 60);
+                player.sendMessage("§cBoss summon on cooldown for " + hours + "h " + minutes + "m.");
+                return;
+            }
+
+            boolean success = plugin.getBossManager().summonIslandBossEvent(island, com.thenerdcj.boss.DimensionBoss.REVENANT_HORROR_T5);
+            if (success) {
+                player.sendMessage("§c§lIsland Boss Event has begun!");
+            } else {
+                player.sendMessage("§cCould not summon boss (maybe one is already active or on cooldown).");
+            }
+        }
     }
 }

@@ -181,28 +181,38 @@ public class IslandUpgradeRecommender {
             case MINER -> switch (upgrade) {
                 case HOPPER_LIMIT, SPAWNER_RATE -> 0.9;
                 case VAULT_SLOTS, AUTO_SELLER -> 0.7;
+                case WARDROBE_SLOTS -> 0.6;
                 default -> 0.3;
             };
             case BUILDER -> switch (upgrade) {
                 case ISLAND_SIZE, HOPPER_LIMIT -> 0.9;
                 case VAULT_SLOTS, AUTO_SELLER -> 0.6;
+                case WARDROBE_SLOTS -> 0.5;
                 default -> 0.3;
             };
             case FIGHTER -> switch (upgrade) {
                 case SPAWNER_RATE, MOB_CAP -> 0.9;
                 case HOPPER_LIMIT, VAULT_SLOTS -> 0.5;
+                case WARDROBE_SLOTS -> 0.8;
                 default -> 0.3;
             };
             case FARMER -> switch (upgrade) {
                 case CROP_GROWTH, AUTO_SELLER, HOPPER_LIMIT -> 0.9;
                 case VAULT_SLOTS, ISLAND_SIZE -> 0.5;
+                case WARDROBE_SLOTS -> 0.8;
                 default -> 0.3;
             };
-            case BALANCED -> 0.6;
+            case BALANCED -> switch (upgrade) {
+                case WARDROBE_SLOTS -> 0.7;
+                default -> 0.6;
+            };
         };
     }
 
     private String getRecommendationReason(IslandUpgrade upgrade, Playstyle playstyle) {
+        if (upgrade == IslandUpgrade.WARDROBE_SLOTS) {
+            return "Quality of life: easily swap between activity-specific armor and equipment sets";
+        }
         return switch (playstyle) {
             case MINER -> "Great for mining operations and ore generation";
             case BUILDER -> "Essential for large-scale building projects";

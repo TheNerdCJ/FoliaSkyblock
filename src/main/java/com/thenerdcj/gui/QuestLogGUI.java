@@ -23,9 +23,15 @@ public class QuestLogGUI implements Listener {
     private final NamespacedKey questIdKey;
 
     public QuestLogGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public QuestLogGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
         this.questIdKey = new NamespacedKey(plugin, "quest_id");
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player, String islandId) {

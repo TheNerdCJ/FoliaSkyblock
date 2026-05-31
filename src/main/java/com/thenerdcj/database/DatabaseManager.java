@@ -7,6 +7,7 @@ import com.thenerdcj.hologram.HologramData;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.Island.Skill;
 import com.thenerdcj.island.IslandUpgrade;
+import com.thenerdcj.mission.Mission;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.Bukkit;
@@ -41,6 +42,13 @@ public class DatabaseManager {
     private HikariDataSource dataSource;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
+    // New lightweight operations helper (start of DatabaseManager compression)
+    private final DBOperations dbOps;
+
+    // Extracted DAOs (pilot - AuctionDAO first, now SlayerDAO)
+    private AuctionDAO auctionDAO;
+    private SlayerDAO slayerDAO;
+
     // For test support (H2 in-memory)
     private String jdbcUrlOverride = null;
 
@@ -53,6 +61,11 @@ public class DatabaseManager {
 
     public DatabaseManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
+        this.dbOps = new DBOperations(plugin, executor, () -> {
+            try { return getConnection(); } catch (SQLException e) { throw new RuntimeException(e); }
+        });
+        this.auctionDAO = new AuctionDAO(plugin, dbOps);
+        this.slayerDAO = new SlayerDAO(plugin, dbOps);
     }
 
     /**
@@ -61,6 +74,11 @@ public class DatabaseManager {
     public DatabaseManager(FoliaSkyblock plugin, String jdbcUrl) {
         this.plugin = plugin;
         this.jdbcUrlOverride = jdbcUrl;
+        this.dbOps = new DBOperations(plugin, executor, () -> {
+            try { return getConnection(); } catch (SQLException e) { throw new RuntimeException(e); }
+        });
+        this.auctionDAO = new AuctionDAO(plugin, dbOps);
+        this.slayerDAO = new SlayerDAO(plugin, dbOps);
     }
 
     public void initDatabase() {
@@ -124,20 +142,34 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_ranks (uuid TEXT PRIMARY KEY, rank_name TEXT, upvotes INTEGER DEFAULT 0)",
                 "CREATE TABLE IF NOT EXISTS island_minions (island_key TEXT, minion_type TEXT, level INTEGER, PRIMARY KEY(island_key, minion_type))",
                 "CREATE TABLE IF NOT EXISTS island_fuel (island_key TEXT PRIMARY KEY, fuel_amount INTEGER DEFAULT 1000)",
+                "CREATE TABLE IF NOT EXISTS island_missions (id TEXT PRIMARY KEY, island_key TEXT, owner_uuid TEXT, type TEXT, objective TEXT, target_material TEXT, target INTEGER, progress INTEGER, reward_money INTEGER, reward_xp INTEGER, reward_item_base64 TEXT, reward_booster_type TEXT, reward_booster_duration INTEGER, completed BOOLEAN, claimed BOOLEAN, created_at INTEGER, expires_at INTEGER, title TEXT, description TEXT)",
+                "CREATE TABLE IF NOT EXISTS island_boosters (island_key TEXT, booster_type TEXT, multiplier REAL, expires_at INTEGER, PRIMARY KEY(island_key, booster_type))",
                 "CREATE TABLE IF NOT EXISTS auctions (id TEXT PRIMARY KEY, seller_uuid TEXT, item_base64 TEXT, price REAL, end_time INTEGER, sold BOOLEAN DEFAULT 0, buyer_uuid TEXT)",
                 "CREATE TABLE IF NOT EXISTS bazaar_orders (id TEXT PRIMARY KEY, player_uuid TEXT, material TEXT, amount INTEGER, price_per_unit REAL, buy_order BOOLEAN, created_at INTEGER, filled BOOLEAN DEFAULT 0)",
                 "CREATE TABLE IF NOT EXISTS pending_items (uuid TEXT, item_base64 TEXT)",
                 "CREATE TABLE IF NOT EXISTS slayer_kills (uuid TEXT, slayer_type TEXT, tier TEXT, kills INTEGER, PRIMARY KEY(uuid, slayer_type, tier))",
+                "CREATE TABLE IF NOT EXISTS slayer_tokens (uuid TEXT PRIMARY KEY, tokens INTEGER DEFAULT 0, last_updated INTEGER DEFAULT 0, weekly_tokens INTEGER DEFAULT 0)",
+                "CREATE TABLE IF NOT EXISTS player_particle_trails (uuid TEXT, trail_id TEXT, unlocked_at INTEGER, PRIMARY KEY (uuid, trail_id))",
+                "CREATE TABLE IF NOT EXISTS player_active_trail (uuid TEXT PRIMARY KEY, trail_id TEXT, updated_at INTEGER)",
                 "CREATE TABLE IF NOT EXISTS votes (voter_uuid TEXT, target_uuid TEXT, timestamp INTEGER)",
                 "CREATE TABLE IF NOT EXISTS holograms (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, world TEXT NOT NULL, x REAL, y REAL, z REAL, billboard TEXT DEFAULT 'CENTER', background_color TEXT, scale REAL DEFAULT 1.0, see_through BOOLEAN DEFAULT 0, shadow BOOLEAN DEFAULT 1, permission TEXT, is_dynamic BOOLEAN DEFAULT 0, dynamic_type TEXT, update_interval INTEGER DEFAULT 300)",
                 "CREATE TABLE IF NOT EXISTS hologram_lines (holo_id INTEGER, line_index INTEGER, text TEXT, PRIMARY KEY(holo_id, line_index))",
 
                 // Island feature tables (centralized from Island*Manager classes)
-                "CREATE TABLE IF NOT EXISTS island_settings (grid_x INTEGER, grid_z INTEGER, dimension TEXT, pvp_enabled BOOLEAN DEFAULT 0, visitors_allowed BOOLEAN DEFAULT 1, explosions_enabled BOOLEAN DEFAULT 0, fire_spread_enabled BOOLEAN DEFAULT 0, mob_spawning_enabled BOOLEAN DEFAULT 1, crop_trampling_enabled BOOLEAN DEFAULT 1, animal_spawning_enabled BOOLEAN DEFAULT 1, leaf_decay_enabled BOOLEAN DEFAULT 1, border_color TEXT DEFAULT 'BLUE', border_size INTEGER DEFAULT 100, warp_enabled BOOLEAN DEFAULT 0, warp_description TEXT DEFAULT '', PRIMARY KEY (grid_x, grid_z, dimension))",
+                "CREATE TABLE IF NOT EXISTS island_settings (grid_x INTEGER, grid_z INTEGER, dimension TEXT, pvp_enabled BOOLEAN DEFAULT 0, visitors_allowed BOOLEAN DEFAULT 1, explosions_enabled BOOLEAN DEFAULT 0, fire_spread_enabled BOOLEAN DEFAULT 0, mob_spawning_enabled BOOLEAN DEFAULT 1, crop_trampling_enabled BOOLEAN DEFAULT 1, animal_spawning_enabled BOOLEAN DEFAULT 1, leaf_decay_enabled BOOLEAN DEFAULT 1, border_color TEXT DEFAULT 'BLUE', border_size INTEGER DEFAULT 100, border_markers_enabled BOOLEAN DEFAULT 0, warp_enabled BOOLEAN DEFAULT 0, warp_description TEXT DEFAULT '', PRIMARY KEY (grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS island_banks (grid_x INTEGER, grid_z INTEGER, dimension TEXT, balance REAL DEFAULT 0.0, PRIMARY KEY (grid_x, grid_z, dimension))",
+                "CREATE TABLE IF NOT EXISTS island_worth (grid_x INTEGER, grid_z INTEGER, dimension TEXT, worth REAL DEFAULT 0.0, worth_level INTEGER DEFAULT 1, last_calculated INTEGER DEFAULT 0, PRIMARY KEY (grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS island_ratings (grid_x INTEGER, grid_z INTEGER, dimension TEXT, player_uuid TEXT, rating INTEGER, timestamp INTEGER, PRIMARY KEY (grid_x, grid_z, dimension, player_uuid))",
                 "CREATE TABLE IF NOT EXISTS island_warps (grid_x INTEGER, grid_z INTEGER, dimension TEXT, world TEXT, x REAL, y REAL, z REAL, yaw REAL, pitch REAL, enabled BOOLEAN DEFAULT 0, PRIMARY KEY (grid_x, grid_z, dimension))",
-                "CREATE TABLE IF NOT EXISTS punishments (id INTEGER PRIMARY KEY AUTOINCREMENT, target_uuid TEXT NOT NULL, staff_uuid TEXT, type TEXT NOT NULL, reason TEXT, duration INTEGER, timestamp INTEGER, active BOOLEAN DEFAULT 1)"
+                "CREATE TABLE IF NOT EXISTS punishments (id INTEGER PRIMARY KEY AUTOINCREMENT, target_uuid TEXT NOT NULL, staff_uuid TEXT, type TEXT NOT NULL, reason TEXT, duration INTEGER, timestamp INTEGER, active BOOLEAN DEFAULT 1)",
+
+                // Wardrobe system (Armor + Equipment presets)
+                "CREATE TABLE IF NOT EXISTS player_wardrobe (uuid TEXT, slot INTEGER, set_type TEXT, name TEXT, icon TEXT, h_base64 TEXT, c_base64 TEXT, l_base64 TEXT, b_base64 TEXT, e1_base64 TEXT, e2_base64 TEXT, e3_base64 TEXT, e4_base64 TEXT, PRIMARY KEY (uuid, slot, set_type))",
+
+                // Light wardrobe equipment collection for XP (persistent across restarts)
+                "CREATE TABLE IF NOT EXISTS player_wardrobe_collection (uuid TEXT, material TEXT, PRIMARY KEY (uuid, material))",
+                "CREATE TABLE IF NOT EXISTS island_shop_purchases (island_key TEXT, item_id TEXT, purchased_at INTEGER, PRIMARY KEY (island_key, item_id))",
+                "CREATE TABLE IF NOT EXISTS island_prestige (island_key TEXT PRIMARY KEY, prestige_level INTEGER DEFAULT 0, last_prestiged INTEGER DEFAULT 0)"
         };
 
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
@@ -150,13 +182,37 @@ public class DatabaseManager {
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_skills_key ON island_skills(island_key)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_milestones_key ON island_milestones(island_key)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auctions_active ON auctions(sold, end_time)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_wardrobe_collection ON player_wardrobe_collection(uuid)");
+
+            // Backwards-compat ALTERs for mission booster reward columns (safe if columns exist)
+            try { stmt.executeUpdate("ALTER TABLE island_missions ADD COLUMN reward_booster_type TEXT"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("ALTER TABLE island_missions ADD COLUMN reward_booster_duration INTEGER"); } catch (SQLException ignored) {}
+
+            // Island Shop one-time purchases
+            try { stmt.executeUpdate("ALTER TABLE island_shop_purchases ADD COLUMN purchased_at INTEGER"); } catch (SQLException ignored) {}
+
+            // Prestige system
+            try { stmt.executeUpdate("ALTER TABLE island_prestige ADD COLUMN prestige_level INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("ALTER TABLE island_prestige ADD COLUMN last_prestiged INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+
+            // Slayer Token persistence (backwards compat)
+            try { stmt.executeUpdate("ALTER TABLE slayer_tokens ADD COLUMN tokens INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("ALTER TABLE slayer_tokens ADD COLUMN last_updated INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("ALTER TABLE slayer_tokens ADD COLUMN weekly_tokens INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+
+            // Border markers flag
+            try { stmt.executeUpdate("ALTER TABLE island_settings ADD COLUMN border_markers_enabled BOOLEAN DEFAULT 0"); } catch (SQLException ignored) {}
+
+            // Particle trail cosmetics
+            try { stmt.executeUpdate("ALTER TABLE player_particle_trails ADD COLUMN trail_id TEXT"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("ALTER TABLE player_active_trail ADD COLUMN trail_id TEXT"); } catch (SQLException ignored) {}
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to create tables: " + e.getMessage());
         }
     }
 
     // ==================== MODERN ITEM SERIALIZATION ====================
-    private String itemToBase64(ItemStack item) {
+    String itemToBase64(ItemStack item) { // package-private for DAOs during migration
         if (item == null) return null;
         try {
             byte[] bytes = item.serializeAsBytes();
@@ -167,7 +223,7 @@ public class DatabaseManager {
         }
     }
 
-    private ItemStack itemFromBase64(String base64) {
+    ItemStack itemFromBase64(String base64) { // package-private for DAOs during migration
         if (base64 == null || base64.isEmpty()) return null;
         try {
             byte[] bytes = Base64.getDecoder().decode(base64);
@@ -241,97 +297,15 @@ public class DatabaseManager {
      * AuctionManager will further filter out truly expired ones in-memory.
      */
     public CompletableFuture<List<Auction>> getActiveAuctions() {
-        return CompletableFuture.supplyAsync(() -> {
-            List<Auction> auctions = new ArrayList<>();
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT * FROM auctions WHERE sold = 0")) {
-
-                ResultSet rs = ps.executeQuery();
-                while (rs.next()) {
-                    String id = rs.getString("id");
-                    UUID sellerUuid = UUID.fromString(rs.getString("seller_uuid"));
-
-                    String itemBase64 = rs.getString("item_base64");
-                    double price = rs.getDouble("price");
-                    long endTime = rs.getLong("end_time");
-
-                    String buyerStr = rs.getString("buyer_uuid");
-                    UUID currentBidder = (buyerStr != null && !buyerStr.isEmpty())
-                            ? UUID.fromString(buyerStr)
-                            : null;
-
-                    // Prefer reconstructing material + amount from the stored ItemStack (future-proof)
-                    Material material = Material.STONE;
-                    int amount = 1;
-
-                    if (itemBase64 != null && !itemBase64.isEmpty()) {
-                        ItemStack deserialized = itemFromBase64(itemBase64);
-                        if (deserialized != null && !deserialized.getType().isAir()) {
-                            material = deserialized.getType();
-                            amount = Math.max(1, deserialized.getAmount());
-                        }
-                    }
-
-                    // Note: Current DB schema only has one "price" column.
-                    // We use it as the current bid. Starting price is approximated on reload.
-                    Auction auction = new Auction(
-                            id,
-                            sellerUuid,
-                            material.name(),
-                            amount,
-                            price,           // startingPrice (approximated)
-                            price,           // currentBid
-                            currentBidder,
-                            endTime,
-                            true             // active
-                    );
-                    auctions.add(auction);
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] getActiveAuctions failed: " + e.getMessage());
-            }
-            return auctions;
-        }, executor);
+        // Delegated to extracted AuctionDAO (DatabaseManager compression)
+        return auctionDAO.getActiveAuctions();
     }
 
     /**
      * Saves a new auction. Serializes a minimal ItemStack (material + amount) to satisfy the item_base64 column.
      */
     public CompletableFuture<Boolean> saveAuction(Auction auction) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (auction == null) return false;
-
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO auctions " +
-                         "(id, seller_uuid, item_base64, price, end_time, sold, buyer_uuid) " +
-                         "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
-
-                // Create a simple ItemStack so we can use the existing base64 helpers
-                ItemStack simpleItem = new ItemStack(
-                        Material.valueOf(auction.getItemMaterial()),
-                        Math.max(1, auction.getItemAmount())
-                );
-                String itemBase64 = itemToBase64(simpleItem);
-
-                ps.setString(1, auction.getId());
-                ps.setString(2, auction.getSellerUuid().toString());
-                ps.setString(3, itemBase64);
-                ps.setDouble(4, auction.getCurrentBid());           // current price goes here
-                ps.setLong(5, auction.getEndTime());
-                ps.setBoolean(6, false);                            // not sold yet
-                ps.setString(7, auction.getCurrentBidder() != null
-                        ? auction.getCurrentBidder().toString()
-                        : null);
-
-                ps.executeUpdate();
-                return true;
-            } catch (Exception e) {
-                plugin.getLogger().severe("[Database] saveAuction failed for " + auction.getId() + ": " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        return auctionDAO.saveAuction(auction);
     }
 
     /**
@@ -339,50 +313,21 @@ public class DatabaseManager {
      * Implemented as upsert for simplicity and safety.
      */
     public CompletableFuture<Boolean> updateAuction(Auction auction) {
-        return saveAuction(auction);
+        return auctionDAO.updateAuction(auction);
     }
 
     /**
      * Marks an auction as sold and records the winner.
      */
     public CompletableFuture<Boolean> markAuctionSold(String id, UUID buyerUuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (id == null) return false;
-
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "UPDATE auctions SET sold = 1, buyer_uuid = ? WHERE id = ?")) {
-
-                ps.setString(1, buyerUuid != null ? buyerUuid.toString() : null);
-                ps.setString(2, id);
-                int updated = ps.executeUpdate();
-                return updated > 0;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] markAuctionSold failed for " + id + ": " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        return auctionDAO.markAuctionSold(id, buyerUuid);
     }
 
     /**
      * Marks an auction as expired (no winner). We still set sold=1 so it no longer appears in active listings.
      */
     public CompletableFuture<Boolean> markAuctionExpired(String id) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (id == null) return false;
-
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "UPDATE auctions SET sold = 1 WHERE id = ?")) {
-
-                ps.setString(1, id);
-                int updated = ps.executeUpdate();
-                return updated > 0;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] markAuctionExpired failed for " + id + ": " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        return auctionDAO.markAuctionExpired(id);
     }
 
     // ==================== ISLAND BALANCE WITH CACHING ====================
@@ -753,6 +698,148 @@ public class DatabaseManager {
         } catch (SQLException e) {
             return false;
         }
+    }
+
+    // ==================== WARDROBE SYSTEM ====================
+
+    /**
+     * Saves a wardrobe preset (supports both ARMOR and EQUIPMENT types).
+     */
+    public void saveWardrobeSet(UUID uuid, int slot, String setType, com.thenerdcj.wardrobe.WardrobeSet set) {
+        if (set == null) return;
+
+        String sql = "INSERT OR REPLACE INTO player_wardrobe " +
+                "(uuid, slot, set_type, name, icon, h_base64, c_base64, l_base64, b_base64, e1_base64, e2_base64, e3_base64, e4_base64) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, uuid.toString());
+            ps.setInt(2, slot);
+            ps.setString(3, setType);
+            ps.setString(4, set.getName());
+            ps.setString(5, set.getIcon().name());
+
+            ItemStack[] armor = set.getArmor();
+            ItemStack[] eq = set.getEquipment();
+
+            ps.setString(6, itemToBase64(armor[0]));
+            ps.setString(7, itemToBase64(armor[1]));
+            ps.setString(8, itemToBase64(armor[2]));
+            ps.setString(9, itemToBase64(armor[3]));
+
+            ps.setString(10, itemToBase64(eq[0]));
+            ps.setString(11, itemToBase64(eq[1]));
+            ps.setString(12, itemToBase64(eq[2]));
+            ps.setString(13, itemToBase64(eq[3]));
+
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Wardrobe] Failed to save set: " + e.getMessage());
+        }
+    }
+
+    public void deleteWardrobeSet(UUID uuid, int slot, String setType) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "DELETE FROM player_wardrobe WHERE uuid = ? AND slot = ? AND set_type = ?")) {
+            ps.setString(1, uuid.toString());
+            ps.setInt(2, slot);
+            ps.setString(3, setType);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Wardrobe] Failed to delete set: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Loads all wardrobe presets for a player and populates the WardrobeManager cache.
+     */
+    public void loadWardrobeForPlayer(UUID uuid, com.thenerdcj.wardrobe.WardrobeManager manager) {
+        String sql = "SELECT * FROM player_wardrobe WHERE uuid = ?";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                int slot = rs.getInt("slot");
+                String setType = rs.getString("set_type");
+                String name = rs.getString("name");
+                String iconName = rs.getString("icon");
+
+                Material icon = Material.matchMaterial(iconName);
+                if (icon == null) icon = Material.LEATHER_CHESTPLATE;
+
+                ItemStack[] armor = new ItemStack[4];
+                armor[0] = itemFromBase64(rs.getString("h_base64"));
+                armor[1] = itemFromBase64(rs.getString("c_base64"));
+                armor[2] = itemFromBase64(rs.getString("l_base64"));
+                armor[3] = itemFromBase64(rs.getString("b_base64"));
+
+                ItemStack[] equipment = new ItemStack[4];
+                equipment[0] = itemFromBase64(rs.getString("e1_base64"));
+                equipment[1] = itemFromBase64(rs.getString("e2_base64"));
+                equipment[2] = itemFromBase64(rs.getString("e3_base64"));
+                equipment[3] = itemFromBase64(rs.getString("e4_base64"));
+
+                com.thenerdcj.wardrobe.WardrobeSet set =
+                        new com.thenerdcj.wardrobe.WardrobeSet(name, icon, armor, equipment);
+
+                if ("ARMOR".equalsIgnoreCase(setType)) {
+                    manager.getArmorPresets(uuid).put(slot, set);
+                } else if ("EQUIPMENT".equalsIgnoreCase(setType)) {
+                    manager.getEquipmentPresets(uuid).put(slot, set);
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Wardrobe] Failed to load wardrobe for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Saves a single collected equipment material for a player (used for wardrobe collection XP).
+     */
+    public void saveWardrobeCollectionEntry(UUID uuid, String materialName) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_wardrobe_collection (uuid, material) VALUES (?, ?)")) {
+            ps.setString(1, uuid.toString());
+            ps.setString(2, materialName);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Wardrobe] Failed to save collection entry: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Loads all collected equipment materials for a player.
+     */
+    public Set<Material> loadWardrobeCollection(UUID uuid) {
+        Set<Material> collected = ConcurrentHashMap.newKeySet();
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT material FROM player_wardrobe_collection WHERE uuid = ?")) {
+
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                String matName = rs.getString("material");
+                Material mat = Material.matchMaterial(matName);
+                if (mat != null) {
+                    collected.add(mat);
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Wardrobe] Failed to load collection for " + uuid + ": " + e.getMessage());
+        }
+
+        return collected;
     }
 
     // ==================== ISLAND XP / LEVEL ====================
@@ -1277,6 +1364,137 @@ public class DatabaseManager {
         }, executor);
     }
 
+    // ==================== SLAYER TOKENS (NEW - for leaderboard + shop currency) ====================
+
+    public void saveSlayerTokens(UUID uuid, int tokens, int weeklyTokens) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO slayer_tokens (uuid, tokens, last_updated, weekly_tokens) VALUES (?, ?, ?, ?)")) {
+            ps.setString(1, uuid.toString());
+            ps.setInt(2, tokens);
+            ps.setLong(3, System.currentTimeMillis());
+            ps.setInt(4, weeklyTokens);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] saveSlayerTokens failed: " + e.getMessage());
+        }
+    }
+
+    public CompletableFuture<Integer> loadSlayerTokens(UUID uuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement("SELECT tokens FROM slayer_tokens WHERE uuid = ?")) {
+                ps.setString(1, uuid.toString());
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    return rs.getInt("tokens");
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Database] loadSlayerTokens failed: " + e.getMessage());
+            }
+            return 0;
+        }, executor);
+    }
+
+    public CompletableFuture<List<Object[]>> getTopSlayerTokenEarners(int limit) {
+        // Delegated to extracted SlayerDAO (DB compression)
+        return slayerDAO.getTopSlayerTokenEarners(limit);
+    }
+
+    public void incrementSlayerTokens(UUID uuid, int amount) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO slayer_tokens (uuid, tokens, last_updated, weekly_tokens) " +
+                     "VALUES (?, COALESCE((SELECT tokens FROM slayer_tokens WHERE uuid = ?), 0) + ?, ?, " +
+                     "COALESCE((SELECT weekly_tokens FROM slayer_tokens WHERE uuid = ?), 0) + ?)")) {
+            long now = System.currentTimeMillis();
+            ps.setString(1, uuid.toString());
+            ps.setString(2, uuid.toString());
+            ps.setInt(3, amount);
+            ps.setLong(4, now);
+            ps.setString(5, uuid.toString());
+            ps.setInt(6, amount);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] incrementSlayerTokens failed: " + e.getMessage());
+        }
+    }
+
+    public void resetWeeklySlayerTokens() {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("UPDATE slayer_tokens SET weekly_tokens = 0")) {
+            ps.executeUpdate();
+            plugin.getLogger().info("[Database] Weekly Slayer Tokens leaderboard reset.");
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] resetWeeklySlayerTokens failed: " + e.getMessage());
+        }
+    }
+
+    // ==================== PARTICLE TRAILS (NEW Cosmetic System) ====================
+
+    public Set<String> loadUnlockedParticleTrails(UUID uuid) {
+        Set<String> trails = new HashSet<>();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT trail_id FROM player_particle_trails WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                trails.add(rs.getString("trail_id"));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] loadUnlockedParticleTrails failed: " + e.getMessage());
+        }
+        return trails;
+    }
+
+    public void saveUnlockedParticleTrails(UUID uuid, Set<String> trails) {
+        try (Connection conn = getConnection();
+             PreparedStatement delete = conn.prepareStatement("DELETE FROM player_particle_trails WHERE uuid = ?");
+             PreparedStatement insert = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_particle_trails (uuid, trail_id, unlocked_at) VALUES (?, ?, ?)")) {
+
+            delete.setString(1, uuid.toString());
+            delete.executeUpdate();
+
+            long now = System.currentTimeMillis();
+            for (String trail : trails) {
+                insert.setString(1, uuid.toString());
+                insert.setString(2, trail);
+                insert.setLong(3, now);
+                insert.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] saveUnlockedParticleTrails failed: " + e.getMessage());
+        }
+    }
+
+    public String loadActiveParticleTrail(UUID uuid) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT trail_id FROM player_active_trail WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("trail_id");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] loadActiveParticleTrail failed: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public void saveActiveParticleTrail(UUID uuid, String trailId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO player_active_trail (uuid, trail_id, updated_at) VALUES (?, ?, ?)")) {
+            ps.setString(1, uuid.toString());
+            ps.setString(2, trailId == null ? "NONE" : trailId);
+            ps.setLong(3, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] saveActiveParticleTrail failed: " + e.getMessage());
+        }
+    }
+
     // ==================== ISLAND MEMBERS (basic) ====================
 
     public CompletableFuture<Boolean> addIslandMember(int gridX, int gridZ, String dimension, UUID playerUuid, String role) {
@@ -1296,5 +1514,308 @@ public class DatabaseManager {
                 return false;
             }
         }, executor);
+    }
+
+    // ==================== GLOBAL ISLAND WORTH LEADERBOARD (DB-backed) ====================
+
+    public static class TopWorthEntry {
+        public final int gridX;
+        public final int gridZ;
+        public final String dimension;
+        public final double worth;
+        public final int worthLevel;
+        public final UUID ownerUuid;
+        public final int memberCount;
+
+        public TopWorthEntry(int gridX, int gridZ, String dimension, double worth, int worthLevel, UUID ownerUuid, int memberCount) {
+            this.gridX = gridX;
+            this.gridZ = gridZ;
+            this.dimension = dimension;
+            this.worth = worth;
+            this.worthLevel = worthLevel;
+            this.ownerUuid = ownerUuid;
+            this.memberCount = memberCount;
+        }
+    }
+
+    public CompletableFuture<List<TopWorthEntry>> getTopIslandsByWorth(int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<TopWorthEntry> results = new ArrayList<>();
+            String sql = """
+                SELECT w.grid_x, w.grid_z, w.dimension, w.worth, w.worth_level, i.owner_uuid,
+                       (SELECT COUNT(*) FROM island_members m 
+                        JOIN islands ii ON m.island_id = ii.id 
+                        WHERE ii.grid_x = w.grid_x AND ii.grid_z = w.grid_z AND ii.dimension = w.dimension) as member_count
+                FROM island_worth w
+                JOIN islands i ON i.grid_x = w.grid_x AND i.grid_z = w.grid_z AND i.dimension = w.dimension
+                ORDER BY w.worth DESC
+                LIMIT ?
+                """;
+
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setInt(1, limit);
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    UUID owner = UUID.fromString(rs.getString("owner_uuid"));
+                    results.add(new TopWorthEntry(
+                        rs.getInt("grid_x"),
+                        rs.getInt("grid_z"),
+                        rs.getString("dimension"),
+                        rs.getDouble("worth"),
+                        rs.getInt("worth_level"),
+                        owner,
+                        rs.getInt("member_count")
+                    ));
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Database] getTopIslandsByWorth failed: " + e.getMessage());
+            }
+            return results;
+        }, executor);
+    }
+
+    // ==================== MISSION PERSISTENCE (Expanded System) ====================
+
+    public CompletableFuture<Boolean> saveMission(Mission mission) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO island_missions (id, island_key, owner_uuid, type, objective, target_material, target, progress, reward_money, reward_xp, reward_item_base64, reward_booster_type, reward_booster_duration, completed, claimed, created_at, expires_at, title, description) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, mission.getId());
+                ps.setString(2, mission.getIslandKey());
+                ps.setString(3, mission.getIslandOwner() != null ? mission.getIslandOwner().toString() : null);
+                ps.setString(4, mission.getType().name());
+                ps.setString(5, mission.getObjective().name());
+                ps.setString(6, mission.getTargetMaterial());
+                ps.setInt(7, mission.getTarget());
+                ps.setInt(8, mission.getProgress());
+                ps.setInt(9, mission.getRewardMoney());
+                ps.setInt(10, mission.getRewardIslandXp());
+                ps.setString(11, mission.getRewardItemBase64());
+                ps.setString(12, mission.getRewardBoosterType() != null ? mission.getRewardBoosterType().name() : null);
+                ps.setInt(13, mission.getRewardBoosterDurationMinutes());
+                ps.setBoolean(14, mission.isCompleted());
+                ps.setBoolean(15, mission.isClaimed());
+                ps.setLong(16, mission.getCreatedAt());
+                ps.setLong(17, mission.getExpiresAt());
+                ps.setString(18, mission.getTitle());
+                ps.setString(19, mission.getDescription());
+                ps.executeUpdate();
+                return true;
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Missions] saveMission failed: " + e.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+
+    public CompletableFuture<List<Mission>> loadMissionsForIsland(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Mission> missions = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement("SELECT * FROM island_missions WHERE island_key = ?")) {
+                ps.setString(1, islandKey);
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    try {
+                        Mission.MissionType type = Mission.MissionType.valueOf(rs.getString("type"));
+                        Mission.ObjectiveType objective = Mission.ObjectiveType.valueOf(rs.getString("objective"));
+                        UUID owner = rs.getString("owner_uuid") != null ? UUID.fromString(rs.getString("owner_uuid")) : null;
+
+                        com.thenerdcj.booster.BoosterType boosterType = null;
+                        String bt = rs.getString("reward_booster_type");
+                        if (bt != null && !bt.isEmpty()) {
+                            try { boosterType = com.thenerdcj.booster.BoosterType.valueOf(bt); } catch (Exception ignored) {}
+                        }
+                        int boosterDur = rs.getInt("reward_booster_duration");
+                        if (rs.wasNull()) boosterDur = 0;
+
+                        Mission m = new Mission(
+                                rs.getString("id"),
+                                rs.getString("island_key"),
+                                owner,
+                                type,
+                                objective,
+                                rs.getString("target_material"),
+                                rs.getInt("target"),
+                                rs.getInt("progress"),
+                                rs.getInt("reward_money"),
+                                rs.getInt("reward_xp"),
+                                rs.getString("reward_item_base64"),
+                                boosterType,
+                                boosterDur,
+                                rs.getBoolean("completed"),
+                                rs.getBoolean("claimed"),
+                                rs.getLong("created_at"),
+                                rs.getLong("expires_at"),
+                                rs.getString("title"),
+                                rs.getString("description")
+                        );
+                        missions.add(m);
+                    } catch (Exception ex) {
+                        plugin.getLogger().warning("[Missions] Skipped bad mission row: " + ex.getMessage());
+                    }
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Missions] loadMissionsForIsland failed: " + e.getMessage());
+            }
+            return missions;
+        }, executor);
+    }
+
+    // ==================== ISLAND BOOSTERS PERSISTENCE ====================
+
+    public void saveIslandBooster(String islandKey, String boosterType, double multiplier, long expiresAt) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO island_boosters (island_key, booster_type, multiplier, expires_at) VALUES (?, ?, ?, ?)")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, boosterType);
+            ps.setDouble(3, multiplier);
+            ps.setLong(4, expiresAt);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Boosters] save failed: " + e.getMessage());
+        }
+    }
+
+    public void removeIslandBooster(String islandKey, String boosterType) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "DELETE FROM island_boosters WHERE island_key = ? AND booster_type = ?")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, boosterType);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Boosters] remove failed: " + e.getMessage());
+        }
+    }
+
+    public CompletableFuture<Map<String, BoosterData>> loadIslandBoosters(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<String, BoosterData> boosters = new HashMap<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT booster_type, multiplier, expires_at FROM island_boosters WHERE island_key = ?")) {
+                ps.setString(1, islandKey);
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    boosters.put(
+                        rs.getString("booster_type"),
+                        new BoosterData(
+                            rs.getDouble("multiplier"),
+                            rs.getLong("expires_at")
+                        )
+                    );
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Boosters] load failed: " + e.getMessage());
+            }
+            return boosters;
+        }, executor);
+    }
+
+    public static class BoosterData {
+        public final double multiplier;
+        public final long expiresAt;
+
+        public BoosterData(double multiplier, long expiresAt) {
+            this.multiplier = multiplier;
+            this.expiresAt = expiresAt;
+        }
+    }
+
+    // ==================== ISLAND SHOP ONE-TIME PURCHASES ====================
+
+    public void saveShopPurchase(String islandKey, String itemId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO island_shop_purchases (island_key, item_id, purchased_at) VALUES (?, ?, ?)")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, itemId);
+            ps.setLong(3, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Shop] saveShopPurchase failed: " + e.getMessage());
+        }
+    }
+
+    public CompletableFuture<Set<String>> loadShopPurchasesForIsland(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> {
+            Set<String> purchased = new HashSet<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT item_id FROM island_shop_purchases WHERE island_key = ?")) {
+                ps.setString(1, islandKey);
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    purchased.add(rs.getString("item_id"));
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Shop] loadShopPurchasesForIsland failed: " + e.getMessage());
+            }
+            return purchased;
+        }, executor);
+    }
+
+    public boolean hasShopPurchase(String islandKey, String itemId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT 1 FROM island_shop_purchases WHERE island_key = ? AND item_id = ? LIMIT 1")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, itemId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Shop] hasShopPurchase failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // ==================== PRESTIGE SYSTEM ====================
+
+    public void saveIslandPrestige(String islandKey, int prestigeLevel) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO island_prestige (island_key, prestige_level, last_prestiged) VALUES (?, ?, ?)")) {
+            ps.setString(1, islandKey);
+            ps.setInt(2, prestigeLevel);
+            ps.setLong(3, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Prestige] saveIslandPrestige failed: " + e.getMessage());
+        }
+    }
+
+    public CompletableFuture<Integer> loadIslandPrestige(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT prestige_level FROM island_prestige WHERE island_key = ?")) {
+                ps.setString(1, islandKey);
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    return rs.getInt("prestige_level");
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Prestige] loadIslandPrestige failed: " + e.getMessage());
+            }
+            return 0;
+        }, executor);
+    }
+
+    public void saveIslandLevel(String islandKey, int level, double xp) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO island_levels (island_key, xp, level) VALUES (?, ?, ?)")) {
+            ps.setString(1, islandKey);
+            ps.setDouble(2, xp);
+            ps.setInt(3, level);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Prestige] saveIslandLevel failed: " + e.getMessage());
+        }
     }
 }

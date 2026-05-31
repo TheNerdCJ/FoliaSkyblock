@@ -32,10 +32,19 @@ public class MinionsGUI implements Listener {
     private final NamespacedKey MINION_TYPE_KEY;
 
     public MinionsGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    /**
+     * Constructor for production (auto-registers) or tests (skip registration for easier mocking).
+     */
+    public MinionsGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
         this.minionManager = plugin.getMinionManager();
         this.MINION_TYPE_KEY = new NamespacedKey(plugin, "minion_type");
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void openMinionsGUI(Player player) {

@@ -18,7 +18,11 @@ public enum MinionType {
     SNOW("Snow", Material.SNOWBALL, Material.SNOWBALL, 1.2),
     CLAY("Clay", Material.CLAY_BALL, Material.CLAY, 0.85),
     FISHING("Fishing", Material.COD, Material.COD, 0.95),
-    MOB("Mob", Material.ROTTEN_FLESH, Material.ROTTEN_FLESH, 0.75);
+    MOB("Mob", Material.ROTTEN_FLESH, Material.ROTTEN_FLESH, 0.75),
+    // Expanded minions
+    QUARTZ("Quartz", Material.QUARTZ, Material.QUARTZ, 0.65),
+    BLAZE("Blaze", Material.BLAZE_ROD, Material.BLAZE_ROD, 0.45),
+    WITHER_SKELETON("Wither Skeleton", Material.COAL, Material.COAL, 0.55); // drops coal + chance for skulls in future
 
     private final String displayName;
     private final Material icon;

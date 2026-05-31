@@ -25,6 +25,7 @@ public enum IslandPermission {
     // Teleport & Movement
     TELEPORT_HOME("Teleport to island home"),
     TELEPORT_MEMBERS("Teleport to other members"),
+    VISIT("Visit as a guest when visitors are allowed"),
 
     // Advanced
     CHANGE_BIOME("Change island biome"),

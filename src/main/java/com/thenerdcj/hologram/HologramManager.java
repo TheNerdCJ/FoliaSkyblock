@@ -74,7 +74,18 @@ public class HologramManager {
                 Location lineLoc = baseLoc.clone().add(0, yOffset, 0);
 
                 TextDisplay td = world.spawn(lineLoc, TextDisplay.class, entity -> {
-                    entity.text(legacySerializer.deserialize(rawLine));
+                    String processedLine = rawLine;
+
+                    // Basic exposure of Island Worth system in holograms
+                    if (rawLine.contains("%island_worth%") || rawLine.contains("%island_worth_level%")) {
+                        // This is simplistic; real impl would resolve per-hologram island
+                        // For owner-linked holograms we can enhance later
+                        processedLine = processedLine
+                            .replace("%island_worth%", "N/A")
+                            .replace("%island_worth_level%", "N/A");
+                    }
+
+                    entity.text(legacySerializer.deserialize(processedLine));
                     entity.setBillboard(org.bukkit.entity.Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
                     entity.setSeeThrough(data.isSeeThrough());
                     entity.setShadowed(data.isShadow());

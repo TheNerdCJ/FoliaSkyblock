@@ -105,6 +105,41 @@ public class IslandManager {
                     plugin.getThreadSafety().runOnMainThread(() -> {
                         plugin.getMinionManager().respawnMinionsForIsland(island);
                     });
+
+                    // Trigger worth recalculation on island load (background)
+                    if (plugin.getIslandWorthManager() != null) {
+                        plugin.getIslandWorthManager().recalculateAndUpdate(island);
+                    }
+
+                    // Load missions for this island (new expanded system)
+                    if (plugin.getMissionManager() != null) {
+                        plugin.getDatabaseManager().loadMissionsForIsland(islandKey).thenAccept(loadedMissions -> {
+                            plugin.getMissionManager().loadMissionsForIsland(islandKey, loadedMissions);
+                            // Ensure we have a full set (generate missing dailies/weeklies if needed)
+                            plugin.getMissionManager().refreshMissionsForIsland(islandKey, island.getLevel());
+                        });
+                    }
+
+                    // Load active boosters for the island
+                    if (plugin.getBoosterManager() != null) {
+                        plugin.getThreadSafety().runOnMainThread(() -> {
+                            plugin.getBoosterManager().loadBoostersForIsland(island);
+                        });
+                    }
+
+                    // Load one-time shop purchases for the island
+                    if (plugin.getIslandShopManager() != null) {
+                        plugin.getDatabaseManager().loadShopPurchasesForIsland(islandKey).thenAccept(purchased -> {
+                            plugin.getIslandShopManager().loadOneTimePurchasesForIsland(islandKey, purchased);
+                        });
+                    }
+
+                    // Load prestige level for the island
+                    if (plugin.getPrestigeManager() != null) {
+                        plugin.getDatabaseManager().loadIslandPrestige(islandKey).thenAccept(prestigeLevel -> {
+                            plugin.getPrestigeManager().loadPrestigeForIsland(islandKey, prestigeLevel);
+                        });
+                    }
                 }
 
             } catch (Exception e) {

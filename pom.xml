@@ -126,14 +126,17 @@
     </build>
 
     <!--
-      Profile for enabling MockBukkit (realistic AutoSeller and other cycle/integration tests).
+      Profile for enabling MockBukkit (realistic AutoSeller / wardrobe / GUI cycle tests).
       Usage:  mvn test -Pwith-mockbukkit
 
-      NOTE: MockBukkit is extremely sensitive to the exact paper-api version.
-      You may need to temporarily change <paper.api.version> to a build that matches
-      the MockBukkit artifact you activate here. Once a compatible pair is found,
-      the addPlayer() / ServerMock helpers in TestBase + the patterns in
-      AutoSellerManagerTest become fully realistic (real inventories, getOnlinePlayers(), etc.).
+      The test infrastructure (TestBase + MockBukkitGuiSimulator) has been made significantly
+      more robust against the common Paper 1.21 + MockBukkit registry skew:
+      - Safe creation helpers + automatic degradation
+      - Simulator never auto-starts MB (only dedicated integration tests opt-in via addPlayer)
+      - Lenient stubbing + avoidance of heavy enum statics in normal test paths
+
+      Most of the suite stays green regardless of exact MB/Paper pair. The aggressive
+      MB-dependent tests remain gated or gracefully degrade when the environment is hostile.
     -->
     <profiles>
         <profile>

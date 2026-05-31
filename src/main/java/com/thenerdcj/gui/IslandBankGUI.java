@@ -23,8 +23,14 @@ public class IslandBankGUI implements Listener {
     private final FoliaSkyblock plugin;
 
     public IslandBankGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public IslandBankGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player, Island island) {

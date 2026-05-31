@@ -28,8 +28,14 @@ public class IslandBrowseGUI implements Listener {
     private static final int ITEMS_PER_PAGE = 45; // 5 rows of 9
 
     public IslandBrowseGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public IslandBrowseGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player, int requestedPage) {

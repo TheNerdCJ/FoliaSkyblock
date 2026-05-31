@@ -24,8 +24,14 @@ public class SlayerLeaderboardGUI implements Listener {
     private final Map<UUID, Integer> playerPages = new HashMap<>();
 
     public SlayerLeaderboardGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public SlayerLeaderboardGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player) {

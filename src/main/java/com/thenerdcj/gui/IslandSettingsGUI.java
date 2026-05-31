@@ -21,8 +21,14 @@ public class IslandSettingsGUI implements Listener {
     private final FoliaSkyblock plugin;
 
     public IslandSettingsGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public IslandSettingsGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player, Island island) {
@@ -53,8 +59,11 @@ public class IslandSettingsGUI implements Listener {
                         "§7Allow leaves to decay naturally", settings.isLeafDecayEnabled()));
                 gui.setItem(28, createItem(Material.BLUE_STAINED_GLASS_PANE, "§9Border Color",
                         "§7Current: §b" + settings.getBorderColor()));
+                int effectiveRadius = plugin.getIslandUpgradeManager() != null ?
+                    plugin.getIslandUpgradeManager().getEffectiveIslandRadius(island) : settings.getBorderSize();
                 gui.setItem(30, createItem(Material.STICK, "§eBorder Size",
-                        "§7Current: §f" + settings.getBorderSize() + " blocks"));
+                        "§7Current: §f" + effectiveRadius + " blocks",
+                        "§7Upgrade via §b/is upgrade §7(ISLAND_SIZE)"));
                 gui.setItem(32, createToggleItem(Material.ENDER_PEARL, "§5Island Warp",
                         "§7Allow others to warp to your island", settings.isWarpEnabled()));
                 gui.setItem(34, createItem(Material.WRITABLE_BOOK, "§dWarp Description",
@@ -121,6 +130,31 @@ public class IslandSettingsGUI implements Listener {
         else if (itemName.contains("Animal Spawning")) toggleSetting(player, pos, "ANIMALS", "Animal Spawning");
         else if (itemName.contains("Leaf Decay")) toggleSetting(player, pos, "LEAVES", "Leaf Decay");
         else if (itemName.contains("Island Warp")) toggleSetting(player, pos, "WARP", "Island Warp");
+        else if (itemName.contains("Border Color")) {
+            // Cycle border colors
+            plugin.getIslandSettingsManager().getSettings(pos).thenAccept(settings -> {
+                String current = settings.getBorderColor();
+                String next = switch (current.toUpperCase()) {
+                    case "BLUE" -> "RED";
+                    case "RED" -> "GREEN";
+                    case "GREEN" -> "GOLD";
+                    case "GOLD" -> "PURPLE";
+                    case "PURPLE" -> "PINK";
+                    case "PINK" -> "WHITE";
+                    default -> "BLUE";
+                };
+                settings.setBorderColor(next);
+                plugin.getIslandSettingsManager().saveSettings(settings);
+
+                player.sendMessage("§aBorder color changed to §b" + next);
+
+                plugin.getThreadSafety().runOnMainThread(() -> {
+                    player.closeInventory();
+                    Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                    if (island != null) new IslandSettingsGUI(plugin).open(player, island);
+                });
+            });
+        }
     }
 
     private void toggleSetting(Player player, GridPosition pos, String key, String name) {

@@ -26,9 +26,15 @@ public class ChallengeGUI implements Listener {
     private final ChallengeManager challengeManager;
 
     public ChallengeGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public ChallengeGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
         this.challengeManager = plugin.getChallengeManager();
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player) {

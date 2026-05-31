@@ -19,6 +19,7 @@ public class IslandSettings {
     private boolean leafDecayEnabled = true;
     private String borderColor = "BLUE";
     private int borderSize = 100;
+    private boolean borderMarkersEnabled = false;  // Persistent hologram markers at corners
     private boolean warpEnabled = false;
     private String warpDescription = "";
 
@@ -51,6 +52,8 @@ public class IslandSettings {
     public void setLeafDecayEnabled(boolean enabled) { this.leafDecayEnabled = enabled; }
     public void setBorderColor(String color) { this.borderColor = color; }
     public void setBorderSize(int size) { this.borderSize = Math.max(50, Math.min(500, size)); }
+    public boolean isBorderMarkersEnabled() { return borderMarkersEnabled; }
+    public void setBorderMarkersEnabled(boolean enabled) { this.borderMarkersEnabled = enabled; }
     public void setWarpEnabled(boolean enabled) { this.warpEnabled = enabled; }
     public void setWarpDescription(String description) { this.warpDescription = description; }
 
@@ -65,6 +68,7 @@ public class IslandSettings {
             case "ANIMALS": this.animalSpawningEnabled = !this.animalSpawningEnabled; return this.animalSpawningEnabled;
             case "LEAVES": this.leafDecayEnabled = !this.leafDecayEnabled; return this.leafDecayEnabled;
             case "WARP": this.warpEnabled = !this.warpEnabled; return this.warpEnabled;
+            case "BORDER_MARKERS": this.borderMarkersEnabled = !this.borderMarkersEnabled; return this.borderMarkersEnabled;
             default: return false;
         }
     }
@@ -80,6 +84,7 @@ public class IslandSettings {
             case "ANIMALS" -> animalSpawningEnabled;
             case "LEAVES" -> leafDecayEnabled;
             case "WARP" -> warpEnabled;
+            case "BORDER_MARKERS" -> borderMarkersEnabled;
             default -> false;
         };
     }

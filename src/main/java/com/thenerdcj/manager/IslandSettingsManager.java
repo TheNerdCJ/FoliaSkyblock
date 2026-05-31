@@ -27,6 +27,21 @@ public class IslandSettingsManager {
         plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCache, 36000L, 36000L);
     }
 
+    /**
+     * Non-blocking cached lookup. Returns cached value or a safe default (never joins).
+     * Use this from event handlers, particle tasks, and other hot paths.
+     * Schedules an async load/refresh in the background if not cached.
+     */
+    public IslandSettings getCachedSettings(GridPosition pos) {
+        IslandSettings cached = settingsCache.get(pos);
+        if (cached != null) {
+            return cached;
+        }
+        // Schedule async load (fire and forget) so next call will hit cache
+        getSettings(pos); // this populates the cache asynchronously
+        return new IslandSettings(pos); // safe default (all false / blue / size 0 etc.)
+    }
+
     public CompletableFuture<IslandSettings> getSettings(GridPosition pos) {
         IslandSettings cached = settingsCache.get(pos);
         if (cached != null) return CompletableFuture.completedFuture(cached);
@@ -52,6 +67,7 @@ public class IslandSettingsManager {
                     settings.setLeafDecayEnabled(rs.getBoolean("leaf_decay_enabled"));
                     settings.setBorderColor(rs.getString("border_color"));
                     settings.setBorderSize(rs.getInt("border_size"));
+                    settings.setBorderMarkersEnabled(rs.getBoolean("border_markers_enabled"));
                     settings.setWarpEnabled(rs.getBoolean("warp_enabled"));
                     settings.setWarpDescription(rs.getString("warp_description"));
                     settingsCache.put(pos, settings);
@@ -77,7 +93,7 @@ public class IslandSettingsManager {
                      INSERT OR REPLACE INTO island_settings 
                      (grid_x, grid_z, dimension, pvp_enabled, visitors_allowed, explosions_enabled, 
                       fire_spread_enabled, mob_spawning_enabled, crop_trampling_enabled, animal_spawning_enabled,
-                      leaf_decay_enabled, border_color, border_size, warp_enabled, warp_description)
+                      leaf_decay_enabled, border_color, border_size, border_markers_enabled, warp_enabled, warp_description)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                      """)) {
                 stmt.setInt(1, pos.getX());
@@ -93,8 +109,9 @@ public class IslandSettingsManager {
                 stmt.setBoolean(11, settings.isLeafDecayEnabled());
                 stmt.setString(12, settings.getBorderColor());
                 stmt.setInt(13, settings.getBorderSize());
-                stmt.setBoolean(14, settings.isWarpEnabled());
-                stmt.setString(15, settings.getWarpDescription());
+                stmt.setBoolean(14, settings.isBorderMarkersEnabled());
+                stmt.setBoolean(15, settings.isWarpEnabled());
+                stmt.setString(16, settings.getWarpDescription());
                 stmt.executeUpdate();
                 settingsCache.put(pos, settings);
             } catch (SQLException e) {

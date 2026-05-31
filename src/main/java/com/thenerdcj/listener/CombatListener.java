@@ -2,6 +2,8 @@ package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -98,5 +100,28 @@ public class CombatListener implements Listener {
     public void cleanupExpiredTags() {
         long now = System.currentTimeMillis();
         combatTags.entrySet().removeIf(entry -> entry.getValue() < now);
+    }
+
+    // ====================== SLAYER DAMAGE BONUS ======================
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerDamageMob(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player player)) return;
+        if (!(event.getEntity() instanceof LivingEntity target)) return;
+        if (target instanceof Player) return; // Only for mobs
+
+        EntityType type = target.getType();
+
+        // Apply slayer damage multiplier if player has progress on this mob type
+        if (plugin.getBossManager() != null) {
+            double multiplier = plugin.getBossManager().getSlayerDamageMultiplier(player, type);
+            if (multiplier > 1.0) {
+                event.setDamage(event.getDamage() * multiplier);
+            }
+
+            // Track damage for island-wide boss events
+            if (plugin.getBossManager().isBoss(target.getUniqueId())) {
+                plugin.getBossManager().recordBossDamage(target.getUniqueId(), player, event.getDamage());
+            }
+        }
     }
 }

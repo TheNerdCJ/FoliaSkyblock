@@ -168,7 +168,53 @@ public enum SlayerTier {
                     new SlayerReward(Material.DIAMOND, 8, 0.3),
                     new SlayerReward(Material.NETHERITE_SCRAP, 2, 0.15)
             ),
-            "§6§lLEGENDARY: Blaze inferno! Ultimate rewards!");
+            "§6§lLEGENDARY: Blaze inferno! Ultimate rewards!"),
+
+    // ============================================
+    // NEW EXPANDED TIERS
+    // ============================================
+
+    SKELETON_I("Skeleton Slayer I", EntityType.SKELETON, 1, 20, 200, "Overworld",
+            Arrays.asList(
+                    new SlayerReward(Material.BONE, 32, 0.9),
+                    new SlayerReward(Material.ARROW, 64, 0.8),
+                    new SlayerReward(Material.IRON_INGOT, 6, 0.25)
+            ),
+            "§7Classic skeleton hunting. Good for early gear."),
+
+    CREEPER_I("Creeper Slayer I", EntityType.CREEPER, 1, 35, 400, "Overworld",
+            Arrays.asList(
+                    new SlayerReward(Material.GUNPOWDER, 16, 0.85),
+                    new SlayerReward(Material.TNT, 2, 0.15),
+                    new SlayerReward(Material.DIAMOND, 1, 0.08)
+            ),
+            "§7Careful with the explosions!"),
+
+    // High-tier "Boss Slayer" quests that tie into custom bosses
+    ZOMBIE_BOSS_SLAYER("Zombie Boss Slayer", EntityType.ZOMBIE, 6, 150, 4000, "Overworld",
+            Arrays.asList(
+                    new SlayerReward(Material.NETHERITE_INGOT, 1, 0.15),
+                    new SlayerReward("CRATE_EPIC", 1, 0.25),           // New: Crate key
+                    new SlayerReward("BOOSTER_MINION_60", 1, 0.20)     // New: Booster token
+            ),
+            "§c§lSummons a powerful Zombie Lord boss!"),
+
+    // New high-end content
+    WITHER_SKELETON_SLAYER("Wither Skeleton Slayer", EntityType.WITHER_SKELETON, 4, 180, 3500, "Nether",
+            Arrays.asList(
+                    new SlayerReward(Material.COAL, 128, 0.9),
+                    new SlayerReward(Material.NETHER_STAR, 1, 0.08),
+                    new SlayerReward("CRATE_LEGENDARY", 1, 0.12)
+            ),
+            "§8§lExtremely dangerous. High value rewards!"),
+
+    DRAGON_SLAYER("Ender Dragon Slayer", EntityType.ENDER_DRAGON, 5, 250, 8000, "End",
+            Arrays.asList(
+                    new SlayerReward(Material.DRAGON_EGG, 1, 0.05),
+                    new SlayerReward("PRESTIGE_100", 1, 0.30),
+                    new SlayerReward("BOOSTER_ISLAND_XP_120", 1, 0.25)
+            ),
+            "§5§lThe ultimate slayer challenge!");
 
     private final String displayName;
     private final EntityType targetEntity;

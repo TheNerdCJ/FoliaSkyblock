@@ -37,11 +37,17 @@ public class TradeGUI implements Listener {
     private final NamespacedKey PAGE_KEY;
 
     public TradeGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public TradeGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
         this.ACTION_KEY = new NamespacedKey(plugin, "trade_action");
         this.ITEM_KEY = new NamespacedKey(plugin, "trade_item_key");
         this.PAGE_KEY = new NamespacedKey(plugin, "trade_page");
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
         loadTradesFromConfig();
     }
 

@@ -78,6 +78,9 @@ public class Island {
     // Milestones
     private final Set<String> completedMilestones = ConcurrentHashMap.newKeySet();
 
+    // Visitor log (simple recent visitors for the new visitor system)
+    private final java.util.List<UUID> recentVisitors = new java.util.ArrayList<>();
+
     public Island(GridPosition gridPosition, UUID ownerUuid, String biomeName, World.Environment dimension) {
         this.gridPosition = gridPosition;
         this.ownerUuid = ownerUuid;
@@ -327,6 +330,17 @@ public class Island {
 
     public Set<String> getCompletedMilestones() {
         return new HashSet<>(completedMilestones);
+    }
+
+    // Visitor system helpers
+    public void recordVisitor(UUID visitor) {
+        recentVisitors.remove(visitor);
+        recentVisitors.add(0, visitor);
+        if (recentVisitors.size() > 10) recentVisitors.remove(recentVisitors.size() - 1);
+    }
+
+    public java.util.List<UUID> getRecentVisitors() {
+        return new java.util.ArrayList<>(recentVisitors);
     }
 
     public void loadProgressionData(Map<Skill, Double> xpData, Map<Skill, Integer> levelData, Set<String> milestones) {

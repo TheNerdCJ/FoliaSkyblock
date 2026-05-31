@@ -32,8 +32,14 @@ public class EnchantingTableGUI implements Listener {
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
     public EnchantingTableGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public EnchantingTableGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player, ItemStack itemToEnchant) {

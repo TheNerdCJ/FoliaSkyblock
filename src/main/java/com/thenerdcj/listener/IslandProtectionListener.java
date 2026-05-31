@@ -52,22 +52,37 @@ public class IslandProtectionListener implements Listener {
     private boolean canBuild(Player player, Location location) {
         if (player.hasPermission("foliasb.admin.bypass")) return true;
 
-        // Use upgraded island size if the size upgrade is purchased
-        Island island = islandManager.isWithinUpgradedIslandArea(location) 
-                ? islandManager.getIslandAt(location) 
-                : null;
-
+        Island island = islandManager.getIslandAt(location);
         if (island == null) {
-            // Spawn protection
             if (isSpawnProtected(location)) {
-                // Use player scheduler for the message on Folia
                 sendProtectedMessage(player, "no-build");
                 return false;
             }
-            return !wildernessProtection; // Allow build in wilderness if disabled
+            return !wildernessProtection;
         }
 
-        return island.hasPermission(player.getUniqueId(), IslandPermission.BUILD);
+        // Visitor system support
+        if (!island.hasPermission(player.getUniqueId(), IslandPermission.BUILD)) {
+            // Check if they are a visitor and visitors are allowed
+            if (canVisitAsGuest(player, island)) {
+                // Guests get limited build if owner allows (future: more granular guest perms)
+                // For MVP, allow basic interact but restrict heavy building for safety
+                return false; // Conservative: visitors cannot build by default
+            }
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean canVisitAsGuest(Player player, Island island) {
+        if (player.getUniqueId().equals(island.getOwnerUuid())) return true;
+        if (island.hasPermission(player.getUniqueId(), IslandPermission.BUILD)) return true; // member
+
+        // Folia-safe: never block on region thread. Use cached or safe default.
+        return plugin.getIslandSettingsManager()
+            .getCachedSettings(island.getGridPosition())
+            .isVisitorsAllowed();
     }
 
     private void sendProtectedMessage(Player player, String messageKey) {
@@ -86,7 +101,15 @@ public class IslandProtectionListener implements Listener {
         Island island = islandManager.getIslandAt(location);
         if (island == null) return false;
 
-        return island.hasPermission(player.getUniqueId(), IslandPermission.INTERACT);
+        if (island.hasPermission(player.getUniqueId(), IslandPermission.INTERACT)) {
+            return true;
+        }
+
+        // Visitor system: allow limited interact if visitors allowed
+        // Folia-safe: never block on region thread. Use cached or safe default.
+        return plugin.getIslandSettingsManager()
+            .getCachedSettings(island.getGridPosition())
+            .isVisitorsAllowed();
     }
 
     private boolean isSpawnProtected(Location loc) {
@@ -111,6 +134,13 @@ public class IslandProtectionListener implements Listener {
                 String islandId = islandManager.getIslandIdForHopperCount(island);
                 islandManager.decrementHopperCount(islandId);
             }
+        }
+
+        // Invalidate + delta adjustment (Phase 1 incremental worth optimization)
+        Island island = islandManager.getIslandAt(e.getBlock().getLocation());
+        if (island != null && plugin.getIslandWorthManager() != null) {
+            plugin.getIslandWorthManager().invalidateCache(island);
+            plugin.getIslandWorthManager().adjustBlockWorth(island, e.getBlock().getType(), -1);
         }
     }
 
@@ -138,6 +168,13 @@ public class IslandProtectionListener implements Listener {
 
                 islandManager.incrementHopperCount(islandId);
             }
+        }
+
+        // Invalidate + delta adjustment (Phase 1 incremental worth optimization)
+        Island island = islandManager.getIslandAt(e.getBlock().getLocation());
+        if (island != null && plugin.getIslandWorthManager() != null) {
+            plugin.getIslandWorthManager().invalidateCache(island);
+            plugin.getIslandWorthManager().adjustBlockWorth(island, e.getBlock().getType(), +1);
         }
     }
 

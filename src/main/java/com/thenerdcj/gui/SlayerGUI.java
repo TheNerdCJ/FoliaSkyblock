@@ -29,8 +29,14 @@ public class SlayerGUI implements Listener {
     private final Map<UUID, Integer> playerPages = new HashMap<>();
 
     public SlayerGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public SlayerGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     /**
@@ -106,8 +112,12 @@ public class SlayerGUI implements Listener {
 
             for (var reward : tier.getRewards()) {
                 String color = reward.getRarityColor();
-                lore.add("  " + color + reward.getAmount() + "x " + reward.getMaterial().name() +
-                        " §7(" + reward.getRarityName() + ")");
+                if (reward.isSpecialReward()) {
+                    lore.add("  " + color + reward.getSpecialReward() + " §7(" + reward.getRarityName() + ")");
+                } else {
+                    lore.add("  " + color + reward.getAmount() + "x " + reward.getMaterial().name() +
+                            " §7(" + reward.getRarityName() + ")");
+                }
             }
 
             lore.add("");
@@ -150,6 +160,10 @@ public class SlayerGUI implements Listener {
             case SPIDER -> Material.STRING;
             case ENDERMAN -> Material.ENDER_PEARL;
             case BLAZE -> Material.BLAZE_ROD;
+            case SKELETON -> Material.BONE;
+            case CREEPER -> Material.TNT;
+            case WITHER_SKELETON -> Material.COAL;
+            case ENDER_DRAGON -> Material.DRAGON_EGG;
             default -> Material.DIAMOND_SWORD;
         };
     }

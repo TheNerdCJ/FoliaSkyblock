@@ -18,7 +18,8 @@ public enum IslandUpgrade {
     CROP_GROWTH(3, 6000, "Crop Growth", "Crops grow 25% faster on your island"),
     ORE_GENERATOR(3, 15000, "Ore Generator", "Upgrades all cobblestone generators on the island to produce better ores more often"),
     MINION_SLOTS(4, 10000, "Minion Slots", "Increases the maximum number of deployable minions by +1 per level"),
-    MEMBER_LIMIT(3, 6500, "Member Limit", "Increases the maximum number of island members/party size by +1 per level");
+    MEMBER_LIMIT(3, 6500, "Member Limit", "Increases the maximum number of island members/party size by +1 per level"),
+    WARDROBE_SLOTS(2, 7500, "Wardrobe Slots", "Increases the number of available wardrobe loadout slots");
 
     private final int levelReq;
     private final int baseCost;

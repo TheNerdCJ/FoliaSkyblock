@@ -30,9 +30,15 @@ public class HologramListGUI implements InventoryHolder, Listener {
     private Inventory inventory;
 
     public HologramListGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public HologramListGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
         this.hologramManager = plugin.getHologramManager();
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player) {

@@ -23,8 +23,14 @@ public class ResetConfirmationGUI implements Listener {
     private static final String GUI_TITLE = "§c§lConfirm Island Reset";
 
     public ResetConfirmationGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public ResetConfirmationGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     /**

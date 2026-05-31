@@ -1,0 +1,186 @@
+package com.thenerdcj.gui;
+
+import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.mission.Mission;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.NamespacedKey;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.List;
+
+/**
+ * Paginated Mission GUI for the expanded island mission system.
+ */
+public class MissionGUI implements Listener {
+
+    private final FoliaSkyblock plugin;
+    private static final int ITEMS_PER_PAGE = 45;
+    private final NamespacedKey MISSION_ID_KEY;
+
+    // Temporary storage for open GUIs (mission list per player for click handling)
+    private final Map<UUID, java.util.List<Mission>> openMissions = new HashMap<>();
+
+    public MissionGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public MissionGUI(FoliaSkyblock plugin, boolean autoRegister) {
+        this.plugin = plugin;
+        this.MISSION_ID_KEY = new NamespacedKey(plugin, "mission_id");
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
+    }
+
+    public void open(Player player, int page) {
+        String islandKey = getIslandKey(player);
+        UUID playerId = player.getUniqueId();
+
+        plugin.getMissionManager().getMissionsForIsland(islandKey).thenAccept(missions -> {
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                openMissions.put(playerId, missions);
+
+                int totalPages = Math.max(1, (int) Math.ceil(missions.size() / (double) ITEMS_PER_PAGE));
+                int validPage = Math.max(0, Math.min(page, totalPages - 1));
+
+                Inventory gui = Bukkit.createInventory(null, 54, "§6§lIsland Missions §7(Page " + (validPage + 1) + "/" + totalPages + ")");
+
+                int start = validPage * ITEMS_PER_PAGE;
+                int end = Math.min(start + ITEMS_PER_PAGE, missions.size());
+
+                int slot = 10;
+                for (int i = start; i < end; i++) {
+                    Mission m = missions.get(i);
+                    ItemStack item = createMissionItem(m);
+                    gui.setItem(slot, item);
+                    slot++;
+                    if ((slot - 9) % 9 == 0) slot += 2;
+                }
+
+                // Navigation and categories
+                gui.setItem(45, createButton("§aPrevious", Material.ARROW));
+                gui.setItem(49, createButton("§eDaily", Material.SUNFLOWER));
+                gui.setItem(50, createButton("§eWeekly", Material.CLOCK));
+                gui.setItem(53, createButton("§aNext", Material.ARROW));
+
+                player.openInventory(gui);
+            });
+        });
+    }
+
+    private ItemStack createMissionItem(Mission m) {
+        Material icon = switch (m.getObjective()) {
+            case BREAK_BLOCKS -> Material.DIAMOND_PICKAXE;
+            case KILL_MOBS -> Material.IRON_SWORD;
+            case SELL_ITEMS -> Material.GOLD_INGOT;
+            default -> Material.PAPER;
+        };
+
+        ItemStack item = new ItemStack(icon);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName("§e" + m.getTitle());
+            String status = m.isClaimed() ? "§aClaimed" : (m.isCompleted() ? "§6Click to Claim" : "§fIn Progress");
+            java.util.List<String> lore = new java.util.ArrayList<>(Arrays.asList(
+                "§7" + m.getDescription(),
+                "§7Progress: §b" + m.getProgress() + "§7/§b" + m.getTarget(),
+                "§7Reward: §6$" + m.getRewardMoney() + " §7+ §a" + m.getRewardIslandXp() + " XP"
+            ));
+            if (m.getRewardBoosterType() != null && m.getRewardBoosterDurationMinutes() > 0) {
+                lore.add("§dBooster: §e" + m.getRewardBoosterType().getDisplayName() + " §7for §b" + m.getRewardBoosterDurationMinutes() + "m");
+            }
+            lore.add("");
+            lore.add(status);
+            meta.setLore(lore);
+
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(MISSION_ID_KEY, PersistentDataType.STRING, m.getId());
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    private ItemStack createButton(String name, Material mat) {
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(name);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (!event.getView().getTitle().startsWith("§6§lIsland Missions")) return;
+        event.setCancelled(true);
+
+        Player player = (Player) event.getWhoClicked();
+        int slot = event.getRawSlot();
+        UUID playerId = player.getUniqueId();
+
+        java.util.List<Mission> currentMissions = openMissions.get(playerId);
+        if (currentMissions == null) return;
+
+        // Navigation
+        if (slot == 45) {
+            open(player, 0); // simplified
+            return;
+        } else if (slot == 53) {
+            open(player, 1);
+            return;
+        }
+
+        // Claim logic: find the mission from the item in that slot
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType() == Material.AIR) return;
+
+        ItemMeta meta = clicked.getItemMeta();
+        if (meta == null) return;
+
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+        String missionId = pdc.get(MISSION_ID_KEY, PersistentDataType.STRING);
+        if (missionId == null) return;
+
+        // Find the mission and attempt claim
+        for (Mission m : currentMissions) {
+            if (m.getId().equals(missionId)) {
+                if (m.isCompleted() && !m.isClaimed()) {
+                    boolean success = plugin.getMissionManager().claimMission(getIslandKey(player), missionId, player);
+
+                    if (success) {
+                        player.sendMessage("§aMission claimed! Rewards granted.");
+                        // Refresh GUI
+                        open(player, 0);
+                    } else {
+                        player.sendMessage("§cFailed to claim mission.");
+                    }
+                } else {
+                    player.sendMessage("§cThis mission is not ready to claim.");
+                }
+                return;
+            }
+        }
+    }
+
+    private String getIslandKey(Player player) {
+        com.thenerdcj.island.Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island != null) {
+            return island.getId();
+        }
+        return player.getUniqueId().toString(); // fallback
+    }
+}

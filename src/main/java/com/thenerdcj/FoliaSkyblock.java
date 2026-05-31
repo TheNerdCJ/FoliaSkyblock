@@ -14,6 +14,7 @@ import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.gui.*;
 import com.thenerdcj.hologram.HologramManager;
 import com.thenerdcj.island.generator.IslandGenerator;
+import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.listener.*;
 import com.thenerdcj.manager.*;
@@ -55,11 +56,44 @@ public class FoliaSkyblock extends JavaPlugin {
     private com.thenerdcj.util.ThreadSafety threadSafety;
     private com.thenerdcj.util.NameCache nameCache;
 
+    // Island Worth / Level System (new)
+    private IslandWorthManager islandWorthManager;
+    private com.thenerdcj.mission.MissionManager missionManager;
+    private com.thenerdcj.booster.BoosterManager boosterManager;
+    private com.thenerdcj.gui.BoosterGUI boosterGUI;
+
+    // Island Shop (deepened economy sink)
+    private com.thenerdcj.manager.IslandShopManager islandShopManager;
+    private com.thenerdcj.gui.IslandShopGUI islandShopGUI;
+
+    // Prestige System (high-endgame reset for power)
+    private com.thenerdcj.manager.PrestigeManager prestigeManager;
+    private com.thenerdcj.gui.PrestigeGUI prestigeGUI;
+
+    // Border / Size Upgrades + Visuals
+    private com.thenerdcj.manager.BorderVisualManager borderVisualManager;
+
+    // New systems (Visitor foundation + Crates + Minion expansion already wired in previous work)
+    private com.thenerdcj.crate.CrateManager crateManager;
+    private com.thenerdcj.gui.CrateGUI crateGUI;
+
+    // Personal Particle Trails / Auras (new cosmetic system)
+    private com.thenerdcj.cosmetic.ParticleTrailManager particleTrailManager;
+    private com.thenerdcj.gui.ParticleTrailGUI particleTrailGUI;
+    private com.thenerdcj.gui.GeneratorGUI generatorGUI;
+
+    // Wardrobe system (added based on community research)
+    private com.thenerdcj.wardrobe.WardrobeManager wardrobeManager;
+    private com.thenerdcj.wardrobe.WardrobeGUI wardrobeGUI;
+    private com.thenerdcj.wardrobe.WardrobeSlotOptionsGUI wardrobeSlotOptionsGUI;
+
     // ==================== GUI INSTANCES ====================
     private TradeGUI tradeGUI;
     private SlayerGUI slayerGUI;
     private SlayerLeaderboardGUI slayerLeaderboardGUI;
     private SlayerAchievementGUI slayerAchievementGUI;
+    private com.thenerdcj.gui.SlayerShopGUI slayerShopGUI;
+    private com.thenerdcj.gui.SlayerTokenLeaderboardGUI slayerTokenLeaderboardGUI;
     private EnchantingTableGUI enchantingTableGUI;
     private IslandChatManager islandChatManager;
     private IslandUpgradeGUI islandUpgradeGUI;
@@ -106,6 +140,58 @@ public class FoliaSkyblock extends JavaPlugin {
         this.punishmentManager = new PunishmentManager(this);
         this.autoSellerManager = new AutoSellerManager(this);
 
+        // Island Worth / Level System (classic Skyblock worth + leaderboards)
+        this.islandWorthManager = new IslandWorthManager(this);
+        this.missionManager = new com.thenerdcj.mission.MissionManager(this);
+        this.boosterManager = new com.thenerdcj.booster.BoosterManager(this);
+        this.boosterGUI = new com.thenerdcj.gui.BoosterGUI(this);
+
+        // Island Shop (deepened)
+        this.islandShopManager = new com.thenerdcj.manager.IslandShopManager(this);
+        this.islandShopGUI = new com.thenerdcj.gui.IslandShopGUI(this);
+
+        // Prestige System
+        this.prestigeManager = new com.thenerdcj.manager.PrestigeManager(this);
+        this.prestigeGUI = new com.thenerdcj.gui.PrestigeGUI(this);
+
+        // Border Size + Visual Expansion
+        this.borderVisualManager = new com.thenerdcj.manager.BorderVisualManager(this);
+
+        // Crate / Loot system
+        this.crateManager = new com.thenerdcj.crate.CrateManager(this);
+        this.crateGUI = new com.thenerdcj.gui.CrateGUI(this);
+
+        // Personal Particle Trails (cosmetic auras)
+        this.particleTrailManager = new com.thenerdcj.cosmetic.ParticleTrailManager(this);
+        this.particleTrailGUI = new com.thenerdcj.gui.ParticleTrailGUI(this);
+        this.generatorGUI = new com.thenerdcj.gui.GeneratorGUI(this);
+
+        // === Scheduled background worth recalculation (every 20 minutes) ===
+        threadSafety.runRepeatingOnMainThread(() -> {
+            if (islandWorthManager != null && islandManager != null) {
+                for (Island island : islandManager.getAllLoadedIslands().values()) {
+                    if (island != null) {
+                        islandWorthManager.invalidateCache(island);
+                        islandWorthManager.recalculateAndUpdate(island);
+                    }
+                }
+                getLogger().fine("[IslandWorth] Background recalculation triggered for loaded islands.");
+            }
+        }, 20 * 60 * 15L, 20 * 60 * 20L);
+
+        // === Light tab list worth display updates (every 30 seconds) ===
+        threadSafety.runRepeatingOnMainThread(() -> {
+            if (islandWorthManager != null) {
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    islandWorthManager.updatePlayerTabList(p);
+                }
+            }
+        }, 20 * 30L, 20 * 30L); // every 30 seconds
+
+        // === Wardrobe System (Armor + Equipment presets) ===
+        this.wardrobeManager = new com.thenerdcj.wardrobe.WardrobeManager(this);
+        this.wardrobeGUI = new com.thenerdcj.wardrobe.WardrobeGUI(this);
+        this.wardrobeSlotOptionsGUI = new com.thenerdcj.wardrobe.WardrobeSlotOptionsGUI(this);
 
         // === WorldManager (Custom Void Worlds) ===
         this.worldManager = new WorldManager(this);
@@ -122,6 +208,8 @@ public class FoliaSkyblock extends JavaPlugin {
         this.slayerGUI = new SlayerGUI(this);
         this.slayerLeaderboardGUI = new SlayerLeaderboardGUI(this);
         this.slayerAchievementGUI = new SlayerAchievementGUI(this);
+        this.slayerShopGUI = new com.thenerdcj.gui.SlayerShopGUI(this);
+        this.slayerTokenLeaderboardGUI = new com.thenerdcj.gui.SlayerTokenLeaderboardGUI(this);
         this.enchantingTableGUI = new EnchantingTableGUI(this);
         this.islandChatManager = new IslandChatManager(this);
         this.resetConfirmationGUI = new ResetConfirmationGUI(this);
@@ -185,10 +273,14 @@ public class FoliaSkyblock extends JavaPlugin {
 
         safeRegisterCommand("slayer", new SlayerCommand(this));
         safeRegisterCommand("enchant", new EnchantCommand(this));
+        safeRegisterCommand("trail", new com.thenerdcj.command.ParticleCommand(this));
+        safeRegisterCommand("particles", new com.thenerdcj.command.ParticleCommand(this));
         safeRegisterCommand("auction", new AuctionCommand(this));
         safeRegisterCommand("ah", new AuctionCommand(this));
         safeRegisterCommand("bazaar", new BazaarCommand(this));
         safeRegisterCommand("minions", new MinionsCommand(this));
+        safeRegisterCommand("wardrobe", new com.thenerdcj.command.WardrobeCommand(this));
+        safeRegisterCommand("wd", new com.thenerdcj.command.WardrobeCommand(this));
 
         // Staff Commands
         StaffCommand staffCmd = new StaffCommand(this);
@@ -266,6 +358,15 @@ public class FoliaSkyblock extends JavaPlugin {
         // Register the single canonical AuctionGUI instance (prevents double-listener bug)
         pm.registerEvents(auctionGUI, this);
 
+        // Wardrobe persistence
+        pm.registerEvents(new com.thenerdcj.listener.WardrobeListener(this), this);
+
+        // Island Shop token redemption
+        pm.registerEvents(new com.thenerdcj.listener.ShopTokenListener(this), this);
+
+        // Slayer gear abilities
+        pm.registerEvents(new com.thenerdcj.listener.SlayerGearListener(this), this);
+
         // Player Quit Listener for ChatManager & TPA
         pm.registerEvents(new PlayerQuitListener(this), this); // Make sure this exists or add it
 
@@ -286,6 +387,34 @@ public class FoliaSkyblock extends JavaPlugin {
     public WorldManager getWorldManager() { return worldManager; }
     public MinionManager getMinionManager() { return minionManager; }
     public IslandUpgradeManager getIslandUpgradeManager() { return islandUpgradeManager; }
+
+    public IslandWorthManager getIslandWorthManager() { return islandWorthManager; }
+
+    public com.thenerdcj.mission.MissionManager getMissionManager() { return missionManager; }
+
+    public com.thenerdcj.booster.BoosterManager getBoosterManager() { return boosterManager; }
+
+    public com.thenerdcj.gui.IslandShopGUI getIslandShopGUI() { return islandShopGUI; }
+
+    public com.thenerdcj.manager.IslandShopManager getIslandShopManager() { return islandShopManager; }
+
+    public com.thenerdcj.manager.PrestigeManager getPrestigeManager() { return prestigeManager; }
+
+    public com.thenerdcj.gui.PrestigeGUI getPrestigeGUI() { return prestigeGUI; }
+
+    public com.thenerdcj.manager.BorderVisualManager getBorderVisualManager() { return borderVisualManager; }
+
+    public com.thenerdcj.crate.CrateManager getCrateManager() { return crateManager; }
+
+    public com.thenerdcj.gui.CrateGUI getCrateGUI() { return crateGUI; }
+
+    public com.thenerdcj.cosmetic.ParticleTrailManager getParticleTrailManager() { return particleTrailManager; }
+
+    public com.thenerdcj.gui.ParticleTrailGUI getParticleTrailGUI() { return particleTrailGUI; }
+
+    public com.thenerdcj.gui.GeneratorGUI getGeneratorGUI() { return generatorGUI; }
+
+    public com.thenerdcj.gui.BoosterGUI getBoosterGUI() { return boosterGUI; }
     public AuctionManager getAuctionManager() { return auctionManager; }
     public BazaarManager getBazaarManager() { return bazaarManager; }
     public AntiCheatManager getAntiCheatManager() { return antiCheatManager; }
@@ -301,6 +430,10 @@ public class FoliaSkyblock extends JavaPlugin {
     public SlayerGUI getSlayerGUI() { return slayerGUI; }
     public SlayerLeaderboardGUI getSlayerLeaderboardGUI() { return slayerLeaderboardGUI; }
     public SlayerAchievementGUI getSlayerAchievementGUI() { return slayerAchievementGUI; }
+
+    public com.thenerdcj.gui.SlayerShopGUI getSlayerShopGUI() { return slayerShopGUI; }
+
+    public com.thenerdcj.gui.SlayerTokenLeaderboardGUI getSlayerTokenLeaderboardGUI() { return slayerTokenLeaderboardGUI; }
     public EnchantingTableGUI getEnchantingTableGUI() { return enchantingTableGUI; }
     public ResetConfirmationGUI getResetConfirmationGUI() { return resetConfirmationGUI; }
     public BiomeSelectionGUI getBiomeSelectionGUI() { return biomeSelectionGUI; }
@@ -346,4 +479,9 @@ public class FoliaSkyblock extends JavaPlugin {
     public AuctionGUI getAuctionGUI() { return auctionGUI; }
 
     public com.thenerdcj.bazaar.BazaarGUI getBazaarGUI() { return bazaarGUI; }
+
+    // Wardrobe getters
+    public com.thenerdcj.wardrobe.WardrobeManager getWardrobeManager() { return wardrobeManager; }
+    public com.thenerdcj.wardrobe.WardrobeGUI getWardrobeGUI() { return wardrobeGUI; }
+    public com.thenerdcj.wardrobe.WardrobeSlotOptionsGUI getWardrobeSlotOptionsGUI() { return wardrobeSlotOptionsGUI; }
 }

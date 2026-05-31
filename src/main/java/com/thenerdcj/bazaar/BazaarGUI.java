@@ -44,6 +44,10 @@ public class BazaarGUI implements Listener {
     private final NamespacedKey INPUT_TYPE_KEY; // For Anvil
 
     public BazaarGUI(FoliaSkyblock plugin, BazaarManager bazaarManager) {
+        this(plugin, bazaarManager, true);
+    }
+
+    public BazaarGUI(FoliaSkyblock plugin, BazaarManager bazaarManager, boolean autoRegister) {
         this.plugin = plugin;
         this.bazaarManager = bazaarManager;
         this.ACTION_KEY = new NamespacedKey(plugin, "bazaar_action");
@@ -51,7 +55,9 @@ public class BazaarGUI implements Listener {
         this.PAGE_KEY = new NamespacedKey(plugin, "bazaar_page");
         this.ORDER_ID_KEY = new NamespacedKey(plugin, "bazaar_order_id");
         this.INPUT_TYPE_KEY = new NamespacedKey(plugin, "bazaar_input_type");
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     // ==================== CUSTOM HOLDER ====================

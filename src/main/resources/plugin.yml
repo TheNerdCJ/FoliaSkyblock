@@ -131,12 +131,22 @@ commands:
     description: Open the minion management GUI
     usage: /<command>
     aliases: [minion]
+
+  wardrobe:
+    description: Open the wardrobe to save and swap armor + equipment loadouts
+    usage: /<command>
+    aliases: [wd]
+    permission: folia.skyblock.wardrobe
+
   isadmin:
     description: Admin tools for fixing islands and balances
     usage: /<command> <subcommand> ...
     permission: foliasb.admin
 
 permissions:
+  folia.skyblock.wardrobe:
+    description: Allows use of the /wardrobe command
+    default: true
   foliasb.staff.mute:
   description: Allows muting and unmuting players
   default: op

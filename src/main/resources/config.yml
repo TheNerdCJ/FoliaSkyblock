@@ -14,6 +14,212 @@ island:
     nether: 20
     end: 50
   # Default starter items are handled in IslandManager.java
+
+  # =============================================
+  # Island Worth / Level System (Classic Skyblock)
+  # =============================================
+  worth:
+    # Block worth values (per block placed on island)
+    # Higher value blocks contribute more to island worth and level
+    block-worth:
+      STONE: 1.0
+      COBBLESTONE: 1.0
+      DIRT: 0.5
+      GRASS_BLOCK: 0.8
+      OAK_LOG: 3.0
+      DIAMOND_ORE: 150.0
+      DIAMOND_BLOCK: 1350.0
+      EMERALD_BLOCK: 1200.0
+      NETHERITE_BLOCK: 4500.0
+      SPAWNER: 800.0
+      BEACON: 2500.0
+      # Add more blocks as needed. Use Material name exactly.
+
+    # Formula: worthLevel = floor(sqrt(totalWorth / 100)) + 1 (customizable)
+    level-formula:
+      base: 100.0          # Worth required for level 1
+      multiplier: 1.5      # How fast levels scale
+
+    # Upgrade multipliers applied to total worth (from IslandUpgradeManager)
+    upgrade-multipliers:
+      enabled: true
+      # These are applied as finalWorth = baseWorth * multiplier
+      # Example: If player has CROP_GROWTH level 5, it might give a small worth bonus
+
+# =============================================
+# Booster System (Temporary Island Multipliers)
+# =============================================
+boosters:
+  enabled: true
+  # Default durations in minutes
+  durations:
+    short: 30
+    medium: 60
+    long: 120
+  # Prices (island balance) - mission rewards often grant 2.0x short/medium
+  prices:
+    CROP_GROWTH:
+      short: 5000
+      medium: 9000
+      long: 16000
+    SPAWNER_RATE:
+      short: 8000
+      medium: 14000
+      long: 25000
+    ISLAND_XP:
+      short: 6000
+      medium: 11000
+      long: 19000
+    MONEY_EARN:
+      short: 5500
+      medium: 10000
+      long: 17500
+    MINION_SPEED:
+      short: 7000
+      medium: 12500
+      long: 22000
+  # Multipliers applied on top of upgrades (mission rewards default to 2.0)
+  multipliers:
+    CROP_GROWTH: 2.0
+    SPAWNER_RATE: 2.0
+    ISLAND_XP: 2.0
+    MONEY_EARN: 2.0
+    MINION_SPEED: 2.0
+
+  # =============================================
+  # Island Shop (Deepened - primary economy sink)
+  # =============================================
+  shop:
+    enabled: true
+    # Rich catalog. reward_type options: ITEM, BOOSTER, XP, WORTH, MINION_FUEL, CUSTOM
+    # For BOOSTER: reward_data must contain type, multiplier, duration_minutes
+    # For ITEM: optional custom_name / lore / material override
+    # one_time: true = player/island can buy only once (persisted)
+    # stock: -1 = unlimited, >0 = limited global stock (future)
+    items:
+      BOOSTER_TOKEN_CROP_60:
+        name: "§eCrop Growth Token (60m)"
+        material: EXPERIENCE_BOTTLE
+        price: 7500
+        category: BOOSTERS
+        description: "§7Right-click this token to activate 2.0x crop growth for 60 minutes."
+        reward_type: BOOSTER
+        reward_data:
+          type: CROP_GROWTH
+          multiplier: 2.0
+          duration_minutes: 60
+        one_time: false
+        stock: -1
+
+      BOOSTER_TOKEN_XP_45:
+        name: "§bIsland XP Token (45m)"
+        material: EXPERIENCE_BOTTLE
+        price: 8200
+        category: BOOSTERS
+        description: "§7Right-click to activate 2.0x Island XP gain for 45 minutes."
+        reward_type: BOOSTER
+        reward_data:
+          type: ISLAND_XP
+          multiplier: 2.0
+          duration_minutes: 45
+        one_time: false
+        stock: -1
+
+      SELL_WAND:
+        name: "§6Sell Wand"
+        material: STICK
+        price: 18500
+        category: SPECIAL
+        description: "§7Right-click crops/ores to instantly sell them for island balance."
+        reward_type: ITEM
+        reward_data:
+          custom_name: "§6§lSell Wand"
+          lore:
+            - "§7Mass sell tool"
+            - "§eRight-click blocks to sell"
+        one_time: false
+        stock: -1
+
+      MINION_FUEL_1000:
+        name: "§7Minion Fuel Pack (1000)"
+        material: COAL
+        price: 6200
+        category: MINIONS
+        description: "§7Adds 1000 fuel to every minion on your island."
+        reward_type: MINION_FUEL
+        reward_data:
+          amount: 1000
+        one_time: false
+        stock: -1
+
+      ISLAND_XP_BUNDLE_250:
+        name: "§aIsland XP Bundle (250)"
+        material: NETHER_STAR
+        price: 14500
+        category: PROGRESSION
+        description: "§7Instantly grants 250 Island XP."
+        reward_type: XP
+        reward_data:
+          amount: 250
+        one_time: false
+        stock: -1
+
+      WORTH_BOOST_500:
+        name: "§dDirect Worth +500"
+        material: DIAMOND
+        price: 9500
+        category: PROGRESSION
+        description: "§7Permanently adds 500 to your island's worth (triggers recalc)."
+        reward_type: WORTH
+        reward_data:
+          amount: 500
+        one_time: true
+        stock: -1
+
+      ONE_TIME_BORDER_EXPANDER:
+        name: "§3Border Expander Token"
+        material: ENDER_PEARL
+        price: 45000
+        category: SPECIAL
+        description: "§7One-time purchase. Expands your island border by +25 blocks (future)."
+        reward_type: CUSTOM
+        reward_data:
+          action: BORDER_EXPAND
+          value: 25
+        one_time: true
+        stock: -1
+
+  # =============================================
+  # Prestige System (High-endgame reset for permanent power)
+  # =============================================
+  prestige:
+    enabled: true
+    max_prestige: 10                    # Cap or -1 for unlimited (diminishing returns after)
+    # Requirements to be able to prestige (per island)
+    requirements:
+      min_island_level: 50
+      min_worth: 250000
+      # Future: completed_missions or specific milestones
+    # Multipliers granted by prestige level (these stack with upgrades + boosters)
+    multipliers:
+      xp: 0.10                          # +10% island XP per prestige level
+      worth: 0.08                       # +8% worth from blocks per level
+      money_earn: 0.12                  # +12% money from activities
+      booster_effectiveness: 0.05       # Boosters are 5% stronger per level
+    # Rewards given when you prestige (items, balance, etc.)
+    rewards:
+      level_1:
+        money: 100000
+        items:
+          - "DIAMOND_BLOCK:64"
+      level_5:
+        money: 500000
+        title: "§6§lLegendary"
+      level_10:
+        money: 2000000
+        items:
+          - "NETHERITE_BLOCK:16"
+
 # =============================================
 # Protection Settings
 # =============================================
@@ -80,6 +286,20 @@ upgrades:
     bonus-per-level: 0.35               # Weight multiplier for better ores
   island-size:
     radius-per-level: 8                 # Extra blocks radius per level
+    base-radius: 256                    # Starting protected/build radius (before any upgrades)
+    max-radius: 512                     # Hard cap (can be increased by high Prestige)
+    prestige-bonus:
+      enabled: true
+      extra-per-prestige: 16            # Additional radius per prestige level
+    visuals:
+      enabled: true
+      worldborder: true                 # Use per-player WorldBorder for nice visuals
+      particles: true                   # Spawn border particles (Folia-safe repeating task)
+      particle-density: 4               # Blocks between particles
+      expansion-effect: true            # Play nice sound + particles on upgrade purchase
+      # Colored borders now respect island_settings.border_color (BLUE, RED, GREEN, GOLD, PURPLE, PINK, etc.)
+      # Admin commands: /isadmin border setsize <player> <blocks>  and  setcolor <player> <color>
+      # Hologram markers and auto WorldBorder on movement are available via BorderVisualManager
   spawner-rate:
     speed-bonus-per-level: 0.15         # +15% spawner activation speed
   mob-cap:
@@ -137,3 +357,14 @@ messages:
 # ================================================
 # Do not edit below this line unless you know what you're doing
 # ================================================
+
+# =============================================
+# Wardrobe Settings (light optional features)
+# =============================================
+wardrobe:
+  # Light collection XP system (inspired by community requests for "own unique equipment" progression)
+  # Awards small Island XP the first time a player saves a new equipment material type in any wardrobe slot.
+  collection-xp:
+    enabled: true
+    amount: 15.0          # Island XP per new unique equipment material collected via wardrobe
+    # Note: This is intentionally light / optional. Only triggers on the *first* save of each material.

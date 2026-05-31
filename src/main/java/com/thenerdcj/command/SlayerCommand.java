@@ -60,6 +60,20 @@ public class SlayerCommand implements CommandExecutor {
                 showRewards(player);
                 break;
 
+            case "tokens":
+            case "tokenlb":
+            case "tokenleaderboard":
+                plugin.getSlayerTokenLeaderboardGUI().open(player);
+                break;
+
+            case "admin":
+                if (!player.hasPermission("foliasb.admin")) {
+                    player.sendMessage("§cNo permission.");
+                    return true;
+                }
+                handleAdminCommand(player, args);
+                break;
+
             default:
                 showHelp(player);
         }
@@ -76,7 +90,7 @@ public class SlayerCommand implements CommandExecutor {
                 player.sendMessage("§aSlayer quest started! Kill " + tier.getTargetEntity().name() + "s to progress.");
             }
         } catch (IllegalArgumentException e) {
-            player.sendMessage("§cInvalid tier! Use: zombie_i, spider_i, enderman_i, blaze_i");
+            player.sendMessage("§cInvalid tier. Use /slayer for help. New tiers include skeleton, creeper, and boss slayers!");
         }
     }
 
@@ -132,9 +146,33 @@ public class SlayerCommand implements CommandExecutor {
         player.sendMessage("§a/slayer start <tier> §7- Start a slayer quest");
         player.sendMessage("§a/slayer progress §7- View current quest progress");
         player.sendMessage("§a/slayer abandon §7- Abandon current quest");
+        player.sendMessage("§a/slayer tokens §7- View Slayer Token Leaderboards");
         player.sendMessage("");
         player.sendMessage("§7Example: §a/slayer start zombie_i");
 
         plugin.getSlayerGUI().open(player);
+    }
+
+    private void handleAdminCommand(Player player, String[] args) {
+        if (args.length < 3) {
+            player.sendMessage("§cUsage: /slayer admin <giveprogress|spawn> <tier>");
+            return;
+        }
+
+        String sub = args[1].toLowerCase();
+
+        if (sub.equals("giveprogress")) {
+            try {
+                SlayerTier tier = SlayerTier.valueOf(args[2].toUpperCase());
+                for (int i = 0; i < 50; i++) {
+                    plugin.getBossManager().recordSlayerKill(player, tier.getTargetEntity());
+                }
+                player.sendMessage("§aGave progress toward " + tier.getDisplayName());
+            } catch (Exception e) {
+                player.sendMessage("§cInvalid tier.");
+            }
+        } else if (sub.equals("spawn")) {
+            player.sendMessage("§7Boss spawning admin tools coming soon.");
+        }
     }
 }

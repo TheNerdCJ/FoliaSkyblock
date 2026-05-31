@@ -23,8 +23,14 @@ public class IslandUpgradeGUI implements Listener {
     private final FoliaSkyblock plugin;
 
     public IslandUpgradeGUI(FoliaSkyblock plugin) {
+        this(plugin, true);
+    }
+
+    public IslandUpgradeGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (autoRegister) {
+            Bukkit.getPluginManager().registerEvents(this, plugin);
+        }
     }
 
     public void open(Player player, Island island) {
@@ -88,6 +94,7 @@ public class IslandUpgradeGUI implements Listener {
             case CROP_GROWTH -> Material.WHEAT;
             case SPAWNER_RATE -> Material.SPAWNER;
             case VAULT_SLOTS -> Material.CHEST;
+            case WARDROBE_SLOTS -> Material.ARMOR_STAND;
             case AUTO_SELLER -> Material.GOLDEN_PICKAXE;
             case MOB_CAP -> Material.NETHERRACK;
             case HOPPER_LIMIT -> Material.ENDER_PEARL;
@@ -101,9 +108,13 @@ public class IslandUpgradeGUI implements Listener {
         return switch (upgrade) {
             case CROP_GROWTH -> "+" + (level * 25) + "% growth speed";
             case ORE_GENERATOR -> "Better ores from generators (Lv." + level + ")";
-            case ISLAND_SIZE -> "+" + (level * 8) + " block radius";
+            case ISLAND_SIZE -> {
+                int perLevel = plugin.getConfig().getInt("upgrades.island-size.radius-per-level", 8);
+                yield "+" + (level * perLevel) + " block radius";
+            }
             case MINION_SLOTS -> "+" + level + " minion slots";
             case MEMBER_LIMIT -> "+" + level + " member limit";
+            case WARDROBE_SLOTS -> "+" + (level * 2) + " wardrobe slots";
             case SPAWNER_RATE -> "+" + (level * 15) + "% spawner speed";
             default -> "";
         };

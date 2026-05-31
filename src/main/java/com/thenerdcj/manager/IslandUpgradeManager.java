@@ -170,6 +170,27 @@ public class IslandUpgradeManager {
         return Math.max(27, size);
     }
 
+    private static final int BASE_WARDROBE_SLOTS = 4;
+    private static final int WARDROBE_SLOTS_PER_LEVEL = 2;
+
+    /**
+     * Returns the maximum number of wardrobe loadout slots the player can use,
+     * based on their island's WARDROBE_SLOTS upgrade level.
+     * This provides the progression/grinding path requested by the community.
+     */
+    public int getMaxWardrobeSlots(Island island) {
+        if (island == null) return BASE_WARDROBE_SLOTS;
+        int level = getUpgradeLevel(island.getId(), IslandUpgrade.WARDROBE_SLOTS);
+        return BASE_WARDROBE_SLOTS + (level * WARDROBE_SLOTS_PER_LEVEL);
+    }
+
+    public int getMaxWardrobeSlots(Player player) {
+        if (player == null) return BASE_WARDROBE_SLOTS;
+        Island island = plugin.getIslandManager().getIslandByOwner(
+                player.getUniqueId(), player.getWorld().getEnvironment());
+        return getMaxWardrobeSlots(island);
+    }
+
     /**
      * Returns the level of the ore generator upgrade.
      */
@@ -200,7 +221,18 @@ public class IslandUpgradeManager {
      * Returns the effective island radius (base 256 + upgrade bonus).
      */
     public int getEffectiveIslandRadius(Island island) {
-        return 256 + getExtraBuildRadius(island);
+        int base = plugin.getConfig().getInt("upgrades.island-size.base-radius", 256);
+        int fromSize = getExtraBuildRadius(island);
+
+        int prestigeBonus = 0;
+        if (plugin.getPrestigeManager() != null && plugin.getConfig().getBoolean("upgrades.island-size.prestige-bonus.enabled", true)) {
+            int prestige = plugin.getPrestigeManager().getPrestigeLevel(island);
+            int perPrestige = plugin.getConfig().getInt("upgrades.island-size.prestige-bonus.extra-per-prestige", 16);
+            prestigeBonus = prestige * perPrestige;
+        }
+
+        int max = plugin.getConfig().getInt("upgrades.island-size.max-radius", 512);
+        return Math.min(base + fromSize + prestigeBonus, max);
     }
 
     // ==================== HELPER METHODS (Cached) ====================
@@ -290,6 +322,26 @@ public class IslandUpgradeManager {
                 String islandKey = island.getId();
                 plugin.getDatabaseManager().saveIslandUpgrade(islandKey, upgrade, currentLevel + 1);
                 invalidateUpgradeCache(islandKey);
+
+                // Recalculate island worth when upgrades change (worth system integration)
+                if (plugin.getIslandWorthManager() != null) {
+                    plugin.getIslandWorthManager().invalidateCache(island);
+                    plugin.getIslandWorthManager().recalculateAndUpdate(island);
+                }
+
+                // Sync border size setting when ISLAND_SIZE is upgraded (visual + protection consistency)
+                if (upgrade == IslandUpgrade.ISLAND_SIZE && plugin.getIslandSettingsManager() != null) {
+                    int effectiveRadius = getEffectiveIslandRadius(island);
+                    plugin.getIslandSettingsManager().getSettings(island.getGridPosition()).thenAccept(settings -> {
+                        settings.setBorderSize(effectiveRadius);
+                        plugin.getIslandSettingsManager().saveSettings(settings);
+                    });
+                }
+
+                // Visual expansion effects
+                if (upgrade == IslandUpgrade.ISLAND_SIZE && plugin.getBorderVisualManager() != null) {
+                    plugin.getBorderVisualManager().playExpansionEffect(player, island, currentLevel + 1);
+                }
             }
         });
     }
