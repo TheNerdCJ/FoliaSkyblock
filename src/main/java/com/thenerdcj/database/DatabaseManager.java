@@ -1602,49 +1602,6 @@ public class DatabaseManager {
         }
         return CompletableFuture.completedFuture(new ArrayList<>());
     }
-                        Mission.ObjectiveType objective = Mission.ObjectiveType.valueOf(rs.getString("objective"));
-                        UUID owner = rs.getString("owner_uuid") != null ? UUID.fromString(rs.getString("owner_uuid")) : null;
-
-                        com.thenerdcj.booster.BoosterType boosterType = null;
-                        String bt = rs.getString("reward_booster_type");
-                        if (bt != null && !bt.isEmpty()) {
-                            try { boosterType = com.thenerdcj.booster.BoosterType.valueOf(bt); } catch (Exception ignored) {}
-                        }
-                        int boosterDur = rs.getInt("reward_booster_duration");
-                        if (rs.wasNull()) boosterDur = 0;
-
-                        Mission m = new Mission(
-                                rs.getString("id"),
-                                rs.getString("island_key"),
-                                owner,
-                                type,
-                                objective,
-                                rs.getString("target_material"),
-                                rs.getInt("target"),
-                                rs.getInt("progress"),
-                                rs.getInt("reward_money"),
-                                rs.getInt("reward_xp"),
-                                rs.getString("reward_item_base64"),
-                                boosterType,
-                                boosterDur,
-                                rs.getBoolean("completed"),
-                                rs.getBoolean("claimed"),
-                                rs.getLong("created_at"),
-                                rs.getLong("expires_at"),
-                                rs.getString("title"),
-                                rs.getString("description")
-                        );
-                        missions.add(m);
-                    } catch (Exception ex) {
-                        plugin.getLogger().warning("[Missions] Skipped bad mission row: " + ex.getMessage());
-                    }
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Missions] loadMissionsForIsland failed: " + e.getMessage());
-            }
-            return missions;
-        });
-    }
 
     // ==================== ISLAND BOOSTERS PERSISTENCE ====================
 
