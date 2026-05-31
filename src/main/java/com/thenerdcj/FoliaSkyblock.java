@@ -107,6 +107,9 @@ public class FoliaSkyblock extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
+        // Step 8: Configuration validation + helpful errors
+        validateConfiguration();
+
         // === Core Managers ===
         this.databaseManager = new DatabaseManager(this);
         databaseManager.initDatabase();
@@ -484,4 +487,31 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.wardrobe.WardrobeManager getWardrobeManager() { return wardrobeManager; }
     public com.thenerdcj.wardrobe.WardrobeGUI getWardrobeGUI() { return wardrobeGUI; }
     public com.thenerdcj.wardrobe.WardrobeSlotOptionsGUI getWardrobeSlotOptionsGUI() { return wardrobeSlotOptionsGUI; }
+
+    // ==================== CONFIG VALIDATION (Step 8) ====================
+    private void validateConfiguration() {
+        boolean hasIssues = false;
+
+        String[] requiredWorlds = {"worlds.overworld", "worlds.nether", "worlds.end"};
+        for (String key : requiredWorlds) {
+            if (!getConfig().contains(key)) {
+                getLogger().warning("§e[Config] Missing key '" + key + "' in config.yml. Using safe default.");
+            }
+        }
+
+        if (getConfig().getDouble("economy.starting-balance", 0) < 0) {
+            getLogger().severe("§c[Config] economy.starting-balance cannot be negative!");
+            hasIssues = true;
+        }
+
+        if (!isFolia()) {
+            getLogger().warning("§e[Config] Running on non-Folia server. Many Folia-specific optimizations are disabled.");
+        }
+
+        if (hasIssues) {
+            getLogger().severe("§c[Config] Critical configuration issues detected.");
+        } else {
+            getLogger().info("§a[Config] Configuration validated.");
+        }
+    }
 }

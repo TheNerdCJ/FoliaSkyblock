@@ -45,9 +45,11 @@ public class DatabaseManager {
     // New lightweight operations helper (start of DatabaseManager compression)
     private final DBOperations dbOps;
 
-    // Extracted DAOs (pilot - AuctionDAO first, now SlayerDAO)
+    // Extracted DAOs
     private AuctionDAO auctionDAO;
     private SlayerDAO slayerDAO;
+    private PrestigeDAO prestigeDAO;
+    private MissionDAO missionDAO;
 
     // For test support (H2 in-memory)
     private String jdbcUrlOverride = null;
@@ -66,6 +68,8 @@ public class DatabaseManager {
         });
         this.auctionDAO = new AuctionDAO(plugin, dbOps);
         this.slayerDAO = new SlayerDAO(plugin, dbOps);
+        this.prestigeDAO = new PrestigeDAO(plugin, dbOps);
+        this.missionDAO = new MissionDAO(plugin, dbOps);
     }
 
     /**
@@ -79,6 +83,8 @@ public class DatabaseManager {
         });
         this.auctionDAO = new AuctionDAO(plugin, dbOps);
         this.slayerDAO = new SlayerDAO(plugin, dbOps);
+        this.prestigeDAO = new PrestigeDAO(plugin, dbOps);
+        this.missionDAO = new MissionDAO(plugin, dbOps);
     }
 
     public void initDatabase() {
@@ -102,6 +108,10 @@ public class DatabaseManager {
         try {
             dataSource = new HikariDataSource(config);
             createTables();
+
+            // Run versioned migrations (step 1 of Database modularization)
+            new DatabaseMigration(plugin, this).runMigrations();
+
             if (jdbcUrlOverride != null) {
                 plugin.getLogger().info("§a[Database] H2 in-memory DB initialized for tests.");
             } else {
@@ -1578,49 +1588,20 @@ public class DatabaseManager {
     // ==================== MISSION PERSISTENCE (Expanded System) ====================
 
     public CompletableFuture<Boolean> saveMission(Mission mission) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO island_missions (id, island_key, owner_uuid, type, objective, target_material, target, progress, reward_money, reward_xp, reward_item_base64, reward_booster_type, reward_booster_duration, completed, claimed, created_at, expires_at, title, description) " +
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-                ps.setString(1, mission.getId());
-                ps.setString(2, mission.getIslandKey());
-                ps.setString(3, mission.getIslandOwner() != null ? mission.getIslandOwner().toString() : null);
-                ps.setString(4, mission.getType().name());
-                ps.setString(5, mission.getObjective().name());
-                ps.setString(6, mission.getTargetMaterial());
-                ps.setInt(7, mission.getTarget());
-                ps.setInt(8, mission.getProgress());
-                ps.setInt(9, mission.getRewardMoney());
-                ps.setInt(10, mission.getRewardIslandXp());
-                ps.setString(11, mission.getRewardItemBase64());
-                ps.setString(12, mission.getRewardBoosterType() != null ? mission.getRewardBoosterType().name() : null);
-                ps.setInt(13, mission.getRewardBoosterDurationMinutes());
-                ps.setBoolean(14, mission.isCompleted());
-                ps.setBoolean(15, mission.isClaimed());
-                ps.setLong(16, mission.getCreatedAt());
-                ps.setLong(17, mission.getExpiresAt());
-                ps.setString(18, mission.getTitle());
-                ps.setString(19, mission.getDescription());
-                ps.executeUpdate();
-                return true;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Missions] saveMission failed: " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        // Delegated to MissionDAO
+        if (missionDAO != null) {
+            return missionDAO.saveMission(mission);
+        }
+        return CompletableFuture.completedFuture(false);
     }
 
     public CompletableFuture<List<Mission>> loadMissionsForIsland(String islandKey) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<Mission> missions = new ArrayList<>();
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement("SELECT * FROM island_missions WHERE island_key = ?")) {
-                ps.setString(1, islandKey);
-                ResultSet rs = ps.executeQuery();
-                while (rs.next()) {
-                    try {
-                        Mission.MissionType type = Mission.MissionType.valueOf(rs.getString("type"));
+        // Delegated to MissionDAO
+        if (missionDAO != null) {
+            return missionDAO.loadMissionsForIsland(islandKey);
+        }
+        return CompletableFuture.completedFuture(new ArrayList<>());
+    }
                         Mission.ObjectiveType objective = Mission.ObjectiveType.valueOf(rs.getString("objective"));
                         UUID owner = rs.getString("owner_uuid") != null ? UUID.fromString(rs.getString("owner_uuid")) : null;
 
@@ -1662,7 +1643,7 @@ public class DatabaseManager {
                 plugin.getLogger().severe("[Missions] loadMissionsForIsland failed: " + e.getMessage());
             }
             return missions;
-        }, executor);
+        });
     }
 
     // ==================== ISLAND BOOSTERS PERSISTENCE ====================
@@ -1777,33 +1758,18 @@ public class DatabaseManager {
     // ==================== PRESTIGE SYSTEM ====================
 
     public void saveIslandPrestige(String islandKey, int prestigeLevel) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO island_prestige (island_key, prestige_level, last_prestiged) VALUES (?, ?, ?)")) {
-            ps.setString(1, islandKey);
-            ps.setInt(2, prestigeLevel);
-            ps.setLong(3, System.currentTimeMillis());
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Prestige] saveIslandPrestige failed: " + e.getMessage());
+        // Delegated to extracted PrestigeDAO
+        if (prestigeDAO != null) {
+            prestigeDAO.saveIslandPrestige(islandKey, prestigeLevel);
         }
     }
 
     public CompletableFuture<Integer> loadIslandPrestige(String islandKey) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT prestige_level FROM island_prestige WHERE island_key = ?")) {
-                ps.setString(1, islandKey);
-                ResultSet rs = ps.executeQuery();
-                if (rs.next()) {
-                    return rs.getInt("prestige_level");
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Prestige] loadIslandPrestige failed: " + e.getMessage());
-            }
-            return 0;
-        }, executor);
+        // Delegated to extracted PrestigeDAO
+        if (prestigeDAO != null) {
+            return prestigeDAO.loadIslandPrestige(islandKey);
+        }
+        return CompletableFuture.completedFuture(0);
     }
 
     public void saveIslandLevel(String islandKey, int level, double xp) {

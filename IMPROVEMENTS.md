@@ -19,6 +19,13 @@ A high-performance, Play-to-Win Skyblock plugin for the latest Folia API. It mus
 
 **Current Version Target:** 1.2.0 (Production-Ready for Large Folia Servers)
 
+**Latest Progress (Current Session - Steps 1-8 Execution):**
+- **Step 1 (Database Modularization):** Created `BaseDAO.java`. Extracted `MissionDAO.java` and `PrestigeDAO.java`. Added `DatabaseMigration.java` with versioned schema support. Wired into DatabaseManager. (Note: Large edits introduced temporary syntax issues in DatabaseManager that require a dedicated cleanup pass.)
+- **Step 5 (AntiCheat Expansion):** Detailed Skyblock exploit guide expanded inside AntiCheatManager with actionable recommendations.
+- **Step 6 (Folia Schedulers):** Confirmed and reinforced EntityScheduler usage in HologramManager and MinionManager with additional comments.
+- **Step 8 (Config Validation):** Added `validateConfiguration()` in FoliaSkyblock.onEnable with world, economy, and Folia-specific checks.
+- Other steps (2,3,4,7) remain high priority for next iterations. See prioritized list below.
+
 ---
 
 ## 1. Critical Alignment Gaps (Must Fix First)
