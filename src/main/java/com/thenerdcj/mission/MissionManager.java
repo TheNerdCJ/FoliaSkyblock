@@ -1,6 +1,7 @@
 package com.thenerdcj.mission;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -143,9 +144,18 @@ public class MissionManager {
                 m.setClaimed(true);
 
                 // === Give Rewards ===
-                if (m.getRewardMoney() > 0 && plugin.getEconomyManager() != null) {
-                    // TODO: Use correct EconomyManager method (e.g. depositIsland or addBalance)
-                    player.sendMessage("§a+" + m.getRewardMoney() + " Island Money (placeholder)");
+                if (m.getRewardMoney() > 0) {
+                    Island islandForMoney = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                    if (islandForMoney != null && plugin.getIslandBankManager() != null) {
+                        GridPosition pos = islandForMoney.getGridPosition();
+                        plugin.getIslandBankManager().deposit(pos, m.getRewardMoney()).thenAccept(success -> {
+                            if (success && player.isOnline()) {
+                                player.sendMessage("§a+" + m.getRewardMoney() + " added to island bank from mission!");
+                            }
+                        });
+                    } else {
+                        player.sendMessage("§a+" + m.getRewardMoney() + " Island Money (no island bank available)");
+                    }
                 }
 
                 if (m.getRewardIslandXp() > 0 && plugin.getIslandManager() != null) {

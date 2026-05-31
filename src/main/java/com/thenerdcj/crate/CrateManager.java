@@ -114,8 +114,6 @@ public class CrateManager {
         return pool.get(0);
     }
 
-    // TODO: createKeyItem(CrateType), hasKey, consumeKey methods using PDC
-
     /** Simple reward definition for crates */
     public static class CrateReward {
         private final String name;
@@ -133,17 +131,56 @@ public class CrateManager {
 
         public void grant(Player player, FoliaSkyblock plugin) {
             if (value instanceof Integer) {
-                // Money reward
-                // plugin.getEconomyManager()... (placeholder)
-                player.sendMessage("§a+" + value + " coins from crate!");
+                // Money → Island Bank (consistent with prestige/mission rewards)
+                com.thenerdcj.island.Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                if (island != null && plugin.getIslandBankManager() != null) {
+                    plugin.getIslandBankManager().deposit(island.getGridPosition(), (Integer) value)
+                        .thenAccept(success -> {
+                            if (success && player.isOnline()) {
+                                player.sendMessage("§a+" + value + " coins added to island bank from crate!");
+                            }
+                        });
+                } else {
+                    player.sendMessage("§a+" + value + " coins from crate (no island bank)");
+                }
             } else if (value instanceof String) {
                 String s = (String) value;
                 if (s.contains(":")) {
-                    // Booster or item
+                    String[] parts = s.split(":", 2);
+                    String type = parts[0].toUpperCase();
+                    String data = parts[1];
+
+                    if (type.startsWith("BOOSTER_") || type.matches(".*_GROWTH|.*_XP|.*_SELL")) {
+                        // Booster reward e.g. "CROP_GROWTH:45"
+                        try {
+                            com.thenerdcj.booster.BoosterType bType = com.thenerdcj.booster.BoosterType.valueOf(type);
+                            int minutes = Integer.parseInt(data);
+                            com.thenerdcj.island.Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                            if (island != null && plugin.getBoosterManager() != null) {
+                                double mult = plugin.getConfig().getDouble("boosters.multipliers." + bType.name(), 2.0);
+                                plugin.getBoosterManager().activateBooster(island, bType, mult, minutes * 60L * 1000L);
+                                player.sendMessage("§a+" + minutes + "m " + bType.getDisplayName() + " Booster from crate!");
+                            }
+                        } catch (Exception e) {
+                            player.sendMessage("§eReceived unknown booster: " + s);
+                        }
+                    } else {
+                        // Item e.g. "DIAMOND:4" or "EMERALD_BLOCK:8"
+                        try {
+                            org.bukkit.Material mat = org.bukkit.Material.valueOf(type);
+                            int amount = Integer.parseInt(data);
+                            ItemStack item = new ItemStack(mat, amount);
+                            player.getInventory().addItem(item);
+                            player.sendMessage("§aReceived " + amount + "x " + mat.name() + " from crate!");
+                        } catch (Exception e) {
+                            player.sendMessage("§eReceived crate reward: " + s);
+                        }
+                    }
+                } else {
+                    // Simple string reward (prestige XP etc.)
                     player.sendMessage("§aReceived crate reward: " + s);
                 }
             }
-            // Expand with real granting logic for items, prestige, etc.
         }
     }
 }

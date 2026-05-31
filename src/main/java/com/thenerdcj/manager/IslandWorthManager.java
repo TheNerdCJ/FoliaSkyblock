@@ -122,7 +122,7 @@ public class IslandWorthManager {
             return CompletableFuture.completedFuture(0.0);
         }
 
-        int radius = 256; // TODO: use island.getEffectiveIslandRadius() in future
+        int radius = island.getEffectiveIslandRadius(); // Use authoritative value from Island (includes ISLAND_SIZE upgrades)
         int minX = center.getBlockX() - radius;
         int maxX = center.getBlockX() + radius;
         int minZ = center.getBlockZ() - radius;
@@ -403,9 +403,6 @@ public class IslandWorthManager {
             }
         });
     }
-
-    /** Helper to expose loaded islands (we'll add this method to IslandManager if missing) */
-    // For now this is a placeholder - we will improve integration
 
     public static class IslandTopEntry {
         public final UUID owner;
