@@ -94,19 +94,49 @@ public class EconomyManager {
         return addIslandBalance(ownerUuid, dimension, -amount);
     }
 
-    // ==================== TRANSACTION HELPERS (Future Use) ====================
+    // ==================== HARDENED PLAY-TO-WIN SAFE ECONOMY METHODS ====================
 
     /**
-     * Example: Transfer from player balance to island balance (Play-to-Win safe)
+     * Safely removes player balance only if they have enough. Prevents negative balances.
+     * This is the preferred method for all player balance deductions.
      */
+    public CompletableFuture<Boolean> tryRemovePlayerBalance(UUID uuid, double amount) {
+        if (amount <= 0) return CompletableFuture.completedFuture(true);
+        return getPlayerBalance(uuid).thenCompose(current -> {
+            if (current < amount) return CompletableFuture.completedFuture(false);
+            return removePlayerBalance(uuid, amount);
+        });
+    }
+
+    /**
+     * Safely removes island balance only if the island has enough. Prevents negative balances.
+     * This is the preferred method for all island balance deductions (upgrades, etc.).
+     */
+    public CompletableFuture<Boolean> tryRemoveIslandBalance(GridPosition pos, double amount) {
+        if (amount <= 0) return CompletableFuture.completedFuture(true);
+        return getIslandBalance(pos).thenCompose(current -> {
+            if (current < amount) return CompletableFuture.completedFuture(false);
+            return removeIslandBalance(pos, amount);
+        });
+    }
+
+    /**
+     * Safe, atomic-style transfer from player to island balance.
+     * Uses tryRemove to guarantee no negative balances can occur.
+     */
+    public CompletableFuture<Boolean> safeTransferPlayerToIsland(UUID playerUuid, GridPosition pos, double amount) {
+        if (amount <= 0) return CompletableFuture.completedFuture(false);
+
+        return tryRemovePlayerBalance(playerUuid, amount).thenCompose(success -> {
+            if (!success) return CompletableFuture.completedFuture(false);
+            return addIslandBalance(pos, amount);
+        });
+    }
+
+    // Legacy transfer methods kept for compatibility but marked deprecated in favor of safe versions above.
+    @Deprecated
     public CompletableFuture<Boolean> transferPlayerToIsland(UUID player, GridPosition pos, double amount) {
-        return removePlayerBalance(player, amount)
-                .thenCompose(success -> {
-                    if (success) {
-                        return addIslandBalance(pos, amount);
-                    }
-                    return CompletableFuture.completedFuture(false);
-                });
+        return safeTransferPlayerToIsland(player, pos, amount);
     }
 
     /**

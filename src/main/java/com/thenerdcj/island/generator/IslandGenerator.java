@@ -67,11 +67,12 @@ public class IslandGenerator {
     }
 
     private World getWorldForDimension(World.Environment dimension) {
-        // Delegates to WorldManager or config - simplified here, assume worlds exist as per main plugin
+        // Aligned with WorldManager + FoliaSkyblock.getSkyblockWorld() for consistency across the entire plugin.
+        // All custom void worlds must use: skyblock, skyblock_nether, skyblock_end
         String worldName = switch (dimension) {
-            case NETHER -> plugin.getConfig().getString("worlds.nether", "sb_nether");
-            case THE_END -> plugin.getConfig().getString("worlds.end", "sb_end");
-            default -> plugin.getConfig().getString("worlds.overworld", "sb_overworld");
+            case NETHER -> plugin.getConfig().getString("worlds.nether", "skyblock_nether");
+            case THE_END -> plugin.getConfig().getString("worlds.end", "skyblock_end");
+            default -> plugin.getConfig().getString("worlds.overworld", "skyblock");
         };
         return Bukkit.getWorld(worldName);
     }
