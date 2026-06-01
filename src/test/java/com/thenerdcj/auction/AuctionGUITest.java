@@ -26,8 +26,12 @@ class AuctionGUITest extends TestBase {
     @Override
     public void setUp() {
         super.setUp();
+        when(mockDatabaseManager.getActiveAuctions())
+                .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(
+                        java.util.Collections.emptyList()));
 
         auctionManager = new AuctionManager(plugin);
+
         when(plugin.getAuctionManager()).thenReturn(auctionManager);
 
         // Note: AuctionManager has heavy async DB dependencies. The simple click simulation tests below are the primary value.

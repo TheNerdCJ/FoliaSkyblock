@@ -298,4 +298,38 @@ public class MockBukkitGuiSimulator {
             } catch (Exception ignored) {}
         }
     }
+
+    /**
+     * Creates a click event with a specific item in the clicked slot.
+     */
+    public InventoryClickEvent createClickEvent(Player player, Inventory inventory, int slot, ClickType clickType, ItemStack currentItem) {
+        org.bukkit.inventory.InventoryView view = mock(org.bukkit.inventory.InventoryView.class);
+        when(view.getTopInventory()).thenReturn(inventory);
+        when(view.getBottomInventory()).thenReturn(player.getInventory());
+        when(view.getPlayer()).thenReturn(player);
+        when(view.getTitle()).thenReturn("Test GUI");
+
+        InventoryClickEvent event = new InventoryClickEvent(
+                view,
+                org.bukkit.event.inventory.InventoryType.SlotType.CONTAINER,
+                slot,
+                clickType,
+                org.bukkit.event.inventory.InventoryAction.PICKUP_ALL
+        );
+
+        try {
+            java.lang.reflect.Field currentItemField = InventoryClickEvent.class.getDeclaredField("currentItem");
+            currentItemField.setAccessible(true);
+            currentItemField.set(event, currentItem);
+        } catch (Exception ignored) {}
+
+        return event;
+    }
+
+    /**
+     * Overload for simple clicks without needing to pass an ItemStack.
+     */
+    public InventoryClickEvent createClickEvent(Player player, Inventory inventory, int slot, ClickType clickType) {
+        return createClickEvent(player, inventory, slot, clickType, null);
+    }
 }

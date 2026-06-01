@@ -170,4 +170,5 @@ public class EconomyManager {
     public CompletableFuture<Boolean> removeBalance(UUID uuid, double amount) {
         return removePlayerBalance(uuid, amount);
     }
+
 }
