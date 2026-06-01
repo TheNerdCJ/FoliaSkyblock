@@ -6,29 +6,34 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Simple versioned database migration system.
- * This provides a foundation for schema evolution without external libraries like Flyway.
+ * Improved for modularization: supports both legacy DatabaseManager and new DBOperations paths.
  */
 public class DatabaseMigration {
 
     private final FoliaSkyblock plugin;
-    private final DatabaseManager dbManager;
+    private final DatabaseManager dbManager; // legacy path (current)
+    private final DBOperations dbOps;        // future modular path
 
-    private static final int CURRENT_SCHEMA_VERSION = 3; // Increment when adding new migrations
+    private static final int CURRENT_SCHEMA_VERSION = 4; // bumped for worth + economy tables
 
     public DatabaseMigration(FoliaSkyblock plugin, DatabaseManager dbManager) {
         this.plugin = plugin;
         this.dbManager = dbManager;
+        this.dbOps = null;
+    }
+
+    public DatabaseMigration(FoliaSkyblock plugin, DBOperations dbOps) {
+        this.plugin = plugin;
+        this.dbManager = null;
+        this.dbOps = dbOps;
     }
 
     public void runMigrations() {
-        try (Connection conn = dbManager.getConnection()) {
+        try (Connection conn = getConnection()) {
             createSchemaVersionTable(conn);
-
             int currentVersion = getCurrentVersion(conn);
             plugin.getLogger().info("§6[DB] Current schema version: " + currentVersion + " (target: " + CURRENT_SCHEMA_VERSION + ")");
 
@@ -44,6 +49,14 @@ public class DatabaseMigration {
         }
     }
 
+    private Connection getConnection() throws SQLException {
+        if (dbOps != null) {
+            // Future path — will be fully wired after next DAO extraction
+            return dbManager != null ? dbManager.getConnection() : null; // fallback during transition
+        }
+        return dbManager.getConnection();
+    }
+
     private void createSchemaVersionTable(Connection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
                 "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER)")) {
@@ -54,29 +67,28 @@ public class DatabaseMigration {
     private int getCurrentVersion(Connection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1");
              ResultSet rs = ps.executeQuery()) {
-            if (rs.next()) {
-                return rs.getInt("version");
-            }
+            if (rs.next()) return rs.getInt("version");
             return 0;
         }
     }
 
     private void runMigrationForVersion(Connection conn, int version) throws SQLException {
         plugin.getLogger().info("§e[DB] Running migration to version " + version + "...");
-
         switch (version) {
             case 1:
-                // Example: Add new column if needed
                 executeIfNotExists(conn, "ALTER TABLE island_prestige ADD COLUMN last_prestiged INTEGER DEFAULT 0");
                 break;
             case 2:
-                // Add mission booster columns (already in createTables, but here for migration path)
                 executeIfNotExists(conn, "ALTER TABLE island_missions ADD COLUMN reward_booster_type TEXT");
                 executeIfNotExists(conn, "ALTER TABLE island_missions ADD COLUMN reward_booster_duration INTEGER");
                 break;
             case 3:
-                // Future: Add worth persistence table improvements, etc.
                 executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS island_worth_history (id INTEGER PRIMARY KEY, island_key TEXT, worth DOUBLE, recorded_at INTEGER)");
+                break;
+            case 4:
+                // Prepared for dual-economy + level tables in next modularization pass
+                executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS player_economy (uuid TEXT PRIMARY KEY, balance DOUBLE)");
+                executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS island_economy (island_key TEXT PRIMARY KEY, balance DOUBLE)");
                 break;
             default:
                 plugin.getLogger().warning("[DB] Unknown migration version: " + version);
@@ -86,8 +98,8 @@ public class DatabaseMigration {
     private void executeIfNotExists(Connection conn, String sql) {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.executeUpdate();
-        } catch (SQLException e) {
-            // Column or table likely already exists - safe to ignore for migrations
+        } catch (SQLException ignored) {
+            // Column/table already exists — safe
         }
     }
 
