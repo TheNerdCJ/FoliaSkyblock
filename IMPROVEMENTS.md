@@ -306,6 +306,16 @@ When you complete an item:
 - Critical architecture largely complete per June 2026 audit (DB multi-dim fixed, GUI consistency high, Folia schedulers/ThreadSafety pervasive, PtW enforced, per-dim reset 100%, skills + deep cosmetics + functional enchants + anvil limit removal all shipped).
 - Focus now on the "Currently Prioritized Next" section below (DB modularization completion, early game, economy/perf).
 
+**v1.2.0 Status Update (Steps 1-7 Completed):**
+- All 7 high-priority items and sub-priorities completed in order.
+- Per-dimension island reset **100% complete**: Proper per-dimension reset time tracking (via `player_dimension_resets` table + `recordIslandReset`/`getLastDimensionReset`), boss-per-island safety checks fully wired (`hasActiveBossOnIsland` + `hasActiveBossOnDimension`), enhanced DimensionResetGUI + ResetConfirmationGUI with Folia-safe async flows, and admin override support. The two lingering TODOs in DatabaseMigration.java have been resolved.
+- GUI migration aggressively advanced (multiple GUIs migrated to use AbstractGUI/BaseGUI + GUIUtils, PDC standardized).
+- Island Worth made fully incremental, persisted via DAO, with Folia RegionScheduler drift correction task, and /is worth breakdown command added.
+- Admin debug tools added to AdminCommand for worth, minions, anticheat.
+- Folia scheduler coverage expanded in HologramManager and MinionManager, legacy § colors removed in key places (big sweep), comprehensive SoundUtil + sounds on major actions added, significantly improved actionable error messages for level/prestige/requirement gates.
+- Wrap-up: HologramDAO added, IMPROVEMENTS.md updated, full Play-to-Win Design Document (`PLAY_TO_WIN_DESIGN.md`) written as authoritative reference, mvn clean package successful, multiple Play-to-Win audits passed (no donor power creep in any systems; all power from playtime/trading/prestige/slayers).
+- Build clean, production-ready for Folia large servers.
+
 ---
 
 ## 9. Comprehensive Audit (June 2026 Session) - Verification Against Spec, Interop, DB, GUI, Competitors & Play-to-Win
