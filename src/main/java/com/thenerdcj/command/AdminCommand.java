@@ -44,6 +44,7 @@ public class AdminCommand implements CommandExecutor {
             MessageUtil.sendMessage(sender, "§7/isadmin debug worth <player>     - Detailed island worth breakdown");
             MessageUtil.sendMessage(sender, "§7/isadmin debug minions <player>  - Minion stats and breakdown");
             MessageUtil.sendMessage(sender, "§7/isadmin debug anticheat <player> - Violation profile and risk");
+            MessageUtil.sendMessage(sender, "§7/isadmin inspect <player>       - DAO-backed island+player state GUI (staff)");
             return true;
         }
 
@@ -74,6 +75,10 @@ public class AdminCommand implements CommandExecutor {
 
             case "debug":
                 handleDebugCommand(sender, args);
+                break;
+
+            case "inspect":
+                handleInspectCommand(sender, args);
                 break;
 
             case "setbalance":
@@ -540,6 +545,23 @@ public class AdminCommand implements CommandExecutor {
             MessageUtil.sendMessage(sender, "§eModerate violations - monitor.");
         } else {
             MessageUtil.sendMessage(sender, "§aClean profile.");
+        }
+    }
+
+    private void handleInspectCommand(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin inspect <player>");
+            return;
+        }
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            MessageUtil.sendMessage(sender, "§cPlayer not online (inspect requires online for full live state; offline DAO read in future).");
+            return;
+        }
+        if (plugin.getAdminIslandInspectGUI() != null) {
+            plugin.getAdminIslandInspectGUI().open((Player) sender, target.getUniqueId());
+        } else {
+            MessageUtil.sendMessage(sender, "§cInspect GUI not initialized.");
         }
     }
 }

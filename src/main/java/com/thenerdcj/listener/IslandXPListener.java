@@ -165,6 +165,11 @@ public class IslandXPListener implements Listener {
         }
 
         addIslandXP(island, xp, player, "§7Block Break: " + block.getType().name().toLowerCase().replace('_', ' '));
+
+        // Core collection tracking (first discovery on this island)
+        if (plugin.getCollectionManager() != null) {
+            plugin.getCollectionManager().discoverBlock(island.getId(), block.getType(), player.getUniqueId(), player);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

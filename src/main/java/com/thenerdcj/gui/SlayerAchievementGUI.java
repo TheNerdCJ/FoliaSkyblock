@@ -53,7 +53,7 @@ public class SlayerAchievementGUI implements Listener {
         double completion = plugin.getBossManager().getAchievementManager()
                 .getCompletionPercentage(player.getUniqueId());
 
-        gui.setItem(4, createItem(Material.DIAMOND, "§6§lSLAYER ACHIEVEMENTS",
+        gui.setItem(4, GUIUtils.createItem(Material.DIAMOND, "§6§lSLAYER ACHIEVEMENTS",
                 "§7Track your slayer accomplishments!",
                 "§7Completion: §e" + (int)(completion * 100) + "%",
                 "",
@@ -61,13 +61,13 @@ public class SlayerAchievementGUI implements Listener {
 
         // Navigation
         if (page > 0) {
-            gui.setItem(45, createItem(Material.ARROW, "§a§lPrevious Page", "§7Click to go back"));
+            gui.setItem(45, GUIUtils.createItem(Material.ARROW, "§a§lPrevious Page", "§7Click to go back"));
         }
 
-        gui.setItem(49, createItem(Material.BARRIER, "§c§lClose", "§7Click to close"));
+        gui.setItem(49, GUIUtils.createItem(Material.BARRIER, "§c§lClose", "§7Click to close"));
 
         if (page < totalPages - 1) {
-            gui.setItem(53, createItem(Material.ARROW, "§a§lNext Page", "§7Click to go forward"));
+            gui.setItem(53, GUIUtils.createItem(Material.ARROW, "§a§lNext Page", "§7Click to go forward"));
         }
 
         // Display achievements
@@ -110,7 +110,7 @@ public class SlayerAchievementGUI implements Listener {
                 lore.add("§7" + achievement.getUnlockCondition());
             }
 
-            gui.setItem(slot, createItem(icon, achievement.getDisplayName(),
+            gui.setItem(slot, GUIUtils.createItem(icon, achievement.getDisplayName(),
                     lore.toArray(new String[0])));
 
             slot += 2;
@@ -118,9 +118,9 @@ public class SlayerAchievementGUI implements Listener {
         }
 
         // Category legend
-        gui.setItem(38, createItem(Material.LIME_DYE, "§a§lBEGINNER", "§7Easy achievements"));
-        gui.setItem(40, createItem(Material.YELLOW_DYE, "§e§lINTERMEDIATE", "§7Medium difficulty"));
-        gui.setItem(42, createItem(Material.BLUE_DYE, "§9§lADVANCED", "§7Hard achievements"));
+        gui.setItem(38, GUIUtils.createItem(Material.LIME_DYE, "§a§lBEGINNER", "§7Easy achievements"));
+        gui.setItem(40, GUIUtils.createItem(Material.YELLOW_DYE, "§e§lINTERMEDIATE", "§7Medium difficulty"));
+        gui.setItem(42, GUIUtils.createItem(Material.BLUE_DYE, "§9§lADVANCED", "§7Hard achievements"));
 
         player.openInventory(gui);
     }
@@ -129,7 +129,7 @@ public class SlayerAchievementGUI implements Listener {
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
-        if (!event.getView().getTitle().contains("Slayer Achievements")) return;
+        if (!event.getView().getTitle().startsWith("§6§lSLAYER ACHIEVEMENTS")) return;
 
         event.setCancelled(true);
 
@@ -154,9 +154,5 @@ public class SlayerAchievementGUI implements Listener {
             player.closeInventory();
             return;
         }
-    }
-
-    private ItemStack createItem(Material material, String name, String... lore) {
-        return GUIUtils.createItem(material, name, lore);
     }
 }

@@ -75,7 +75,12 @@ public enum CustomEnchantment {
     HARVESTING("Harvesting", null, 5, "§2", "Increases crop yield"),
     SUGAR_RUSH("Sugar Rush", null, 5, "§c", "Increases speed when holding sugar"),
     EXPERIENCE("Experience", null, 5, "§b", "Increases XP gained from mobs"),
-    LOOTING_BAGS("Looting Bags", null, 5, "§6", "Increases loot from treasure bags");
+    LOOTING_BAGS("Looting Bags", null, 5, "§6", "Increases loot from treasure bags"),
+
+    // ========== EXPANDED CUSTOM ENCHANTS ==========
+    DRAGON_HUNTER("Dragon Hunter", null, 5, "§c", "Increases damage to dragons and bosses"),
+    OVERLOAD("Overload", null, 5, "§e", "Chance for powerful damage burst on hit"),
+    CUBISM("Cubism", null, 5, "§a", "Increases damage to slimes, magma cubes and similar");
 
     private final String displayName;
     private final Enchantment vanillaEnchant;
@@ -214,6 +219,9 @@ public enum CustomEnchantment {
             applicable.add(LIFE_STEAL);
             applicable.add(VENOMOUS);
             applicable.add(THUNDERBOLT);
+            applicable.add(DRAGON_HUNTER);
+            applicable.add(OVERLOAD);
+            applicable.add(CUBISM);
         } else if (name.contains("BOW")) {
             applicable.add(POWER);
             applicable.add(PUNCH);

@@ -58,7 +58,7 @@ public class IslandBrowseGUI implements Listener {
         // Get top rated islands first, then all public islands
         plugin.getIslandRatingManager().getTopRatedIslands(100).thenAccept(topRated -> {
             // Get all islands with warps
-            plugin.getIslandWarpManager().getAllPublicWarps().thenAccept(allWarps -> {
+            plugin.getIslandWarpManager().getAllPublicWarps(500).thenAccept(allWarps -> { // cap for large scale data compression (DB + mem); see IslandDAO limit + IMPROVEMENTS perf notes
                 plugin.getThreadSafety().runOnMainThread(() -> {
                     // Combine and sort: top rated first, then others
                     List<GridPosition> sortedIslands = new ArrayList<>();

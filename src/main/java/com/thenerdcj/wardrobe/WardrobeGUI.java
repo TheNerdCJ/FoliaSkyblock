@@ -5,6 +5,8 @@ import com.thenerdcj.cosmetic.ParticleTrail;
 import com.thenerdcj.gui.GUIUtils;
 import com.thenerdcj.pets.CosmeticPet;
 import com.thenerdcj.pets.PetType;
+import com.thenerdcj.runes.Rune;
+import com.thenerdcj.runes.RuneManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -57,7 +59,7 @@ public class WardrobeGUI implements Listener {
     private final Map<UUID, PetState> petStates = new ConcurrentHashMap<>();
 
     // View modes
-    public enum View { ARMOR, EQUIPMENT, COSMETICS, PETS, TAGS, WINGS }
+    public enum View { ARMOR, EQUIPMENT, COSMETICS, PETS, TAGS, WINGS, RUNES, HELMET_SKINS, DEATH_EFFECTS, DEATH_MESSAGES, BACKPACK_SKINS, POWER_ORB_SKINS, MINION_SKINS, FURNITURE, MUSIC, OVERHEAD, EMOTES, STRUCTURES, CHAT_BUBBLES, WEATHER, ACCESSORIES }
 
     public WardrobeGUI(FoliaSkyblock plugin) {
         this(plugin, true);
@@ -84,6 +86,21 @@ public class WardrobeGUI implements Listener {
             case PETS -> "§dPets";
             case TAGS -> "§5Tags";
             case WINGS -> "§bWings";
+            case RUNES -> "§5Runes";
+            case HELMET_SKINS -> "§6Helmets";
+            case DEATH_EFFECTS -> "§4Death Effects";
+            case DEATH_MESSAGES -> "§4Death Messages";
+            case BACKPACK_SKINS -> "§aBackpacks";
+            case POWER_ORB_SKINS -> "§bPower Orbs";
+            case MINION_SKINS -> "§6Minions";
+            case FURNITURE -> "§6Housing";
+            case MUSIC -> "§dMusic";
+            case OVERHEAD -> "§5Overhead";
+            case EMOTES -> "§dEmotes";
+            case STRUCTURES -> "§6Structures";
+            case CHAT_BUBBLES -> "§dChat Bubbles";
+            case WEATHER -> "§3Island Weather";
+            case ACCESSORIES -> "§6Accessories";
         };
         Inventory inv = Bukkit.createInventory(null, 54, "§6§lWardrobe §8- " + viewName);
 
@@ -118,12 +135,42 @@ public class WardrobeGUI implements Listener {
         ItemStack petsTab = createTabItem("§d§lPets", view == View.PETS, "VIEW_PETS");
         ItemStack tagsTab = createTabItem("§5§lTags", view == View.TAGS, "VIEW_TAGS");
         ItemStack wingsTab = createTabItem("§b§lWings", view == View.WINGS, "VIEW_WINGS");
+        ItemStack runesTab = createTabItem("§5§lRunes", view == View.RUNES, "VIEW_RUNES");
+        ItemStack helmetSkinsTab = createTabItem("§6§lHelmet Skins", view == View.HELMET_SKINS, "VIEW_HELMET_SKINS");
+        ItemStack deathEffectsTab = createTabItem("§4§lDeath Effects", view == View.DEATH_EFFECTS, "VIEW_DEATH_EFFECTS");
+        ItemStack deathMessagesTab = createTabItem("§4§lDeath Messages", view == View.DEATH_MESSAGES, "VIEW_DEATH_MESSAGES");
+        ItemStack backpackSkinsTab = createTabItem("§a§lBackpack Skins", view == View.BACKPACK_SKINS, "VIEW_BACKPACK_SKINS");
+        ItemStack powerOrbSkinsTab = createTabItem("§b§lPower Orb Skins", view == View.POWER_ORB_SKINS, "VIEW_POWER_ORB_SKINS");
+        ItemStack minionSkinsTab = createTabItem("§6§lMinion Skins", view == View.MINION_SKINS, "VIEW_MINION_SKINS");
+        ItemStack furnitureTab = createTabItem("§6§lHousing Decor", view == View.FURNITURE, "VIEW_FURNITURE");
+        ItemStack musicTab = createTabItem("§d§lIsland Music", view == View.MUSIC, "VIEW_MUSIC");
+        ItemStack overheadTab = createTabItem("§5§lOverhead Effects", view == View.OVERHEAD, "VIEW_OVERHEAD");
+        ItemStack emotesTab = createTabItem("§d§lEmotes", view == View.EMOTES, "VIEW_EMOTES");
+        ItemStack structuresTab = createTabItem("§6§lStructures", view == View.STRUCTURES, "VIEW_STRUCTURES");
+        ItemStack chatBubblesTab = createTabItem("§d§lChat Bubbles", view == View.CHAT_BUBBLES, "VIEW_CHAT_BUBBLES");
+        ItemStack weatherTab = createTabItem("§3§lIsland Weather", view == View.WEATHER, "VIEW_WEATHER");
+        ItemStack accessoriesTab = createTabItem("§6§lAccessories", view == View.ACCESSORIES, "VIEW_ACCESSORIES");
         inv.setItem(0, armorTab);
         inv.setItem(1, equipTab);
         inv.setItem(2, cosmeticsTab);
         inv.setItem(3, petsTab);
         inv.setItem(5, tagsTab);  // small offset so it doesn't overlap too much
         inv.setItem(6, wingsTab);
+        inv.setItem(7, runesTab);
+        inv.setItem(8, helmetSkinsTab);
+        inv.setItem(9, deathEffectsTab);
+        inv.setItem(10, deathMessagesTab);
+        inv.setItem(11, backpackSkinsTab);
+        inv.setItem(11, powerOrbSkinsTab);
+        inv.setItem(12, minionSkinsTab);
+        inv.setItem(13, furnitureTab);
+        inv.setItem(14, musicTab);
+        inv.setItem(15, overheadTab);
+        inv.setItem(16, emotesTab);
+        inv.setItem(17, structuresTab);
+        inv.setItem(18, chatBubblesTab);
+        inv.setItem(19, weatherTab);
+        inv.setItem(20, accessoriesTab);
 
         int[] slotPositions = {19, 20, 21, 22, 23, 24, 25, 28, 29}; // nice 3x3-ish layout
 
@@ -137,6 +184,36 @@ public class WardrobeGUI implements Listener {
             renderTagsPreview(player, inv);
         } else if (view == View.WINGS) {
             renderWingsPreview(player, inv);
+        } else if (view == View.RUNES) {
+            renderRunesPreview(player, inv);
+        } else if (view == View.HELMET_SKINS) {
+            renderHelmetSkinsPreview(player, inv);
+        } else if (view == View.DEATH_EFFECTS) {
+            renderDeathEffectsPreview(player, inv);
+        } else if (view == View.DEATH_MESSAGES) {
+            renderDeathMessagesPreview(player, inv);
+        } else if (view == View.BACKPACK_SKINS) {
+            renderBackpackSkinsPreview(player, inv);
+        } else if (view == View.POWER_ORB_SKINS) {
+            renderPowerOrbSkinsPreview(player, inv);
+        } else if (view == View.MINION_SKINS) {
+            renderMinionSkinsPreview(player, inv);
+        } else if (view == View.FURNITURE) {
+            renderFurniturePreview(player, inv);
+        } else if (view == View.MUSIC) {
+            renderMusicPreview(player, inv);
+        } else if (view == View.OVERHEAD) {
+            renderOverheadPreview(player, inv);
+        } else if (view == View.EMOTES) {
+            renderEmotesPreview(player, inv);
+        } else if (view == View.STRUCTURES) {
+            renderStructuresPreview(player, inv);
+        } else if (view == View.CHAT_BUBBLES) {
+            renderChatBubblesPreview(player, inv);
+        } else if (view == View.WEATHER) {
+            renderWeatherPreview(player, inv);
+        } else if (view == View.ACCESSORIES) {
+            renderAccessoriesPreview(player, inv);
         } else {
             // Render the 9 slots (original armor/equip)
             Map<Integer, WardrobeSet> presets = (view == View.ARMOR)
@@ -213,6 +290,28 @@ public class WardrobeGUI implements Listener {
             ));
             collectionItem.setItemMeta(cm);
             inv.setItem(47, collectionItem);
+
+            // Core Island Collections preview (synergy with gathering progression)
+            if (plugin.getCollectionManager() != null) {
+                String ik = null;
+                try {
+                    var isle = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                    if (isle != null) ik = isle.getId();
+                } catch (Exception ignored) {}
+                int collTotal = (ik != null) ? plugin.getCollectionManager().getCollectionCount(ik) : 0;
+                ItemStack collCore = new ItemStack(Material.BOOK);
+                ItemMeta ccm = collCore.getItemMeta();
+                ccm.setDisplayName("§6§lIsland Collections");
+                ccm.setLore(Arrays.asList(
+                    "§7Unique items discovered on this island: §a" + collTotal,
+                    "§7Gather, mine, fight, fish on your island to log discoveries.",
+                    "§7Milestones award Island XP + cosmetic rewards.",
+                    "",
+                    "§eUse §6/collections §eto view full progress"
+                ));
+                collCore.setItemMeta(ccm);
+                inv.setItem(46, collCore);
+            }
         }
 
         player.openInventory(inv);
@@ -467,10 +566,12 @@ public class WardrobeGUI implements Listener {
         // Get owned pets
         List<CosmeticPet> owned = petManager.getOwnedPets(player.getUniqueId());
 
-        // Collection progress
+        // Collection progress (pets + skins)
         int collectionCount = petManager.getPetCollectionCount(player.getUniqueId());
+        int skinCount = petManager.getSkinCollectionCount(player.getUniqueId());
         ItemStack collItem = GUIUtils.createItem(Material.BOOK, "§6§lPet Collection",
                 "§7Unique pets collected: §a" + collectionCount,
+                "§7Skins unlocked: §d" + skinCount,
                 "§7Rarity XP awarded on new discoveries");
         inv.setItem(47, collItem);
 
@@ -642,6 +743,617 @@ public class WardrobeGUI implements Listener {
     }
 
     /**
+     * Renders the Runes tab in the Wardrobe.
+     * Mirrors the simple preview style of Wings/Tags tabs.
+     * Runes are applied to held items (not globally "active"), so we show collection + owned list
+     * and provide a button to open the full Rune Table / dedicated GUI.
+     */
+    private void renderRunesPreview(Player player, Inventory inv) {
+        var runeManager = plugin.getRuneManager();
+        if (runeManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cRunes system unavailable"));
+            return;
+        }
+
+        int collCount = runeManager.getRuneCollectionCount(player.getUniqueId());
+        int totalRunes = Rune.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.ENCHANTED_BOOK, "§5§lCosmetic Runes",
+                "§7Apply visual effects to weapons & tools",
+                "§7Collection: §a" + collCount + " / " + totalRunes + " §7runes unlocked");
+        inv.setItem(4, title);
+
+        // Open full dedicated Rune GUI / Rune Table
+        ItemStack openFull = GUIUtils.createItem(Material.BOOK, "§6§lOpen Full Rune Menu",
+                "§7Browse, apply, and upgrade runes on your held item");
+        PersistentDataContainer openPdc = openFull.getItemMeta().getPersistentDataContainer();
+        openPdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_RUNE_GUI");
+        openFull.setItemMeta(openFull.getItemMeta());
+        inv.setItem(0, openFull);
+
+        // Show owned runes (simple list, similar to wings)
+        java.util.Set<Rune> owned = runeManager.getOwnedRunes(player.getUniqueId());
+
+        int slot = 18;
+        for (Rune rune : owned) {
+            if (slot > 44) break;
+            if (rune.isNone()) continue;
+
+            ItemStack item = GUIUtils.createItem(Material.ENCHANTED_BOOK,
+                    "§e" + rune.getDisplayName(),
+                    "§7" + rune.getDescription(),
+                    "§7Rarity: " + rune.getRarity().getColorCode() + rune.getRarity().getDisplayName(),
+                    "§7Max Tier: §e" + rune.getMaxTier() + "§7/3",
+                    "",
+                    "§eClick to open Rune Menu");
+
+            PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_RUNE_GUI");
+            item.setItemMeta(item.getItemMeta());
+
+            inv.setItem(slot++, item);
+        }
+
+        if (owned.isEmpty() || owned.size() <= 1) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cNo runes unlocked yet",
+                    "§7Earn them via prestige, slayer tokens, or milestones."));
+        }
+    }
+
+    /**
+     * Basic preview for Helmet Skins tab (modeled after Runes tab).
+     */
+    private void renderHelmetSkinsPreview(Player player, Inventory inv) {
+        var skinManager = plugin.getHelmetSkinManager();
+        if (skinManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cHelmet Skins system unavailable"));
+            return;
+        }
+
+        int collCount = skinManager.getSkinCollectionCount(player.getUniqueId());
+        int total = com.thenerdcj.cosmetic.HelmetSkin.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.DIAMOND_HELMET, "§6§lHelmet Skins",
+                "§7Cosmetic overrides for your helmet",
+                "§7Collection: §a" + collCount + " / " + total + " §7skins unlocked");
+        inv.setItem(4, title);
+
+        com.thenerdcj.cosmetic.HelmetSkin active = skinManager.getActiveHelmetSkin(player.getUniqueId());
+        ItemStack current = GUIUtils.createItem(Material.PAPER, "§e§lActive Helmet Skin",
+                active.isNone() ? "§7None" : active.getRarity().getColorCode() + active.getDisplayName());
+        inv.setItem(8, current);
+
+        ItemStack openFull = GUIUtils.createItem(Material.BOOK, "§6§lOpen Full Helmet Skins Menu");
+        PersistentDataContainer openPdc = openFull.getItemMeta().getPersistentDataContainer();
+        openPdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_HELMET_SKIN_GUI");
+        openFull.setItemMeta(openFull.getItemMeta());
+        inv.setItem(0, openFull);
+
+        java.util.Set<com.thenerdcj.cosmetic.HelmetSkin> owned = skinManager.getOwnedSkins(player.getUniqueId());
+        int slot = 18;
+        for (com.thenerdcj.cosmetic.HelmetSkin skin : owned) {
+            if (slot > 44) break;
+            if (skin.isNone()) continue;
+
+            ItemStack item = GUIUtils.createItem(Material.DIAMOND_HELMET,
+                    "§e" + skin.getDisplayName(),
+                    "§7" + skin.getDescription(),
+                    "§7Rarity: " + skin.getRarity().getColorCode() + skin.getRarity().getDisplayName(),
+                    "",
+                    "§eClick to open Helmet Skins menu");
+
+            PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_HELMET_SKIN_GUI");
+            item.setItemMeta(item.getItemMeta());
+            inv.setItem(slot++, item);
+        }
+
+        if (owned.isEmpty() || owned.size() <= 1) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cNo helmet skins unlocked yet",
+                    "§7Earn them via prestige or the Slayer Shop"));
+        }
+    }
+
+    /**
+     * Basic preview for Death Effects tab.
+     */
+    private void renderDeathEffectsPreview(Player player, Inventory inv) {
+        var effectManager = plugin.getDeathEffectManager();
+        if (effectManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cDeath Effects system unavailable"));
+            return;
+        }
+
+        int collCount = effectManager.getEffectCollectionCount(player.getUniqueId());
+        int total = com.thenerdcj.cosmetic.DeathEffect.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.SKELETON_SKULL, "§4§lDeath Effects",
+                "§7Cosmetic effects on death and kills",
+                "§7Collection: §a" + collCount + " / " + total + " §7effects unlocked");
+        inv.setItem(4, title);
+
+        com.thenerdcj.cosmetic.DeathEffect active = effectManager.getActiveDeathEffect(player.getUniqueId());
+        ItemStack current = GUIUtils.createItem(Material.PAPER, "§e§lActive Death Effect",
+                active.isNone() ? "§7None" : active.getRarity().getColorCode() + active.getDisplayName());
+        inv.setItem(8, current);
+
+        ItemStack openFull = GUIUtils.createItem(Material.BOOK, "§6§lOpen Full Death Effects Menu");
+        PersistentDataContainer openPdc = openFull.getItemMeta().getPersistentDataContainer();
+        openPdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_DEATH_EFFECT_GUI");
+        openFull.setItemMeta(openFull.getItemMeta());
+        inv.setItem(0, openFull);
+
+        java.util.Set<com.thenerdcj.cosmetic.DeathEffect> owned = effectManager.getOwnedEffects(player.getUniqueId());
+        int slot = 18;
+        for (com.thenerdcj.cosmetic.DeathEffect effect : owned) {
+            if (slot > 44) break;
+            if (effect.isNone()) continue;
+
+            ItemStack item = GUIUtils.createItem(Material.SKELETON_SKULL,
+                    "§e" + effect.getDisplayName(),
+                    "§7" + effect.getDescription(),
+                    "§7Rarity: " + effect.getRarity().getColorCode() + effect.getRarity().getDisplayName(),
+                    "",
+                    "§eClick to open Death Effects menu");
+
+            PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_DEATH_EFFECT_GUI");
+            item.setItemMeta(item.getItemMeta());
+            inv.setItem(slot++, item);
+        }
+
+        if (owned.isEmpty() || owned.size() <= 1) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cNo death effects unlocked yet",
+                    "§7Earn them via prestige or the Slayer Shop"));
+        }
+    }
+
+    /**
+     * Preview for Death Messages tab (new cosmetic system).
+     */
+    private void renderDeathMessagesPreview(Player player, Inventory inv) {
+        var msgManager = plugin.getDeathMessageManager();
+        if (msgManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cDeath Messages system unavailable"));
+            return;
+        }
+
+        int collCount = msgManager.getMessageCollectionCount(player.getUniqueId());
+        int total = com.thenerdcj.cosmetic.DeathMessageCosmetic.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.WRITABLE_BOOK, "§4§lDeath Messages",
+                "§7Custom text on death and kills",
+                "§7Collection: §a" + collCount + " / " + total + " §7messages unlocked");
+        inv.setItem(4, title);
+
+        com.thenerdcj.cosmetic.DeathMessageCosmetic active = msgManager.getActiveDeathMessage(player.getUniqueId());
+        ItemStack current = GUIUtils.createItem(Material.NAME_TAG, "§e§lActive Death Message",
+                active.isNone() ? "§7None" : active.getRarity().getColorCode() + active.getDisplayName());
+        inv.setItem(8, current);
+
+        ItemStack openFull = GUIUtils.createItem(Material.BOOK, "§6§lOpen Full Death Messages Menu");
+        PersistentDataContainer openPdc = openFull.getItemMeta().getPersistentDataContainer();
+        openPdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_DEATH_MESSAGE_GUI");
+        openFull.setItemMeta(openFull.getItemMeta());
+        inv.setItem(0, openFull);
+
+        java.util.Set<com.thenerdcj.cosmetic.DeathMessageCosmetic> owned = msgManager.getOwnedMessages(player.getUniqueId());
+        int slot = 18;
+        for (com.thenerdcj.cosmetic.DeathMessageCosmetic msg : owned) {
+            if (slot > 44) break;
+            if (msg.isNone()) continue;
+            ItemStack item = GUIUtils.createItem(Material.PAPER, msg.getRarity().getColorCode() + msg.getDisplayName(),
+                    "§7" + msg.getDescription());
+            PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_DEATH_MESSAGE_GUI");
+            item.setItemMeta(item.getItemMeta());
+            inv.setItem(slot++, item);
+        }
+
+        if (owned.isEmpty() || owned.size() <= 1) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cNo death messages unlocked yet",
+                    "§7Earn them via prestige or the Slayer Shop"));
+        }
+    }
+
+    /**
+     * Basic preview for Backpack Skins tab (exploration).
+     */
+    private void renderBackpackSkinsPreview(Player player, Inventory inv) {
+        var skinManager = plugin.getBackpackSkinManager();
+        if (skinManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cBackpack Skins system unavailable"));
+            return;
+        }
+
+        int collCount = skinManager.getOwnedSkins(player.getUniqueId()).size();
+        int total = com.thenerdcj.cosmetic.BackpackSkin.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.CHEST, "§a§lBackpack Skins",
+                "§7Cosmetic overrides for backpacks/storage",
+                "§7Collection: §a" + collCount + " / " + total + " §7skins");
+        inv.setItem(4, title);
+
+        com.thenerdcj.cosmetic.BackpackSkin active = skinManager.getActiveSkin(player.getUniqueId());
+        ItemStack current = GUIUtils.createItem(Material.PAPER, "§e§lActive Backpack Skin",
+                active.isNone() ? "§7None" : active.getRarity().getColorCode() + active.getDisplayName());
+        inv.setItem(8, current);
+
+        ItemStack openFull = GUIUtils.createItem(Material.BOOK, "§6§lOpen Full Backpack Skins Menu");
+        PersistentDataContainer openPdc = openFull.getItemMeta().getPersistentDataContainer();
+        openPdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_BACKPACK_SKIN_GUI");
+        openFull.setItemMeta(openFull.getItemMeta());
+        inv.setItem(0, openFull);
+
+        java.util.Set<com.thenerdcj.cosmetic.BackpackSkin> owned = skinManager.getOwnedSkins(player.getUniqueId());
+        int slot = 18;
+        for (com.thenerdcj.cosmetic.BackpackSkin skin : owned) {
+            if (slot > 44) break;
+            if (skin.isNone()) continue;
+
+            boolean isActive = skin == active;
+
+            ItemStack item = GUIUtils.createItem(Material.CHEST,
+                    (isActive ? "§a§l★ " : "§e") + skin.getDisplayName(),
+                    "§7" + skin.getDescription(),
+                    "§7Rarity: " + skin.getRarity().getColorCode() + skin.getRarity().getDisplayName(),
+                    "",
+                    isActive ? "§aCurrently Active" : "§eClick to open Backpack Skins menu");
+
+            PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_BACKPACK_SKIN_GUI");
+            item.setItemMeta(item.getItemMeta());
+            inv.setItem(slot++, item);
+        }
+
+        if (owned.isEmpty() || owned.size() <= 1) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cNo backpack skins unlocked yet",
+                    "§7Earn them via prestige or the Slayer Shop"));
+        }
+    }
+
+    /**
+     * Basic preview for Power Orb Skins tab (new system).
+     */
+    private void renderPowerOrbSkinsPreview(Player player, Inventory inv) {
+        var skinManager = plugin.getPowerOrbSkinManager();
+        if (skinManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cPower Orb Skins system unavailable"));
+            return;
+        }
+
+        int collCount = skinManager.getOwnedSkins(player.getUniqueId()).size();
+        int total = com.thenerdcj.cosmetic.PowerOrbSkin.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.BEACON, "§b§lPower Orb Skins",
+                "§7Cosmetic overrides for Power Orbs",
+                "§7Collection: §a" + collCount + " / " + total + " §7skins");
+        inv.setItem(4, title);
+
+        com.thenerdcj.cosmetic.PowerOrbSkin active = skinManager.getActiveSkin(player.getUniqueId());
+        ItemStack current = GUIUtils.createItem(Material.PAPER, "§e§lActive Power Orb Skin",
+                active.isNone() ? "§7None" : active.getRarity().getColorCode() + active.getDisplayName());
+        inv.setItem(8, current);
+
+        ItemStack openFull = GUIUtils.createItem(Material.BOOK, "§6§lOpen Full Power Orb Skins Menu");
+        PersistentDataContainer openPdc = openFull.getItemMeta().getPersistentDataContainer();
+        openPdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_POWER_ORB_SKIN_GUI");
+        openFull.setItemMeta(openFull.getItemMeta());
+        inv.setItem(0, openFull);
+
+        inv.setItem(22, GUIUtils.createItem(Material.BEACON, "§7Power Orb Skins",
+                "§7Foundation + GUI complete. Ready for orb item integration."));
+    }
+
+    /**
+     * Preview for Minion Skins tab (new system).
+     * Shows collection progress, active theme, and button to open full dedicated GUI.
+     */
+    private void renderMinionSkinsPreview(Player player, Inventory inv) {
+        var skinManager = plugin.getMinionSkinManager();
+        if (skinManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cMinion Skins system unavailable"));
+            return;
+        }
+
+        int collCount = skinManager.getOwnedSkins(player.getUniqueId()).size();
+        int total = com.thenerdcj.cosmetic.MinionSkin.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.COBBLESTONE, "§6§lMinion Skins",
+                "§7Themed appearances for your island minions",
+                "§7Collection: §a" + collCount + " / " + total + " §7skins",
+                "§7Active skin applies to all minions on your islands");
+        inv.setItem(4, title);
+
+        com.thenerdcj.cosmetic.MinionSkin active = skinManager.getActiveSkin(player.getUniqueId());
+        ItemStack current = GUIUtils.createItem(Material.PAPER, "§e§lActive Minion Theme",
+                active.isNone() ? "§7Default appearance" : active.getRarity().getColorCode() + active.getDisplayName());
+        inv.setItem(8, current);
+
+        ItemStack openFull = GUIUtils.createItem(Material.BOOK, "§6§lOpen Full Minion Skins Menu");
+        ItemMeta openMeta = openFull.getItemMeta();
+        if (openMeta != null) {
+            PersistentDataContainer openPdc = openMeta.getPersistentDataContainer();
+            openPdc.set(ACTION_KEY, PersistentDataType.STRING, "OPEN_MINION_SKIN_GUI");
+            openFull.setItemMeta(openMeta);
+        }
+        inv.setItem(0, openFull);
+
+        // Placeholder grid hint (actual application visible on-island)
+        inv.setItem(22, GUIUtils.createItem(Material.COBBLESTONE, "§7Minion Skins",
+                "§7Unlock via Prestige or Slayer Shop",
+                "§7Active theme changes minion helmet visuals + light effects"));
+    }
+
+    /**
+     * Preview for Island Furniture / Housing tab (foundation).
+     */
+    private void renderFurniturePreview(Player player, Inventory inv) {
+        var furnManager = plugin.getIslandFurnitureManager();
+        if (furnManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cHousing system unavailable"));
+            return;
+        }
+
+        int count = furnManager.getCollectionCount(player.getUniqueId());
+        int total = com.thenerdcj.cosmetic.IslandFurnitureType.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.CHEST, "§6§lIsland Housing Decor",
+                "§7Furniture & decorations for your island",
+                "§7Collection: §a" + count + " / " + total + " §7pieces");
+        inv.setItem(4, title);
+
+        ItemStack open = GUIUtils.createItem(Material.BOOK, "§6§lOpen Furniture Catalog");
+        ItemMeta m = open.getItemMeta();
+        if (m != null) {
+            m.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "OPEN_FURNITURE_GUI");
+            open.setItemMeta(m);
+        }
+        inv.setItem(0, open);
+
+        // Live active set bonuses (pride visuals when full themed sets are placed on *this* island)
+        String activeSetsLine = "§6Active set bonuses: complete themed sets (Celestial/Slayer/Mystic) for glowing + pride particles + XP";
+        try {
+            var isle = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+            if (isle != null && furnManager != null) {
+                java.util.Set<String> active = furnManager.getActiveSetBonuses(isle.getId());
+                if (!active.isEmpty()) {
+                    activeSetsLine = "§a★ Active on this island: §e" + String.join(", ", active) + " §7(glowing pieces + visitor pride)";
+                }
+            }
+        } catch (Exception ignored) {}
+
+        inv.setItem(22, GUIUtils.createItem(Material.CHEST, "§7Island Furniture",
+                "§7Unlock via Prestige or Slayer Shop",
+                "§7Place decorative pieces on your island",
+                activeSetsLine,
+                "§7Shift+Click items for preview hologram. Use /furniture list to manage placed."));
+    }
+
+    /**
+     * Preview for Island Music & Ambience tab.
+     */
+    private void renderMusicPreview(Player player, Inventory inv) {
+        var musicManager = plugin.getIslandMusicManager();
+        if (musicManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cMusic system unavailable"));
+            return;
+        }
+
+        int count = musicManager.getCollectionCount(player.getUniqueId());
+        int total = com.thenerdcj.cosmetic.IslandMusicType.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.NOTE_BLOCK, "§d§lIsland Music & Ambience",
+                "§7Cosmetic sounds and music for your island",
+                "§7Collection: §a" + count + " / " + total + " §7tracks");
+        inv.setItem(4, title);
+
+        ItemStack open = GUIUtils.createItem(Material.BOOK, "§d§lOpen Music Catalog");
+        ItemMeta m = open.getItemMeta();
+        if (m != null) {
+            m.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "OPEN_MUSIC_GUI");
+            open.setItemMeta(m);
+        }
+        inv.setItem(0, open);
+
+        inv.setItem(22, GUIUtils.createItem(Material.NOTE_BLOCK, "§7Island Music",
+                "§7Unlock via Prestige or Slayer Shop",
+                "§7Set active ambience that plays for visitors on your island"));
+    }
+
+    /**
+     * Preview for Advanced Overhead Cosmetics tab.
+     */
+    private void renderOverheadPreview(Player player, Inventory inv) {
+        var overheadManager = plugin.getOverheadCosmeticManager();
+        if (overheadManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cOverhead system unavailable"));
+            return;
+        }
+
+        int count = overheadManager.getOwned(player.getUniqueId()).size();
+        int total = com.thenerdcj.cosmetic.OverheadCosmetic.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.END_ROD, "§5§lOverhead Cosmetics",
+                "§7Floating visual effects above your head",
+                "§7Collection: §a" + count + " / " + total + " §7effects");
+        inv.setItem(4, title);
+
+        ItemStack open = GUIUtils.createItem(Material.BOOK, "§5§lOpen Overhead Catalog");
+        ItemMeta m = open.getItemMeta();
+        if (m != null) {
+            m.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "OPEN_OVERHEAD_GUI");
+            open.setItemMeta(m);
+        }
+        inv.setItem(0, open);
+
+        inv.setItem(22, GUIUtils.createItem(Material.END_ROD, "§7Overhead Effects",
+                "§7Unlock via Prestige or Slayer Shop",
+                "§7Floating titles, halos, auras and more above your head",
+                "§5Titles expansion: Champion, Mystic, Runic, Void, Celestial, Slayer Sigil, Ethereal + more"));
+    }
+
+    /**
+     * Preview for Emotes tab.
+     */
+    private void renderEmotesPreview(Player player, Inventory inv) {
+        var emoteManager = plugin.getEmoteCosmeticManager();
+        if (emoteManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cEmotes system unavailable"));
+            return;
+        }
+
+        int count = emoteManager.getOwned(player.getUniqueId()).size();
+        int total = com.thenerdcj.cosmetic.EmoteCosmetic.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.TOTEM_OF_UNDYING, "§d§lEmotes",
+                "§7Fun visual and chat emotes",
+                "§7Collection: §a" + count + " / " + total);
+        inv.setItem(4, title);
+
+        ItemStack open = GUIUtils.createItem(Material.BOOK, "§d§lOpen Emotes Catalog");
+        ItemMeta m = open.getItemMeta();
+        if (m != null) {
+            m.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "OPEN_EMOTES_GUI");
+            open.setItemMeta(m);
+        }
+        inv.setItem(0, open);
+
+        inv.setItem(22, GUIUtils.createItem(Material.TOTEM_OF_UNDYING, "§7Emotes",
+                "§7Unlock via Prestige or Slayer Shop",
+                "§7Use fun emotes with /emote <name>",
+                "§dAuto-triggers (join/kill/death) configurable in catalog GUI"));
+    }
+
+    /**
+     * Preview for Structures tab.
+     */
+    private void renderStructuresPreview(Player player, Inventory inv) {
+        var structManager = plugin.getIslandStructureManager();
+        if (structManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cStructures system unavailable"));
+            return;
+        }
+
+        int count = structManager.getCollectionCount(player.getUniqueId());
+        int total = com.thenerdcj.cosmetic.IslandStructureCosmetic.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.BRICKS, "§6§lIsland Structures",
+                "§7Larger decorative clusters for your island",
+                "§7Collection: §a" + count + " / " + total);
+        inv.setItem(4, title);
+
+        ItemStack open = GUIUtils.createItem(Material.BOOK, "§6§lOpen Structures Catalog");
+        ItemMeta m = open.getItemMeta();
+        if (m != null) {
+            m.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "OPEN_STRUCTURES_GUI");
+            open.setItemMeta(m);
+        }
+        inv.setItem(0, open);
+
+        inv.setItem(22, GUIUtils.createItem(Material.BRICKS, "§7Structures",
+                "§7Unlock via Prestige or Slayer Shop",
+                "§7Place large cosmetic structures on your island"));
+    }
+
+    /**
+     * Preview for Chat Bubbles tab.
+     */
+    private void renderChatBubblesPreview(Player player, Inventory inv) {
+        var bubbleManager = plugin.getChatBubbleCosmeticManager();
+        if (bubbleManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cChat Bubbles system unavailable"));
+            return;
+        }
+
+        int count = bubbleManager.getCollectionCount(player.getUniqueId());
+        int total = com.thenerdcj.cosmetic.ChatBubbleCosmetic.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.PAPER, "§d§lChat Bubbles",
+                "§7Floating styled messages when you chat",
+                "§7Collection: §a" + count + " / " + total);
+        inv.setItem(4, title);
+
+        ItemStack open = GUIUtils.createItem(Material.BOOK, "§d§lOpen Chat Bubbles Catalog");
+        ItemMeta m = open.getItemMeta();
+        if (m != null) {
+            m.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "OPEN_CHAT_BUBBLES_GUI");
+            open.setItemMeta(m);
+        }
+        inv.setItem(0, open);
+
+        // Show active if any
+        var active = bubbleManager.getActive(player.getUniqueId());
+        String activeLine = active != null && !active.isNone() ? "§aActive: " + active.getRarity().getColorCode() + active.getDisplayName() : "§7No bubble active";
+        inv.setItem(22, GUIUtils.createItem(Material.PAPER, "§7Chat Bubbles",
+                "§7Unlock via Prestige or Slayer Shop",
+                activeLine,
+                "§7Messages appear as floating text + particles"));
+    }
+
+    /**
+     * Preview for Island Weather tab.
+     */
+    private void renderWeatherPreview(Player player, Inventory inv) {
+        var weatherManager = plugin.getIslandWeatherCosmeticManager();
+        if (weatherManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cIsland Weather system unavailable"));
+            return;
+        }
+
+        int count = weatherManager.getCollectionCount(player.getUniqueId());
+        int total = com.thenerdcj.cosmetic.IslandWeatherCosmetic.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.WATER_BUCKET, "§3§lIsland Weather",
+                "§7Cosmetic particle weather for your island",
+                "§7Collection: §a" + count + " / " + total);
+        inv.setItem(4, title);
+
+        ItemStack open = GUIUtils.createItem(Material.BOOK, "§3§lOpen Weather Catalog");
+        ItemMeta m = open.getItemMeta();
+        if (m != null) {
+            m.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "OPEN_WEATHER_GUI");
+            open.setItemMeta(m);
+        }
+        inv.setItem(0, open);
+
+        inv.setItem(22, GUIUtils.createItem(Material.WATER_BUCKET, "§7Island Weather",
+                "§7Unlock via Prestige or Slayer Shop",
+                "§7Set active while on your island (visible to visitors)"));
+    }
+
+    /**
+     * Preview for Accessories tab.
+     */
+    private void renderAccessoriesPreview(Player player, Inventory inv) {
+        var accManager = plugin.getAccessoryCosmeticManager();
+        if (accManager == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cAccessories system unavailable"));
+            return;
+        }
+
+        int count = accManager.getOwned(player.getUniqueId()).size();
+        int total = com.thenerdcj.cosmetic.AccessoryCosmetic.values().length - 1;
+
+        ItemStack title = GUIUtils.createItem(Material.NETHER_STAR, "§6§lAccessories",
+                "§7Small floating cosmetic items around you",
+                "§7Collection: §a" + count + " / " + total);
+        inv.setItem(4, title);
+
+        ItemStack open = GUIUtils.createItem(Material.BOOK, "§6§lOpen Accessories Catalog");
+        ItemMeta m = open.getItemMeta();
+        if (m != null) {
+            m.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "OPEN_ACCESSORIES_GUI");
+            open.setItemMeta(m);
+        }
+        inv.setItem(0, open);
+
+        inv.setItem(22, GUIUtils.createItem(Material.NETHER_STAR, "§7Accessories",
+                "§7Unlock via Prestige or Slayer Shop",
+                "§7Floating visuals around the player"));
+    }
+
+    /**
      * Renders the Tags tab in the Wardrobe (pagination + rarity filtering).
      * Follows the exact same UX we built for Pets and Cosmetics tabs.
      */
@@ -781,6 +1493,66 @@ public class WardrobeGUI implements Listener {
                 openWardrobe(player, View.WINGS);
                 return;
             }
+            if (action.equals("VIEW_RUNES")) {
+                openWardrobe(player, View.RUNES);
+                return;
+            }
+            if (action.equals("VIEW_HELMET_SKINS")) {
+                openWardrobe(player, View.HELMET_SKINS);
+                return;
+            }
+            if (action.equals("VIEW_DEATH_EFFECTS")) {
+                openWardrobe(player, View.DEATH_EFFECTS);
+                return;
+            }
+            if (action.equals("VIEW_DEATH_MESSAGES")) {
+                openWardrobe(player, View.DEATH_MESSAGES);
+                return;
+            }
+            if (action.equals("VIEW_BACKPACK_SKINS")) {
+                openWardrobe(player, View.BACKPACK_SKINS);
+                return;
+            }
+            if (action.equals("VIEW_POWER_ORB_SKINS")) {
+                openWardrobe(player, View.POWER_ORB_SKINS);
+                return;
+            }
+            if (action.equals("VIEW_MINION_SKINS")) {
+                openWardrobe(player, View.MINION_SKINS);
+                return;
+            }
+            if (action.equals("VIEW_FURNITURE")) {
+                openWardrobe(player, View.FURNITURE);
+                return;
+            }
+            if (action.equals("VIEW_MUSIC")) {
+                openWardrobe(player, View.MUSIC);
+                return;
+            }
+            if (action.equals("VIEW_OVERHEAD")) {
+                openWardrobe(player, View.OVERHEAD);
+                return;
+            }
+            if (action.equals("VIEW_EMOTES")) {
+                openWardrobe(player, View.EMOTES);
+                return;
+            }
+            if (action.equals("VIEW_STRUCTURES")) {
+                openWardrobe(player, View.STRUCTURES);
+                return;
+            }
+            if (action.equals("VIEW_CHAT_BUBBLES")) {
+                openWardrobe(player, View.CHAT_BUBBLES);
+                return;
+            }
+            if (action.equals("VIEW_WEATHER")) {
+                openWardrobe(player, View.WEATHER);
+                return;
+            }
+            if (action.equals("VIEW_ACCESSORIES")) {
+                openWardrobe(player, View.ACCESSORIES);
+                return;
+            }
 
             // Slot actions: ARMOR_3 or EQUIP_5
             if (action.startsWith("ARMOR_") || action.startsWith("EQUIP_")) {
@@ -846,6 +1618,111 @@ public class WardrobeGUI implements Listener {
             if (action.equals("OPEN_PET_GUI")) {
                 player.closeInventory();
                 plugin.getPetGUI().open(player);
+                return;
+            }
+            if (action.equals("OPEN_RUNE_GUI")) {
+                player.closeInventory();
+                if (plugin.getRuneGUI() != null) {
+                    plugin.getRuneGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_HELMET_SKIN_GUI")) {
+                player.closeInventory();
+                if (plugin.getHelmetSkinGUI() != null) {
+                    plugin.getHelmetSkinGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_DEATH_EFFECT_GUI")) {
+                player.closeInventory();
+                if (plugin.getDeathEffectGUI() != null) {
+                    plugin.getDeathEffectGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_DEATH_MESSAGE_GUI")) {
+                player.closeInventory();
+                if (plugin.getDeathMessageGUI() != null) {
+                    plugin.getDeathMessageGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_BACKPACK_SKIN_GUI")) {
+                player.closeInventory();
+                if (plugin.getBackpackSkinGUI() != null) {
+                    plugin.getBackpackSkinGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_POWER_ORB_SKIN_GUI")) {
+                player.closeInventory();
+                if (plugin.getPowerOrbSkinGUI() != null) {
+                    plugin.getPowerOrbSkinGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_MINION_SKIN_GUI")) {
+                player.closeInventory();
+                if (plugin.getMinionSkinGUI() != null) {
+                    plugin.getMinionSkinGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_FURNITURE_GUI")) {
+                player.closeInventory();
+                if (plugin.getIslandFurnitureGUI() != null) {
+                    plugin.getIslandFurnitureGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_MUSIC_GUI")) {
+                player.closeInventory();
+                if (plugin.getIslandMusicGUI() != null) {
+                    plugin.getIslandMusicGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_OVERHEAD_GUI")) {
+                player.closeInventory();
+                if (plugin.getOverheadCosmeticGUI() != null) {
+                    plugin.getOverheadCosmeticGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_EMOTES_GUI")) {
+                player.closeInventory();
+                if (plugin.getEmoteCosmeticGUI() != null) {
+                    plugin.getEmoteCosmeticGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_STRUCTURES_GUI")) {
+                player.closeInventory();
+                if (plugin.getIslandStructureGUI() != null) {
+                    plugin.getIslandStructureGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_CHAT_BUBBLES_GUI")) {
+                player.closeInventory();
+                if (plugin.getChatBubbleGUI() != null) {
+                    plugin.getChatBubbleGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_WEATHER_GUI")) {
+                player.closeInventory();
+                if (plugin.getIslandWeatherGUI() != null) {
+                    plugin.getIslandWeatherGUI().open(player);
+                }
+                return;
+            }
+            if (action.equals("OPEN_ACCESSORIES_GUI")) {
+                player.closeInventory();
+                if (plugin.getAccessoryCosmeticGUI() != null) {
+                    plugin.getAccessoryCosmeticGUI().open(player);
+                }
                 return;
             }
             if (action.startsWith("PET_WARDROBE_")) {

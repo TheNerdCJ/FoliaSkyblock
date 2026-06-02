@@ -1,6 +1,7 @@
 package com.thenerdcj.quest;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.cosmetic.ParticleTrail;
 import com.thenerdcj.island.Island;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -27,9 +28,15 @@ public class QuestManager {
     // islandId -> list of quests
     private final Map<String, List<Quest>> questsByIsland = new ConcurrentHashMap<>();
 
+    // Large scale compression/optim: bound quest data per island/global to prevent mem growth on 1000+ islands.
+    // Quests per island are small but map of islands can grow; trim expired/old islands periodically.
+    private static final int MAX_QUEST_ISLANDS = 2000;
+    private static final int MAX_QUESTS_PER_ISLAND = 20; // safety cap
+
     public QuestManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         // Future: load quests from database on startup
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCaches, 20L * 60 * 5, 20L * 60 * 5);
     }
 
     /**
@@ -50,7 +57,7 @@ public class QuestManager {
     public void generateDailyQuests(String islandId) {
         List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
 
-        // Clean up old/expired dailies
+        // Clean up old/expired dailies (never touch FIRST/onboarding quests)
         current.removeIf(q -> 
             q.getType() == Quest.QuestType.DAILY && 
             (q.isCompleted() || q.isExpired() || q.isClaimed())
@@ -73,7 +80,7 @@ public class QuestManager {
     public void generateWeeklyQuests(String islandId) {
         List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
 
-        // Clean up old weeklies
+        // Clean up old weeklies (never touch FIRST/onboarding quests)
         current.removeIf(q -> 
             q.getType() == Quest.QuestType.WEEKLY && 
             (q.isCompleted() || q.isExpired() || q.isClaimed())
@@ -87,6 +94,73 @@ public class QuestManager {
             Quest newQuest = createRandomQuest(Quest.QuestType.WEEKLY);
             current.add(newQuest);
         }
+    }
+
+    /**
+     * Generate one-time early-game / onboarding "FIRST" quests for a brand new island.
+     * These act as the tutorial / balance for the heavy late-game systems (skills, collections, housing, cosmetics).
+     * Called on island creation (including resets for fresh start feel). Never removed by daily/weekly gens.
+     */
+    public void generateOnboardingQuests(String islandId) {
+        List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
+
+        long firstCount = current.stream()
+            .filter(q -> q.getType() == Quest.QuestType.FIRST)
+            .count();
+
+        if (firstCount > 0) return; // Already seeded for this island life
+
+        // Fixed, friendly first-island quests (target low for new players, categories map to actions)
+        current.add(createFirstQuest(
+            Quest.QuestCategory.FARMING,
+            "First Harvest",
+            "Harvest your first crops (break fully-grown wheat, carrots, potatoes, etc.)",
+            1, 35, 40
+        ));
+        current.add(createFirstQuest(
+            Quest.QuestCategory.MINING,
+            "First Dig",
+            "Break your first stone, ore, or dirt block on the island",
+            1, 25, 30
+        ));
+        current.add(createFirstQuest(
+            Quest.QuestCategory.COMBAT,
+            "First Foe",
+            "Defeat your first hostile mob (zombie, skeleton, etc.)",
+            1, 50, 45
+        ));
+        current.add(createFirstQuest(
+            Quest.QuestCategory.BUILDING,
+            "First Steps",
+            "Place blocks to expand or customize your island (5 total)",
+            5, 20, 25
+        ));
+        current.add(createFirstQuest(
+            Quest.QuestCategory.CHALLENGE,
+            "First Minion",
+            "Deploy your first minion to help automate tasks",
+            1, 60, 50
+        ));
+
+        // Note: progress is fed by EarlyGameListener (safe, anti-cheat guarded) + MinionManager hook
+    }
+
+    private Quest createFirstQuest(Quest.QuestCategory category, String title, String description,
+                                   int target, int rewardXp, int rewardMoney) {
+        long farFuture = System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000); // never expires
+        return new Quest(
+            UUID.randomUUID().toString(),
+            "§aOnboarding: " + title,
+            description,
+            category,
+            Quest.QuestType.FIRST,
+            0,
+            target,
+            rewardXp,
+            rewardMoney,
+            false,
+            farFuture
+        );
     }
 
     /**
@@ -124,6 +198,22 @@ public class QuestManager {
                     player.sendMessage("§cWarning: No island found to deposit money into.");
                 }
 
+                // Early game / onboarding special rewards for FIRST quests (light Play-to-Win onboarding)
+                if (quest.getType() == Quest.QuestType.FIRST) {
+                    player.sendMessage("§d§lOnboarding Milestone! §7Thank you for taking your first steps.");
+                    // Grant a free low-tier cosmetic trail (starter reward, normally prestige/slayer gated)
+                    if (plugin.getParticleTrailManager() != null) {
+                        boolean granted = plugin.getParticleTrailManager().unlockTrail(player, ParticleTrail.HAPPY_VILLAGER);
+                        if (granted) {
+                            player.sendMessage("§a§lWelcome Reward: §7Happy Villager trail unlocked (free for new players)!");
+                        }
+                    }
+                    // Small extra island XP synergy (via manager for party balance)
+                    plugin.getIslandManager().addIslandXp(player, 25);
+                    // Light personal economy nudge (new player starter balance via small grant - Play-to-Win onboarding)
+                    plugin.getEconomyManager().addPlayerBalance(player.getUniqueId(), 75.0);
+                }
+
                 // Play sound is handled in GUI
 
                 return true;
@@ -136,13 +226,22 @@ public class QuestManager {
      * Optional helper: Add progress to matching quests (call this from your listeners)
      */
     public void addProgressToIsland(String islandId, Quest.QuestCategory category, int amount) {
+        long start = 0;
+        if (plugin.getIslandWorthManager() != null && plugin.getIslandWorthManager().isProfileHotPaths()) start = System.nanoTime();
         List<Quest> quests = questsByIsland.get(islandId);
-        if (quests == null) return;
+        if (quests == null) {
+            if (start != 0) { /* no log if no quests */ }
+            return;
+        }
 
         for (Quest quest : quests) {
             if (quest.getCategory() == category && !quest.isCompleted() && !quest.isExpired() && !quest.isClaimed()) {
                 quest.addProgress(amount);
             }
+        }
+        if (start != 0) {
+            long ns = System.nanoTime() - start;
+            if (ns > 500_000L) plugin.getLogger().info("[QuestManager] PROFILE: addProgressToIsland took " + (ns / 1_000_000.0) + " ms (early game/quest hot path for large scale)");
         }
     }
 
@@ -156,6 +255,7 @@ public class QuestManager {
         int target = switch (type) {
             case DAILY -> 8 + random.nextInt(25);
             case WEEKLY -> 40 + random.nextInt(80);
+            case FIRST -> 1; // onboarding handled by dedicated creator (not reached via random)
         };
 
         // Adjust target per category for balance
@@ -215,5 +315,31 @@ public class QuestManager {
             case CHALLENGE -> "Complete " + target + " special actions";
             default -> "Complete " + target + " actions";
         };
+    }
+
+    /**
+     * Bounded cleanup for questsByIsland CHM (large scale server compression for 100s-1000+ islands).
+     * Trims map size, per-island quest lists to MAX.
+     * Periodic Folia task + can be called on island delete/reset.
+     * Per IMPROVEMENTS "review/bound all CHM", "more CHM bounds in all managers", "compression/optimization suggestions for large scale servers".
+     */
+    private void cleanupCaches() {
+        if (questsByIsland.size() > MAX_QUEST_ISLANDS) {
+            java.util.Iterator<String> it = questsByIsland.keySet().iterator();
+            int toRemove = questsByIsland.size() - (MAX_QUEST_ISLANDS - 100);
+            while (it.hasNext() && toRemove > 0) {
+                it.next();
+                it.remove();
+                toRemove--;
+            }
+        }
+        for (java.util.List<Quest> list : questsByIsland.values()) {
+            if (list.size() > MAX_QUESTS_PER_ISLAND) {
+                // trim excess (keep recent)
+                while (list.size() > MAX_QUESTS_PER_ISLAND) {
+                    list.remove(0);
+                }
+            }
+        }
     }
 }

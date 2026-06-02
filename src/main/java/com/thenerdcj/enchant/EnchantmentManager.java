@@ -3,9 +3,12 @@ package com.thenerdcj.enchant;
 import com.thenerdcj.FoliaSkyblock;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.*;
 
@@ -21,9 +24,15 @@ import java.util.*;
 public class EnchantmentManager {
 
     private final FoliaSkyblock plugin;
+    private final NamespacedKey CUSTOM_ENCHANT_PREFIX_KEY;
 
     public EnchantmentManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
+        this.CUSTOM_ENCHANT_PREFIX_KEY = new NamespacedKey(plugin, "custom_enchant");
+    }
+
+    private NamespacedKey getCustomEnchantKey(CustomEnchantment enchant) {
+        return new NamespacedKey(plugin, "custom_enchant_" + enchant.name().toLowerCase());
     }
 
     /**
@@ -57,6 +66,32 @@ public class EnchantmentManager {
     }
 
     /**
+     * Apply enchantment using upgraded storage (PDC for customs + lore for display).
+     * This is the recommended way; upgrades the old lore-only for custom enchants.
+     */
+    public void applyEnchantment(ItemStack item, CustomEnchantment enchantment, int level) {
+        if (level < 1 || level > enchantment.getMaxLevel()) return;
+
+        if (enchantment.isVanilla()) {
+            item.addUnsafeEnchantment(enchantment.getVanillaEnchant(), level);
+        } else {
+            // Custom: store in PDC (authoritative) + update lore for display
+            if (item.getItemMeta() == null) return;
+            ItemMeta meta = item.getItemMeta();
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(getCustomEnchantKey(enchantment), PersistentDataType.INTEGER, level);
+
+            // Update lore for visibility (remove old, add new)
+            List<String> lore = meta.getLore();
+            if (lore == null) lore = new ArrayList<>();
+            lore.removeIf(line -> line.contains(enchantment.getDisplayName()));
+            lore.add(enchantment.getColorCode() + enchantment.getDisplayName() + " " + CustomEnchantment.toRoman(level));
+            meta.setLore(lore);
+            item.setItemMeta(meta);
+        }
+    }
+
+    /**
      * Apply a random enchantment to an item (for enchanting table)
      */
     public void applyRandomEnchantment(ItemStack item, Player player) {
@@ -71,8 +106,8 @@ public class EnchantmentManager {
         int maxLevel = Math.min(enchant.getMaxLevel(), 5);
         int level = 1 + new Random().nextInt(maxLevel);
 
-        // Apply
-        enchant.apply(item, level);
+        // Apply (upgraded storage)
+        this.applyEnchantment(item, enchant, level);
 
         player.sendMessage("§a§lEnchanted! §7" + enchant.getDisplayName() + " " +
                 CustomEnchantment.toRoman(level) + " applied!");
@@ -80,14 +115,18 @@ public class EnchantmentManager {
 
     /**
      * Get all enchantments on an item (both vanilla and custom)
+     * Upgraded: customs read from PDC first (reliable), fallback to lore for old items.
      */
     public Map<CustomEnchantment, Integer> getAllEnchantments(ItemStack item) {
         Map<CustomEnchantment, Integer> enchantments = new HashMap<>();
 
         if (item == null || item.getItemMeta() == null) return enchantments;
 
+        ItemMeta meta = item.getItemMeta();
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+
         // Get vanilla enchantments
-        for (var entry : item.getItemMeta().getEnchants().entrySet()) {
+        for (var entry : meta.getEnchants().entrySet()) {
             for (CustomEnchantment custom : CustomEnchantment.values()) {
                 if (custom.isVanilla() && custom.getVanillaEnchant() == entry.getKey()) {
                     enchantments.put(custom, entry.getValue());
@@ -96,12 +135,19 @@ public class EnchantmentManager {
             }
         }
 
-        // Get custom enchantments from lore
-        if (item.getItemMeta().getLore() != null) {
-            for (String line : item.getItemMeta().getLore()) {
-                for (CustomEnchantment custom : CustomEnchantment.values()) {
-                    if (!custom.isVanilla() && line.contains(custom.getDisplayName())) {
-                        int level = custom.getLevel(item);
+        // Get custom enchantments from PDC (preferred) or lore (legacy)
+        for (CustomEnchantment custom : CustomEnchantment.values()) {
+            if (custom.isVanilla()) continue;
+            Integer pdcLevel = pdc.get(getCustomEnchantKey(custom), PersistentDataType.INTEGER);
+            if (pdcLevel != null && pdcLevel > 0) {
+                enchantments.put(custom, pdcLevel);
+                continue;
+            }
+            // legacy lore fallback
+            if (meta.getLore() != null) {
+                for (String line : meta.getLore()) {
+                    if (line.contains(custom.getDisplayName())) {
+                        int level = custom.getLevel(item); // uses lore parse
                         if (level > 0) {
                             enchantments.put(custom, level);
                         }
@@ -116,42 +162,40 @@ public class EnchantmentManager {
 
     /**
      * Check if an item has a specific enchantment
+     * Upgraded to check PDC for customs.
      */
     public boolean hasEnchantment(ItemStack item, CustomEnchantment enchantment) {
-        return enchantment.getLevel(item) > 0;
+        if (enchantment.isVanilla()) {
+            return item.getEnchantmentLevel(enchantment.getVanillaEnchant()) > 0;
+        }
+        if (item == null || item.getItemMeta() == null) return false;
+        PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+        Integer lvl = pdc.get(getCustomEnchantKey(enchantment), PersistentDataType.INTEGER);
+        if (lvl != null && lvl > 0) return true;
+        return enchantment.getLevel(item) > 0; // legacy
     }
 
     /**
      * Remove an enchantment from an item
+     * Upgraded: removes from PDC for customs.
      */
     public void removeEnchantment(ItemStack item, CustomEnchantment enchantment) {
         if (enchantment.isVanilla()) {
             item.removeEnchantment(enchantment.getVanillaEnchant());
         } else {
-            // Remove from lore
             ItemMeta meta = item.getItemMeta();
-            if (meta != null && meta.getLore() != null) {
-                List<String> lore = new ArrayList<>(meta.getLore());
-                lore.removeIf(line -> line.contains(enchantment.getDisplayName()));
-                meta.setLore(lore);
+            if (meta != null) {
+                PersistentDataContainer pdc = meta.getPersistentDataContainer();
+                pdc.remove(getCustomEnchantKey(enchantment));
+                // Remove from lore too
+                if (meta.getLore() != null) {
+                    List<String> lore = new ArrayList<>(meta.getLore());
+                    lore.removeIf(line -> line.contains(enchantment.getDisplayName()));
+                    meta.setLore(lore);
+                }
                 item.setItemMeta(meta);
             }
         }
-    }
-
-    /**
-     * Get the total enchantment power of an item (for balancing)
-     */
-    public int getEnchantmentPower(ItemStack item) {
-        int power = 0;
-
-        Map<CustomEnchantment, Integer> enchants = getAllEnchantments(item);
-        for (var entry : enchants.entrySet()) {
-            // Higher level enchantments contribute more power
-            power += entry.getValue() * (entry.getKey().isVanilla() ? 1 : 2);
-        }
-
-        return power;
     }
 
     /**
@@ -163,6 +207,8 @@ public class EnchantmentManager {
 
         int level = minLevel + new Random().nextInt(Math.min(maxLevel, enchant.getMaxLevel()) - minLevel + 1);
 
-        return createEnchantmentBook(enchant, level);
+        ItemStack book = createEnchantmentBook(enchant, level);
+        // Note: books are display only; real apply uses applyEnchantment on target item
+        return book;
     }
 }

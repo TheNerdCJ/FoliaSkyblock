@@ -16,7 +16,8 @@ public class Quest {
 
     public enum QuestType {
         DAILY,
-        WEEKLY
+        WEEKLY,
+        FIRST   // Onboarding / early-game first-island quests (one-time per island life, never expire, special rewards)
     }
 
     private final String id;
@@ -108,6 +109,7 @@ public class Quest {
     }
 
     public boolean isExpired() {
+        if (type == QuestType.FIRST) return false; // Onboarding first quests never expire
         return System.currentTimeMillis() > expiryTime;
     }
 

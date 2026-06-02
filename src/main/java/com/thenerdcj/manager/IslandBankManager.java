@@ -1,16 +1,12 @@
 package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
+import com.thenerdcj.database.IslandDAO;
 import com.thenerdcj.island.IslandBank;
 import org.bukkit.Bukkit;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,13 +16,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public class IslandBankManager {
 
     private final FoliaSkyblock plugin;
-    private final DatabaseManager databaseManager;
-    private final Map<GridPosition, IslandBank> bankCache = new ConcurrentHashMap<>();
+    // Real LRU for large scale (access-order LinkedHashMap like worthCache for compression)
+    private final Map<GridPosition, IslandBank> bankCache = Collections.synchronizedMap(new LinkedHashMap<GridPosition, IslandBank>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<GridPosition, IslandBank> eldest) {
+            return size() > 500;
+        }
+    });
 
     public IslandBankManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        this.databaseManager = plugin.getDatabaseManager();
         // Table creation is now centralized in DatabaseManager.createTables()
+        // Persistence fully delegated to IslandDAO (withConnection)
         plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCache, 36000L, 36000L);
     }
 
@@ -34,43 +35,26 @@ public class IslandBankManager {
         IslandBank cached = bankCache.get(pos);
         if (cached != null) return CompletableFuture.completedFuture(cached);
 
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = databaseManager.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(
-                         "SELECT balance FROM island_banks WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
-                stmt.setInt(1, pos.getX());
-                stmt.setInt(2, pos.getZ());
-                stmt.setString(3, pos.getDimension().name());
-                ResultSet rs = stmt.executeQuery();
-
-                IslandBank bank = new IslandBank(pos);
-                if (rs.next()) bank.setBalance(rs.getDouble("balance"));
-
-                bankCache.put(pos, bank);
-                return bank;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to load island bank: " + e.getMessage());
-                return new IslandBank(pos);
-            }
+        // Delegate to IslandDAO (withConnection promoted; removes direct conn from manager - DB modularization step)
+        IslandDAO dao = plugin.getDatabaseManager().getIslandDAO();
+        return dao.loadIslandBankBalance(pos).thenApply(bal -> {
+            IslandBank bank = new IslandBank(pos);
+            bank.setBalance(bal);
+            bankCache.put(pos, bank);
+            return bank;
+        }).exceptionally(ex -> {
+            plugin.getLogger().severe("Failed to load island bank via DAO: " + ex.getMessage());
+            return new IslandBank(pos);
         });
     }
 
     public CompletableFuture<Void> saveBank(IslandBank bank) {
         GridPosition pos = bank.getGridPosition();
-        return CompletableFuture.runAsync(() -> {
-            try (Connection conn = databaseManager.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO island_banks (grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?)")) {
-                stmt.setInt(1, pos.getX());
-                stmt.setInt(2, pos.getZ());
-                stmt.setString(3, pos.getDimension().name());
-                stmt.setDouble(4, bank.getBalance());
-                stmt.executeUpdate();
-                bankCache.put(pos, bank);
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to save island bank: " + e.getMessage());
-            }
-        });
+        // Delegate to IslandDAO (fire-and-forget write via runAsync + withConnection)
+        IslandDAO dao = plugin.getDatabaseManager().getIslandDAO();
+        dao.saveIslandBankBalance(pos, bank.getBalance());
+        bankCache.put(pos, bank);
+        return CompletableFuture.completedFuture(null);
     }
 
     public CompletableFuture<Boolean> deposit(GridPosition pos, double amount) {
@@ -94,6 +78,6 @@ public class IslandBankManager {
     }
 
     private void cleanupCache() {
-        if (bankCache.size() > 500) bankCache.clear();
+        // Real LRU now via LinkedHashMap access-order removeEldest (auto evicts when >500); no manual needed.
     }
 }

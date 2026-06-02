@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.enchant.CustomEnchantment;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -14,6 +15,8 @@ import org.bukkit.inventory.AnvilInventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.Repairable;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -79,6 +82,14 @@ public class AnvilListener implements Listener {
         if (second != null) {
             ItemStack result = combineEnchantments(first, second);
             if (result != null) {
+                // Double-ensure "Too Expensive!" is removed: force RepairCost=0 on the final result item.
+                // This + the custom cost system in onAnvilClick (using economy balance for expensive high-level custom enchants)
+                // completely bypasses vanilla's ~40 cost limit and "Too Expensive!" text/gray button.
+                ItemMeta rmeta = result.getItemMeta();
+                if (rmeta instanceof Repairable r) {
+                    r.setRepairCost(0);
+                    result.setItemMeta((ItemMeta) r);
+                }
                 event.setResult(result);
             }
         }
@@ -88,6 +99,16 @@ public class AnvilListener implements Listener {
     public void onAnvilClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (!(event.getInventory() instanceof AnvilInventory)) return;
+
+        // Note on "Too Expensive!" removal (see also onPrepareAnvil + combine): 
+        // The vanilla anvil hard limit ("Too Expensive!" when cost > ~39-40, grayed output, no high level combines)
+        // is fully removed for this plugin's anvil usage:
+        // - PrepareAnvil always forces RepairCost=0 on result items (prevents accumulation/penalty on the output item).
+        // - We use a fully custom cost (calculateAnvilCost using balance + levels) instead of vanilla's XP cost.
+        // - High-level custom enchant merges are explicitly allowed in combineEnchantments (no cap).
+        // - The click handler deducts the *plugin* cost and applies if affordable, bypassing vanilla.
+        // Result: players can always repair or combine high (or unlimited via custom) enchants on anvils by paying the configured economy cost.
+        // The low repair cost also means the item received has no "prior repairs" penalty for future anvil uses.
 
         // Only handle result slot (slot 2)
         if (event.getSlot() != 2) return;
@@ -251,6 +272,10 @@ public class AnvilListener implements Listener {
                         resultLore.add(custom.getColorCode() + custom.getDisplayName() + " " +
                                 CustomEnchantment.toRoman(newLevel));
 
+                        // Upgrade: store in PDC too (authoritative for custom enchants)
+                        PersistentDataContainer pdc = resultMeta.getPersistentDataContainer();
+                        pdc.set(new NamespacedKey(plugin, "custom_enchant_" + custom.name().toLowerCase()), PersistentDataType.INTEGER, newLevel);
+
                         changed = true;
                         break;
                     }
@@ -261,6 +286,14 @@ public class AnvilListener implements Listener {
         }
 
         if (!changed) return null;
+
+        // Ensure the vanilla "Too Expensive!" limit is never hit for our custom combines.
+        // By resetting RepairCost to 0, the item's accumulated repair penalty is cleared.
+        // The plugin uses custom costs (levels + balance) instead of vanilla XP costs for high-level ops.
+        if (resultMeta instanceof Repairable repairable) {
+            repairable.setRepairCost(0);
+            resultMeta = (ItemMeta) repairable;  // re-cast in case
+        }
 
         result.setItemMeta(resultMeta);
         return result;

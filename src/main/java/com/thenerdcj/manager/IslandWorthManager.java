@@ -13,6 +13,8 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.ConfigurationSection;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -38,13 +40,33 @@ public class IslandWorthManager {
     private double levelMultiplier = 1.5;
     private boolean upgradeMultipliersEnabled = true;
 
-    // Smart caching - worth is expensive to calculate
-    private final Map<String, Double> worthCache = new ConcurrentHashMap<>(); // islandKey -> worth
-    private final Map<String, Integer> worthLevelCache = new ConcurrentHashMap<>();
+    // Smart caching - worth is expensive to calculate. LRU bounded for large server perf (from optimization suggestions).
+    private final Map<String, Double> worthCache = Collections.synchronizedMap(new LinkedHashMap<String, Double>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Double> eldest) {
+            return size() > 2000;
+        }
+    });
+    private final Map<String, Integer> worthLevelCache = Collections.synchronizedMap(new LinkedHashMap<String, Integer>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Integer> eldest) {
+            return size() > 2000;
+        }
+    });
 
     // === NEW: Live delta tracking for incremental worth (Phase 1 optimization) ===
     // This lets us avoid full rescans on every block change.
     private final Map<String, Double> baseBlockWorth = new ConcurrentHashMap<>(); // islandKey -> sum of raw block values (no multipliers)
+
+    // Perf / economy follow-up: configurable worth recalc (for massive scale; event-driven preferred)
+    private long worthRecalcIntervalMinutes = 15;
+    private boolean periodicRecalcEnabled = true;
+    // Perf: chunk budget for worth scans (configurable; prevents lag on massive islands per optimization suggestions)
+    private int maxBlocksToScan = 250_000;
+    // Debug hot-path profiling (nanoTime around chunk scan combine; gated, from optimization suggestions)
+    private boolean profileHotPaths = false;
+    // Perf cap for periodic recalc loop (from suggestions: max-islands-per-recalc-tick to avoid lag on massive servers)
+    private int maxIslandsPerRecalcTick = 50;
 
     public IslandWorthManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -84,7 +106,28 @@ public class IslandWorthManager {
         } else {
             upgradeMultipliersEnabled = true;
         }
+
+        // Perf config for economy/perf next steps (configurable interval or event-driven only)
+        ConfigurationSection perf = worthSection.getConfigurationSection("recalc");
+        if (perf == null) {
+            // fallback to flat key for simplicity (as added in config.yml)
+            worthRecalcIntervalMinutes = worthSection.getLong("recalc-interval-minutes", 15);
+        } else {
+            worthRecalcIntervalMinutes = perf.getLong("interval-minutes", 15);
+        }
+        periodicRecalcEnabled = worthRecalcIntervalMinutes > 0;
+
+        // Chunk budget for calc (optimization: make MAX_BLOCKS_TO_SCAN configurable per island size / server profile)
+        maxBlocksToScan = worthSection.getInt("max-blocks-to-scan", 250000);
+        profileHotPaths = worthSection.getBoolean("profile-hot-paths", false);
+        maxIslandsPerRecalcTick = worthSection.getInt("max-islands-per-recalc-tick", 50);
     }
+
+    public long getWorthRecalcIntervalMinutes() { return worthRecalcIntervalMinutes; }
+    public boolean isPeriodicRecalcEnabled() { return periodicRecalcEnabled; }
+    public int getMaxBlocksToScan() { return maxBlocksToScan; }
+    public boolean isProfileHotPaths() { return profileHotPaths; }
+    public int getMaxIslandsPerRecalcTick() { return maxIslandsPerRecalcTick; }
 
     /**
      * Returns the worth value of a single block type.
@@ -106,8 +149,22 @@ public class IslandWorthManager {
             return CompletableFuture.completedFuture(cached);
         }
 
-        // DB loading prepared in DatabaseManager (IslandWorthData + load/save methods)
-        // Currently disabled to ensure clean compilation during active development.
+        // Load persisted worth for drift correction (implemented this pass for optimization suggestions)
+        if (plugin.getDatabaseManager() != null && plugin.getDatabaseManager().getIslandDAO() != null) {
+            try {
+                Object[] persisted = plugin.getDatabaseManager().getIslandDAO().loadIslandWorth(island.getGridPosition()).join();
+                if (persisted != null) {
+                    double pWorth = (double) persisted[0];
+                    if (pWorth > 0) {
+                        baseBlockWorth.put(key, pWorth); // seed for incremental
+                        // apply multipliers etc would be in full load, but for now use as base
+                        worthCache.put(key, pWorth);
+                        worthLevelCache.put(key, (int) persisted[1]);
+                        return CompletableFuture.completedFuture(pWorth);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
 
         // Folia-safe async worth calculation using proper chunk async loading + ChunkSnapshot (thread-safe reads)
         String worldName = "skyblock";
@@ -130,7 +187,7 @@ public class IslandWorthManager {
         int minZ = center.getBlockZ() - radius;
         int maxZ = center.getBlockZ() + radius;
 
-        final int MAX_BLOCKS_TO_SCAN = 250_000;
+        final int MAX_BLOCKS_TO_SCAN = maxBlocksToScan;
 
         // Build list of per-chunk futures using getChunkAtAsync + ChunkSnapshot for Folia safety
         java.util.List<CompletableFuture<Double>> chunkFutures = new java.util.ArrayList<>();
@@ -177,8 +234,13 @@ public class IslandWorthManager {
         }
 
         // Combine all chunk contributions, then apply multipliers + cache (on completion)
+        final long profileStart = profileHotPaths ? System.nanoTime() : 0L;
         return java.util.concurrent.CompletableFuture.allOf(chunkFutures.toArray(new CompletableFuture[0]))
             .thenApply(v -> {
+                if (profileHotPaths) {
+                    long ns = System.nanoTime() - profileStart;
+                    plugin.getLogger().info("[IslandWorth] PROFILE: chunk combine took " + (ns / 1_000_000) + " ms for " + chunkFutures.size() + " chunks (island key=" + key + ")");
+                }
                 double totalWorth = 0.0;
                 for (CompletableFuture<Double> f : chunkFutures) {
                     try {
@@ -208,10 +270,15 @@ public class IslandWorthManager {
                     totalWorth *= prestigeMult;
                 }
 
-                // Cache result
+                // Cache result (LRU bounded via LinkedHashMap override for massive server safety - see optimization suggestions)
                 worthCache.put(key, totalWorth);
                 int level = calculateWorthLevel(totalWorth);
                 worthLevelCache.put(key, level);
+
+                // Persist for drift correction on load (this pass)
+                if (plugin.getDatabaseManager() != null && plugin.getDatabaseManager().getIslandDAO() != null) {
+                    plugin.getDatabaseManager().getIslandDAO().saveIslandWorth(island.getGridPosition(), totalWorth, level, System.currentTimeMillis());
+                }
 
                 // Persistence prepared (saveIslandWorth in DatabaseManager)
 
@@ -333,8 +400,9 @@ public class IslandWorthManager {
     }
 
     private String getIslandKey(Island island) {
+        // Use GridPosition.toString() (comma "x,z,DIM") for cache + persist key consistency with IslandDAO / GridPosition
         GridPosition pos = island.getGridPosition();
-        return pos.x() + ":" + pos.z() + ":" + island.getDimension().name();
+        return pos.toString();
     }
 
     /**
@@ -344,9 +412,17 @@ public class IslandWorthManager {
         calculateIslandWorthAsync(island).thenAccept(worth -> {
             int level = calculateWorthLevel(worth);
 
-            plugin.getThreadSafety().runOnMainThread(() -> {
-                // Future: persist + fire events
-            });
+            // Per-island RegionScheduler example for Folia perf (from optimization suggestions): schedule the final update at island center region to avoid global contention.
+            Location center = island.getCenter(Bukkit.getWorld(island.getDimension() == World.Environment.NORMAL ? "skyblock" : (island.getDimension() == World.Environment.NETHER ? "skyblock_nether" : "skyblock_end")));
+            if (center != null) {
+                plugin.getThreadSafety().runAtLocation(center, () -> {
+                    // Future: persist + fire events + update caches if needed
+                });
+            } else {
+                plugin.getThreadSafety().runOnMainThread(() -> {
+                    // fallback
+                });
+            }
         });
     }
 
@@ -408,6 +484,36 @@ public class IslandWorthManager {
         }).exceptionally(ex -> {
             plugin.getLogger().warning("[IslandWorth] DB leaderboard failed, falling back to local: " + ex.getMessage());
             // Fallback
+            try {
+                return getTopIslandsByWorthLocal(limit).get();
+            } catch (Exception e) {
+                return java.util.Collections.emptyList();
+            }
+        });
+    }
+
+    /**
+     * Overload with offset for DB-paginated worth tops (large scale 1000+).
+     * Delegates to DM for server-side pagination.
+     */
+    public CompletableFuture<java.util.List<IslandTopEntry>> getTopIslandsByWorth(int limit, int offset) {
+        return plugin.getDatabaseManager().getTopIslandsByWorth(limit, offset).thenApply(dbResults -> {
+            java.util.List<IslandTopEntry> entries = new java.util.ArrayList<>();
+
+            for (var db : dbResults) {
+                String ownerName = plugin.getNameCache().getName(db.ownerUuid);
+                entries.add(new IslandTopEntry(
+                    db.ownerUuid,
+                    db.worth,
+                    db.worthLevel,
+                    db.memberCount,
+                    ownerName != null ? ownerName : db.ownerUuid.toString().substring(0, 8)
+                ));
+            }
+
+            return entries;
+        }).exceptionally(ex -> {
+            plugin.getLogger().warning("[IslandWorth] DB leaderboard (offset) failed, falling back to local: " + ex.getMessage());
             try {
                 return getTopIslandsByWorthLocal(limit).get();
             } catch (Exception e) {

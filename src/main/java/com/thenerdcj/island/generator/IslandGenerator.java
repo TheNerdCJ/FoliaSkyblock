@@ -727,30 +727,52 @@ public class IslandGenerator {
             inv.clear();
 
             // Core balanced starter (same for everyone - Play to Win)
-            inv.addItem(new ItemStack(Material.DIRT, 24 + rand.nextInt(8)));
-            inv.addItem(new ItemStack(Material.COBBLESTONE, 16));
-            inv.addItem(new ItemStack(Material.OAK_SAPLING, 2 + rand.nextInt(2))); // or biome equivalent but keep simple
-            inv.addItem(new ItemStack(Material.BREAD, 8));
+            inv.addItem(new ItemStack(Material.DIRT, 32 + rand.nextInt(16)));
+            inv.addItem(new ItemStack(Material.COBBLESTONE, 24));
+            inv.addItem(new ItemStack(Material.OAK_SAPLING, 3 + rand.nextInt(2)));
+            inv.addItem(new ItemStack(Material.BREAD, 16));
             inv.addItem(new ItemStack(Material.STONE_PICKAXE, 1));
             inv.addItem(new ItemStack(Material.STONE_AXE, 1));
-            inv.addItem(new ItemStack(Material.WHEAT_SEEDS, 8 + rand.nextInt(6)));
+            inv.addItem(new ItemStack(Material.STONE_HOE, 1));
+            inv.addItem(new ItemStack(Material.STONE_SWORD, 1));
+            inv.addItem(new ItemStack(Material.WHEAT_SEEDS, 12 + rand.nextInt(8)));
+            inv.addItem(new ItemStack(Material.POTATO, 6 + rand.nextInt(4)));
+            inv.addItem(new ItemStack(Material.CARROT, 6 + rand.nextInt(4)));
+            inv.addItem(new ItemStack(Material.SUGAR_CANE, 6));
+            inv.addItem(new ItemStack(Material.BONE_MEAL, 12 + rand.nextInt(6)));
+
+            // Early game guide book (onboarding help, no power)
+            ItemStack guide = new ItemStack(Material.WRITTEN_BOOK);
+            if (guide.getItemMeta() instanceof org.bukkit.inventory.meta.BookMeta bookMeta) {
+                bookMeta.setTitle("FoliaSkyblock Beginner's Guide");
+                bookMeta.setAuthor("Island Elder");
+                bookMeta.addPage("Welcome to your new island!\n\n§6Key Commands:\n§f/is or /island - Main menu\n/quests or /daily - First tasks\n/skills - Personal MCMMO skills\n/collections - Discover & unlock\n/wardrobe - Earned cosmetics");
+                bookMeta.addPage("§aEarly Game Tips:\n\nStart by breaking blocks and planting seeds.\nComplete 'First' quests for a free cosmetic trail!\nLevel skills for abilities.\nMinions automate farming/mining.\nEverything is Play-to-Win - no pay advantages.");
+                bookMeta.addPage("§eProgression:\n\nIsland XP from actions/quests.\nUnlock dimensions at levels.\nPrestige & Slayers for top cosmetics.\nTrade at /bazaar /ah for missing items.\n\nHave fun and play fair!");
+                bookMeta.setGeneration(org.bukkit.inventory.meta.BookMeta.Generation.ORIGINAL);
+                guide.setItemMeta(bookMeta);
+            }
+            inv.addItem(guide);
 
             // Minor biome flavor / random (cosmetic, low value)
             String bname = biome.getKey().getKey().toUpperCase();
             if (bname.contains("DESERT")) {
-                inv.addItem(new ItemStack(Material.SAND, 12 + rand.nextInt(6)));
-                inv.addItem(new ItemStack(Material.CACTUS, 1 + rand.nextInt(2)));
+                inv.addItem(new ItemStack(Material.SAND, 16 + rand.nextInt(8)));
+                inv.addItem(new ItemStack(Material.CACTUS, 2 + rand.nextInt(2)));
             } else if (bname.contains("JUNGLE")) {
-                inv.addItem(new ItemStack(Material.JUNGLE_SAPLING, 1));
-                inv.addItem(new ItemStack(Material.COCOA_BEANS, 2));
+                inv.addItem(new ItemStack(Material.JUNGLE_SAPLING, 2));
+                inv.addItem(new ItemStack(Material.COCOA_BEANS, 3));
             } else if (bname.contains("TAIGA")) {
-                inv.addItem(new ItemStack(Material.SPRUCE_SAPLING, 1));
-                inv.addItem(new ItemStack(Material.SWEET_BERRIES, 4));
+                inv.addItem(new ItemStack(Material.SPRUCE_SAPLING, 2));
+                inv.addItem(new ItemStack(Material.SWEET_BERRIES, 6));
+            } else if (bname.contains("MUSHROOM")) {
+                inv.addItem(new ItemStack(Material.RED_MUSHROOM, 3));
+                inv.addItem(new ItemStack(Material.BROWN_MUSHROOM, 3));
             }
 
             // Small random bonus (still balanced, no rare items)
-            if (rand.nextDouble() < 0.3) inv.addItem(new ItemStack(Material.COAL, 3 + rand.nextInt(3)));
-            if (rand.nextDouble() < 0.25) inv.addItem(new ItemStack(Material.IRON_INGOT, 1));
+            if (rand.nextDouble() < 0.35) inv.addItem(new ItemStack(Material.COAL, 4 + rand.nextInt(4)));
+            if (rand.nextDouble() < 0.3) inv.addItem(new ItemStack(Material.IRON_INGOT, 2));
         }
     }
     private void setBiomeInChunk(Location center, Biome biome) {

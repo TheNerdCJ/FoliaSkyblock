@@ -9,6 +9,19 @@ import com.thenerdcj.pets.PetSkin;
 import com.thenerdcj.tags.PlayerTag;
 import com.thenerdcj.util.MessageUtil;
 import com.thenerdcj.runes.Rune;
+import com.thenerdcj.cosmetic.HelmetSkin;
+import com.thenerdcj.cosmetic.DeathEffect;
+import com.thenerdcj.cosmetic.BackpackSkin;
+import com.thenerdcj.cosmetic.PowerOrbSkin;
+import com.thenerdcj.cosmetic.MinionSkin;
+import com.thenerdcj.cosmetic.IslandFurnitureType;
+import com.thenerdcj.cosmetic.IslandMusicType;
+import com.thenerdcj.cosmetic.OverheadCosmetic;
+import com.thenerdcj.cosmetic.EmoteCosmetic;
+import com.thenerdcj.cosmetic.IslandStructureCosmetic;
+import com.thenerdcj.cosmetic.ChatBubbleCosmetic;
+import com.thenerdcj.cosmetic.IslandWeatherCosmetic;
+import com.thenerdcj.cosmetic.AccessoryCosmetic;
 import com.thenerdcj.wings.ElytraWing;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -80,6 +93,19 @@ public class SlayerShopGUI implements Listener {
         gui.setItem(25, createShopItem("§eEpic Slayer Crate Key", Material.TRIPWIRE_HOOK, 75,
                 "§7Contains high-tier slayer loot"));
 
+        // === CORE COLLECTIONS synergy rewards (Play-to-Win gathering progression) ===
+        ItemStack collCrate = createShopItem("§6Collection Milestone Crate", Material.BOOK, 100,
+                "§7Rewards based on your island's unique item collection count",
+                "§7Higher island collections = better rewards (cosmetics, tokens)");
+        attachCollectionPDC(collCrate, "COLLECTION_CRATE");
+        gui.setItem(26, collCrate);
+
+        ItemStack collToken = createShopItem("§aCollector Accessory Token", Material.NETHER_STAR, 80,
+                "§7Unlocks a special floating accessory",
+                "§7Earned faster with high island collections");
+        attachCollectionPDC(collToken, "COLLECTION_ACCESSORY");
+        gui.setItem(27, collToken);
+
         // === PERSONAL COSMETICS: PARTICLE TRAILS (new wiring) ===
         gui.setItem(3, createItem(Material.FIREWORK_ROCKET, "§d§lCosmetics - Particle Trails",
                 "§7Unlock personal trails & auras",
@@ -135,6 +161,109 @@ public class SlayerShopGUI implements Listener {
         // Pet Skin examples
         gui.setItem(52, createPetSkinShopItem("Neon Skin", PetSkin.NEON, Material.GLOWSTONE_DUST));
         gui.setItem(53, createPetSkinShopItem("Golden Skin", PetSkin.GOLDEN, Material.GOLD_NUGGET));
+        gui.setItem(54, createPetSkinShopItem("Rainbow Skin", PetSkin.RAINBOW, Material.FIREWORK_STAR));
+        gui.setItem(55, createPetSkinShopItem("Slayer Beast Skin", PetSkin.SLAYER_BEAST, Material.IRON_SWORD));
+
+        // Helmet Skin examples (new cosmetic system)
+        gui.setItem(56, createHelmetSkinShopItem("Crimson Flame", HelmetSkin.CRIMSON_FLAME, Material.DIAMOND_HELMET));
+        gui.setItem(57, createHelmetSkinShopItem("Blazing Crimson", HelmetSkin.BLAZING_CRIMSON, Material.NETHERITE_HELMET));
+
+        // Death Effect examples (new cosmetic system)
+        gui.setItem(58, createDeathEffectShopItem("Firework Burst", DeathEffect.FIREWORK, Material.FIREWORK_ROCKET));
+        gui.setItem(59, createDeathEffectShopItem("Lightning Strike", DeathEffect.LIGHTNING, Material.LIGHTNING_ROD));
+
+        // Death Messages cosmetic examples (new system)
+        gui.setItem(60, createDeathMessageShopItem("Classic Slayer", com.thenerdcj.cosmetic.DeathMessageCosmetic.CLASSIC, Material.NAME_TAG));
+        gui.setItem(61, createDeathMessageShopItem("Epic Fail", com.thenerdcj.cosmetic.DeathMessageCosmetic.EPIC, Material.WRITABLE_BOOK));
+
+        // Backpack Skin examples (exploration)
+        gui.setItem(60, createBackpackSkinShopItem("Garden Bunny", BackpackSkin.GARDEN_BUNNY, Material.CHEST));
+        gui.setItem(61, createBackpackSkinShopItem("Dragon Hoard", BackpackSkin.DRAGON_HOARD, Material.ENDER_CHEST));
+
+        // Power Orb Skin examples (new system)
+        gui.setItem(62, createPowerOrbSkinShopItem("Disco Ball", PowerOrbSkin.DISCO_BALL, Material.MAGMA_CREAM));
+        gui.setItem(63, createPowerOrbSkinShopItem("Gem Power Orb", PowerOrbSkin.GEM, Material.DIAMOND));
+
+        // Bonus: Direct orb item with skin (activates immediately on purchase)
+        gui.setItem(70, createPowerOrbSkinShopItem("Celestial Orb (with item)", PowerOrbSkin.CELESTIAL, Material.END_CRYSTAL));
+
+        // Island Furniture examples (foundation)
+        gui.setItem(71, createFurnitureShopItem("Wooden Chair", IslandFurnitureType.WOODEN_CHAIR, Material.OAK_STAIRS));
+        gui.setItem(72, createFurnitureShopItem("Hanging Lantern", IslandFurnitureType.LANTERN, Material.LANTERN));
+        // Housing variety polish shop examples
+        gui.setItem(88, createFurnitureShopItem("Celestial Lamp", IslandFurnitureType.CELESTIAL_LAMP, Material.END_ROD));
+        gui.setItem(89, createFurnitureShopItem("Decorative Globe", IslandFurnitureType.DECORATIVE_GLOBE, Material.GOLD_NUGGET));
+
+        // Island Music examples (new)
+        gui.setItem(73, createMusicShopItem("Calm Ocean", IslandMusicType.CALM_OCEAN, Material.MUSIC_DISC_13));
+        gui.setItem(74, createMusicShopItem("Celestial Chimes", IslandMusicType.CELESTIAL_CHIMES, Material.MUSIC_DISC_5));
+        // Island ambience extensions examples
+        gui.setItem(75, createMusicShopItem("Jungle Rhythm", IslandMusicType.JUNGLE_RHYTHM, Material.MUSIC_DISC_11));
+        gui.setItem(76, createMusicShopItem("Ancient Ruins", IslandMusicType.ANCIENT_RUINS, Material.MUSIC_DISC_5));
+
+        // Overhead Cosmetics examples (new system)
+        gui.setItem(75, createOverheadShopItem("Star Halo", OverheadCosmetic.STAR_HALO, Material.END_ROD));
+        gui.setItem(76, createOverheadShopItem("Enchant Glow", OverheadCosmetic.ENCHANT_GLOW, Material.ENCHANTED_BOOK));
+        // Deeper titles shop examples
+        gui.setItem(92, createOverheadShopItem("Runic Title", OverheadCosmetic.RUNIC_TITLE, Material.PAPER));
+        gui.setItem(93, createOverheadShopItem("Void Crown", OverheadCosmetic.VOID_CROWN, Material.NETHER_STAR));
+        // Continued deeper titles shop examples
+        gui.setItem(94, createOverheadShopItem("Celestial Title", OverheadCosmetic.CELESTIAL_TITLE, Material.END_ROD));
+        gui.setItem(95, createOverheadShopItem("Slayer Sigil", OverheadCosmetic.SLAYER_SIGIL, Material.REDSTONE));
+        gui.setItem(96, createOverheadShopItem("Ethereal Crown", OverheadCosmetic.ETHEREAL_CROWN, Material.GHAST_TEAR));
+
+        // Emote Cosmetics examples (new)
+        gui.setItem(77, createEmoteShopItem("Wave", EmoteCosmetic.WAVE, Material.TOTEM_OF_UNDYING));
+        gui.setItem(78, createEmoteShopItem("Cheer", EmoteCosmetic.CHEER, Material.TOTEM_OF_UNDYING));
+        // Emote expansion
+        gui.setItem(79, createEmoteShopItem("Clap", EmoteCosmetic.CLAP, Material.TOTEM_OF_UNDYING));
+        gui.setItem(80, createEmoteShopItem("Point", EmoteCosmetic.POINT, Material.TOTEM_OF_UNDYING));
+        gui.setItem(81, createEmoteShopItem("Cry", EmoteCosmetic.CRY, Material.TOTEM_OF_UNDYING));
+        gui.setItem(82, createEmoteShopItem("Victory", EmoteCosmetic.VICTORY, Material.TOTEM_OF_UNDYING));
+        // Emote polish variety shop examples
+        gui.setItem(83, createEmoteShopItem("Nod", EmoteCosmetic.NOD, Material.TOTEM_OF_UNDYING));
+        gui.setItem(84, createEmoteShopItem("High Five", EmoteCosmetic.HIGH_FIVE, Material.TOTEM_OF_UNDYING));
+
+        // Island Structures examples (new)
+        gui.setItem(79, createStructureShopItem("Stone Pillar", IslandStructureCosmetic.STONE_PILLAR, Material.STONE));
+        gui.setItem(80, createStructureShopItem("Wooden Arch", IslandStructureCosmetic.WOODEN_ARCH, Material.OAK_LOG));
+
+        // Chat Bubbles examples (new)
+        gui.setItem(81, createChatBubbleShopItem("Heart Bubble", ChatBubbleCosmetic.HEART_BUBBLE, Material.PAPER));
+        gui.setItem(82, createChatBubbleShopItem("Magic Bubble", ChatBubbleCosmetic.MAGIC_BUBBLE, Material.ENCHANTED_BOOK));
+        gui.setItem(83, createChatBubbleShopItem("Spark Bubble", ChatBubbleCosmetic.SPARK_BUBBLE, Material.GLOWSTONE_DUST));
+        gui.setItem(84, createChatBubbleShopItem("Skull Bubble", ChatBubbleCosmetic.SKULL_BUBBLE, Material.SKELETON_SKULL));
+
+        // Island Weather examples (new)
+        gui.setItem(83, createWeatherShopItem("Gentle Rain", IslandWeatherCosmetic.GENTLE_RAIN, Material.WATER_BUCKET));
+        gui.setItem(84, createWeatherShopItem("Aurora", IslandWeatherCosmetic.AURORA, Material.END_ROD));
+        // Refinements - more weather variety shop examples
+        gui.setItem(85, createWeatherShopItem("Sandstorm", IslandWeatherCosmetic.SANDSTORM, Material.SAND));
+        gui.setItem(86, createWeatherShopItem("Firefly Glow", IslandWeatherCosmetic.FIREFLY_GLOW, Material.GLOW_BERRIES));
+
+        // Accessories examples (new)
+        gui.setItem(85, createAccessoryShopItem("Floating Star", AccessoryCosmetic.FLOATING_STAR, Material.NETHER_STAR));
+        gui.setItem(86, createAccessoryShopItem("Orbiting Orb", AccessoryCosmetic.ORBITING_ORB, Material.ENDER_PEARL));
+        gui.setItem(87, createAccessoryShopItem("Floating Compass", AccessoryCosmetic.FLOATING_COMPASS, Material.COMPASS));
+        // Refinements - more accessory
+        gui.setItem(88, createAccessoryShopItem("Floating Key", AccessoryCosmetic.FLOATING_KEY, Material.GOLD_NUGGET));
+        gui.setItem(89, createAccessoryShopItem("Orbiting Gem", AccessoryCosmetic.ORBITING_GEM, Material.DIAMOND));
+        // Accessory variety continuation shop examples
+        gui.setItem(90, createAccessoryShopItem("Floating Tome", AccessoryCosmetic.FLOATING_BOOK, Material.BOOK));
+        gui.setItem(91, createAccessoryShopItem("Orbiting Rune", AccessoryCosmetic.ORBITING_RUNE, Material.MAGENTA_DYE));
+        // Accessory expansions shop examples
+        gui.setItem(94, createAccessoryShopItem("Orbiting Sword", AccessoryCosmetic.ORBITING_SWORD, Material.IRON_SWORD));
+        gui.setItem(95, createAccessoryShopItem("Glowing Lantern Charm", AccessoryCosmetic.GLOWING_LANTERN, Material.LANTERN));
+
+        // Minion Skin examples (new system)
+        gui.setItem(64, createMinionSkinShopItem("Bunny Theme", MinionSkin.BUNNY, Material.RABBIT_HIDE));
+        gui.setItem(65, createMinionSkinShopItem("Busy Bee", MinionSkin.BEE, Material.HONEYCOMB));
+        // Refinements - more minion variety
+        gui.setItem(66, createMinionSkinShopItem("Pumpkin Pal", MinionSkin.PUMPKIN, Material.PUMPKIN));
+        gui.setItem(67, createMinionSkinShopItem("Robot Minion", MinionSkin.ROBOT, Material.IRON_INGOT));
+        // Continued minion variety shop examples
+        gui.setItem(68, createMinionSkinShopItem("Ghostly Minion", MinionSkin.GHOST, Material.SOUL_SAND));
+        gui.setItem(69, createMinionSkinShopItem("Ancient Golem", MinionSkin.ANCIENT_GOLEM, Material.MOSSY_COBBLESTONE));
 
         // Elytra Wing cosmetics (new gliding visual system)
         gui.setItem(42, createWingShopItem("Angel Wings", ElytraWing.ANGEL, Material.FEATHER));
@@ -258,6 +387,326 @@ public class SlayerShopGUI implements Listener {
             PersistentDataContainer pdc = meta.getPersistentDataContainer();
             pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_PET_SKIN");
             pdc.set(PET_SKIN_KEY, PersistentDataType.STRING, skin.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createHelmetSkinShopItem(String label, HelmetSkin skin, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§6Unlock " + label + " (Helmet Skin)",
+                "§7Rarity: " + skin.getRarity().getColorCode() + skin.getRarity().getDisplayName(),
+                "§7" + skin.getDescription(),
+                "",
+                "§7Prestige Req: §b" + skin.getMinPrestige(),
+                "§6Cost: §e" + skin.getTokenCost() + " Slayer Tokens",
+                (skin.getTokenCost() == 0 ? "§aFREE Prestige Reward" : ""),
+                "",
+                "§aClick to purchase & unlock",
+                "§8Applies cosmetic override to helmets");
+
+        attachHelmetSkinPDCs(item, skin);
+        return item;
+    }
+
+    private void attachHelmetSkinPDCs(ItemStack item, HelmetSkin skin) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_HELMET_SKIN");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_helmet_skin"), PersistentDataType.STRING, skin.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createDeathEffectShopItem(String label, DeathEffect effect, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§4Unlock " + label + " (Death Effect)",
+                "§7Rarity: " + effect.getRarity().getColorCode() + effect.getRarity().getDisplayName(),
+                "§7" + effect.getDescription(),
+                "",
+                "§7Prestige Req: §b" + effect.getMinPrestige(),
+                "§6Cost: §e" + effect.getTokenCost() + " Slayer Tokens",
+                (effect.getTokenCost() == 0 ? "§aFREE Prestige Reward" : ""),
+                "",
+                "§aClick to purchase & unlock",
+                "§8Triggers on death and kills");
+
+        attachDeathEffectPDCs(item, effect);
+        return item;
+    }
+
+    private void attachDeathEffectPDCs(ItemStack item, DeathEffect effect) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_DEATH_EFFECT");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_death_effect"), PersistentDataType.STRING, effect.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createDeathMessageShopItem(String label, com.thenerdcj.cosmetic.DeathMessageCosmetic message, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§4Unlock " + label + " (Death Message)",
+                "§7Rarity: " + message.getRarity().getColorCode() + message.getRarity().getDisplayName(),
+                "§7" + message.getDescription(),
+                "§7Cost: §e" + message.getTokenCost() + " Slayer Tokens");
+        attachDeathMessagePDCs(item, message);
+        return item;
+    }
+
+    private void attachDeathMessagePDCs(ItemStack item, com.thenerdcj.cosmetic.DeathMessageCosmetic message) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_DEATH_MESSAGE");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_death_message"), PersistentDataType.STRING, message.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createBackpackSkinShopItem(String label, BackpackSkin skin, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§aUnlock " + label + " (Backpack Skin)",
+                "§7Rarity: " + skin.getRarity().getColorCode() + skin.getRarity().getDisplayName(),
+                "§7" + skin.getDescription(),
+                "",
+                "§7Prestige Req: §b" + skin.getMinPrestige(),
+                "§6Cost: §e" + skin.getTokenCost() + " Slayer Tokens",
+                (skin.getTokenCost() == 0 ? "§aFREE Prestige Reward" : ""),
+                "",
+                "§aClick to purchase & unlock",
+                "§8Cosmetic override for backpacks/storage");
+
+        attachBackpackSkinPDCs(item, skin);
+        return item;
+    }
+
+    private void attachBackpackSkinPDCs(ItemStack item, BackpackSkin skin) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_BACKPACK_SKIN");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_backpack_skin"), PersistentDataType.STRING, skin.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createPowerOrbSkinShopItem(String label, PowerOrbSkin skin, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§bUnlock " + label + " (Power Orb Skin)",
+                "§7Rarity: " + skin.getRarity().getColorCode() + skin.getRarity().getDisplayName(),
+                "§7" + skin.getDescription(),
+                "",
+                "§7Prestige Req: §b" + skin.getMinPrestige(),
+                "§6Cost: §e" + skin.getTokenCost() + " Slayer Tokens",
+                (skin.getTokenCost() == 0 ? "§aFREE Prestige Reward" : ""),
+                "",
+                "§aClick to purchase & unlock",
+                "§8Cosmetic override for Power Orbs");
+
+        attachPowerOrbSkinPDCs(item, skin);
+        return item;
+    }
+
+    private void attachPowerOrbSkinPDCs(ItemStack item, PowerOrbSkin skin) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_POWER_ORB_SKIN");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_power_orb_skin"), PersistentDataType.STRING, skin.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createMinionSkinShopItem(String label, MinionSkin skin, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§6Unlock " + label + " (Minion Skin)",
+                "§7Rarity: " + skin.getRarity().getColorCode() + skin.getRarity().getDisplayName(),
+                "§7" + skin.getDescription(),
+                "§7Cost: §e" + skin.getTokenCost() + " Slayer Tokens",
+                "§7Applies themed appearance to all your minions");
+        attachMinionSkinPDCs(item, skin);
+        return item;
+    }
+
+    private void attachMinionSkinPDCs(ItemStack item, MinionSkin skin) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_MINION_SKIN");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_minion_skin"), PersistentDataType.STRING, skin.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createFurnitureShopItem(String label, IslandFurnitureType furn, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§6Unlock " + label + " (Furniture)",
+                "§7Rarity: " + furn.getRarity().getColorCode() + furn.getRarity().getDisplayName(),
+                "§7" + furn.getDescription(),
+                "§7Cost: §e" + furn.getTokenCost() + " Slayer Tokens");
+        attachFurniturePDCs(item, furn);
+        return item;
+    }
+
+    private void attachFurniturePDCs(ItemStack item, IslandFurnitureType furn) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_FURNITURE");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_furniture"), PersistentDataType.STRING, furn.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createMusicShopItem(String label, IslandMusicType music, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§dUnlock " + label + " (Island Music)",
+                "§7Rarity: " + music.getRarity().getColorCode() + music.getRarity().getDisplayName(),
+                "§7" + music.getDescription(),
+                "§7Cost: §e" + music.getTokenCost() + " Slayer Tokens");
+        attachMusicPDCs(item, music);
+        return item;
+    }
+
+    private void attachMusicPDCs(ItemStack item, IslandMusicType music) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_MUSIC");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_music"), PersistentDataType.STRING, music.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private void attachCollectionPDC(ItemStack item, String rewardType) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_COLLECTION");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_collection"), PersistentDataType.STRING, rewardType);
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createOverheadShopItem(String label, OverheadCosmetic cosmetic, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§5Unlock " + label + " (Overhead Cosmetic)",
+                "§7Rarity: " + cosmetic.getRarity().getColorCode() + cosmetic.getRarity().getDisplayName(),
+                "§7" + cosmetic.getDescription(),
+                "§7Cost: §e" + cosmetic.getTokenCost() + " Slayer Tokens");
+        attachOverheadPDCs(item, cosmetic);
+        return item;
+    }
+
+    private void attachOverheadPDCs(ItemStack item, OverheadCosmetic cosmetic) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_OVERHEAD");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_overhead"), PersistentDataType.STRING, cosmetic.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createEmoteShopItem(String label, EmoteCosmetic emote, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§dUnlock " + label + " (Emote)",
+                "§7Rarity: " + emote.getRarity().getColorCode() + emote.getRarity().getDisplayName(),
+                "§7" + emote.getDescription(),
+                "§7Cost: §e" + emote.getTokenCost() + " Slayer Tokens");
+        attachEmotePDCs(item, emote);
+        return item;
+    }
+
+    private void attachEmotePDCs(ItemStack item, EmoteCosmetic emote) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_EMOTE");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_emote"), PersistentDataType.STRING, emote.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createStructureShopItem(String label, IslandStructureCosmetic structure, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§6Unlock " + label + " (Island Structure)",
+                "§7Rarity: " + structure.getRarity().getColorCode() + structure.getRarity().getDisplayName(),
+                "§7" + structure.getDescription(),
+                "§7Cost: §e" + structure.getTokenCost() + " Slayer Tokens");
+        attachStructurePDCs(item, structure);
+        return item;
+    }
+
+    private void attachStructurePDCs(ItemStack item, IslandStructureCosmetic structure) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_STRUCTURE");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_structure"), PersistentDataType.STRING, structure.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createChatBubbleShopItem(String label, ChatBubbleCosmetic bubble, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§dUnlock " + label + " (Chat Bubble)",
+                "§7Rarity: " + bubble.getRarity().getColorCode() + bubble.getRarity().getDisplayName(),
+                "§7" + bubble.getDescription(),
+                "§7Cost: §e" + bubble.getTokenCost() + " Slayer Tokens");
+        attachChatBubblePDCs(item, bubble);
+        return item;
+    }
+
+    private void attachChatBubblePDCs(ItemStack item, ChatBubbleCosmetic bubble) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_CHAT_BUBBLE");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_chatbubble"), PersistentDataType.STRING, bubble.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createWeatherShopItem(String label, IslandWeatherCosmetic weather, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§3Unlock " + label + " (Island Weather)",
+                "§7Rarity: " + weather.getRarity().getColorCode() + weather.getRarity().getDisplayName(),
+                "§7" + weather.getDescription(),
+                "§7Cost: §e" + weather.getTokenCost() + " Slayer Tokens");
+        attachWeatherPDCs(item, weather);
+        return item;
+    }
+
+    private void attachWeatherPDCs(ItemStack item, IslandWeatherCosmetic weather) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_WEATHER");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_weather"), PersistentDataType.STRING, weather.name());
+            item.setItemMeta(meta);
+        }
+    }
+
+    private ItemStack createAccessoryShopItem(String label, AccessoryCosmetic acc, Material mat) {
+        ItemStack item = GUIUtils.createItem(mat, "§6Unlock " + label + " (Accessory)",
+                "§7Rarity: " + acc.getRarity().getColorCode() + acc.getRarity().getDisplayName(),
+                "§7" + acc.getDescription(),
+                "§7Cost: §e" + acc.getTokenCost() + " Slayer Tokens");
+        attachAccessoryPDCs(item, acc);
+        return item;
+    }
+
+    private void attachAccessoryPDCs(ItemStack item, AccessoryCosmetic acc) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_ACCESSORY");
+            pdc.set(new NamespacedKey(plugin, "slayer_shop_accessory"), PersistentDataType.STRING, acc.name());
             item.setItemMeta(meta);
         }
     }
@@ -490,6 +939,555 @@ public class SlayerShopGUI implements Listener {
                         }
                     } catch (Exception ex) {
                         player.sendMessage("§cPet Skin unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Helmet Skin purchases (new cosmetic system)
+            if ("BUY_HELMET_SKIN".equals(action)) {
+                NamespacedKey helmetSkinKey = new NamespacedKey(plugin, "slayer_shop_helmet_skin");
+                String skinName = pdc.get(helmetSkinKey, PersistentDataType.STRING);
+                if (skinName != null && plugin.getHelmetSkinManager() != null) {
+                    try {
+                        HelmetSkin skin = HelmetSkin.valueOf(skinName);
+                        int cost = skin.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < skin.getMinPrestige()) {
+                            player.sendMessage("§cYou need Prestige " + skin.getMinPrestige() + " to unlock this helmet skin.");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getHelmetSkinManager().unlockSkin(player.getUniqueId(), skin);
+                                player.sendMessage("§aPurchased Helmet Skin: " + skin.getRarity().getColorCode() + skin.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getHelmetSkinManager().unlockSkin(player.getUniqueId(), skin);
+                            player.sendMessage("§aUnlocked Helmet Skin (Prestige reward): " + skin.getRarity().getColorCode() + skin.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cHelmet Skin unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Death Effect purchases (new cosmetic system)
+            if ("BUY_DEATH_EFFECT".equals(action)) {
+                NamespacedKey deathEffectKey = new NamespacedKey(plugin, "slayer_shop_death_effect");
+                String effectName = pdc.get(deathEffectKey, PersistentDataType.STRING);
+                if (effectName != null && plugin.getDeathEffectManager() != null) {
+                    try {
+                        DeathEffect effect = DeathEffect.valueOf(effectName);
+                        int cost = effect.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < effect.getMinPrestige()) {
+                            player.sendMessage("§cYou need Prestige " + effect.getMinPrestige() + " to unlock this death effect.");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getDeathEffectManager().unlockEffect(player.getUniqueId(), effect);
+                                player.sendMessage("§aPurchased Death Effect: " + effect.getRarity().getColorCode() + effect.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getDeathEffectManager().unlockEffect(player.getUniqueId(), effect);
+                            player.sendMessage("§aUnlocked Death Effect (Prestige reward): " + effect.getRarity().getColorCode() + effect.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cDeath Effect unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Death Message purchases (new cosmetic system)
+            if ("BUY_DEATH_MESSAGE".equals(action)) {
+                NamespacedKey msgKey = new NamespacedKey(plugin, "slayer_shop_death_message");
+                String msgName = pdc.get(msgKey, PersistentDataType.STRING);
+                if (msgName != null && plugin.getDeathMessageManager() != null) {
+                    try {
+                        com.thenerdcj.cosmetic.DeathMessageCosmetic message = com.thenerdcj.cosmetic.DeathMessageCosmetic.valueOf(msgName);
+                        int cost = message.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < message.getMinPrestige()) {
+                            player.sendMessage("§cYou need Prestige " + message.getMinPrestige() + " to unlock this death message.");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getDeathMessageManager().unlockMessage(player.getUniqueId(), message);
+                                player.sendMessage("§aPurchased Death Message: " + message.getRarity().getColorCode() + message.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getDeathMessageManager().unlockMessage(player.getUniqueId(), message);
+                            player.sendMessage("§aUnlocked Death Message (Prestige reward): " + message.getRarity().getColorCode() + message.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cDeath Message unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Backpack Skin purchases (exploration)
+            if ("BUY_BACKPACK_SKIN".equals(action)) {
+                NamespacedKey backpackSkinKey = new NamespacedKey(plugin, "slayer_shop_backpack_skin");
+                String skinName = pdc.get(backpackSkinKey, PersistentDataType.STRING);
+                if (skinName != null && plugin.getBackpackSkinManager() != null) {
+                    try {
+                        BackpackSkin skin = BackpackSkin.valueOf(skinName);
+                        int cost = skin.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < skin.getMinPrestige()) {
+                            player.sendMessage("§cYou need Prestige " + skin.getMinPrestige() + " to unlock this backpack skin.");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getBackpackSkinManager().unlockSkin(player.getUniqueId(), skin);
+                                player.sendMessage("§aPurchased Backpack Skin: " + skin.getRarity().getColorCode() + skin.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getBackpackSkinManager().unlockSkin(player.getUniqueId(), skin);
+                            player.sendMessage("§aUnlocked Backpack Skin (Prestige reward): " + skin.getRarity().getColorCode() + skin.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cBackpack Skin unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Power Orb Skin purchases (new system)
+            if ("BUY_POWER_ORB_SKIN".equals(action)) {
+                NamespacedKey powerOrbKey = new NamespacedKey(plugin, "slayer_shop_power_orb_skin");
+                String skinName = pdc.get(powerOrbKey, PersistentDataType.STRING);
+                if (skinName != null && plugin.getPowerOrbSkinManager() != null) {
+                    try {
+                        PowerOrbSkin skin = PowerOrbSkin.valueOf(skinName);
+                        int cost = skin.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < skin.getMinPrestige()) {
+                            player.sendMessage("§cYou need Prestige " + skin.getMinPrestige() + " to unlock this power orb skin.");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getPowerOrbSkinManager().unlockSkin(player.getUniqueId(), skin);
+                                plugin.getPowerOrbSkinManager().giveOrb(player, skin);
+                                player.sendMessage("§aPurchased Power Orb Skin + Item: " + skin.getRarity().getColorCode() + skin.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getPowerOrbSkinManager().unlockSkin(player.getUniqueId(), skin);
+                            plugin.getPowerOrbSkinManager().giveOrb(player, skin);
+                            player.sendMessage("§aUnlocked Power Orb Skin + Item (Prestige reward): " + skin.getRarity().getColorCode() + skin.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cPower Orb Skin unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Collection reward purchases (synergy with core collections system)
+            if ("BUY_COLLECTION".equals(action)) {
+                NamespacedKey collKey = new NamespacedKey(plugin, "slayer_shop_collection");
+                String rewardType = pdc.get(collKey, PersistentDataType.STRING);
+                int cost = 100; // default for crate
+                if ("COLLECTION_ACCESSORY".equals(rewardType)) cost = 80;
+                if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                    if ("COLLECTION_CRATE".equals(rewardType)) {
+                        // Give a random cosmetic or crate key via crate manager if available
+                        player.sendMessage("§aPurchased Collection Milestone Crate for " + cost + " tokens! Check your inventory or /collections for rewards.");
+                        // Example: unlock a random minor cosmetic
+                        if (plugin.getAccessoryCosmeticManager() != null) {
+                            try {
+                                plugin.getAccessoryCosmeticManager().unlock(player.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_KEY);
+                            } catch (Exception ignored) {}
+                        }
+                    } else if ("COLLECTION_ACCESSORY".equals(rewardType)) {
+                        if (plugin.getAccessoryCosmeticManager() != null) {
+                            plugin.getAccessoryCosmeticManager().unlock(player.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_KEY);
+                            player.sendMessage("§aPurchased & unlocked Collector Accessory Token reward!");
+                        }
+                    }
+                } else {
+                    player.sendMessage("§cNot enough Slayer Tokens!");
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Minion Skin purchases (new system)
+            if ("BUY_MINION_SKIN".equals(action)) {
+                NamespacedKey minionKey = new NamespacedKey(plugin, "slayer_shop_minion_skin");
+                String skinName = pdc.get(minionKey, PersistentDataType.STRING);
+                if (skinName != null && plugin.getMinionSkinManager() != null) {
+                    try {
+                        MinionSkin skin = MinionSkin.valueOf(skinName);
+                        int cost = skin.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < skin.getMinPrestige()) {
+                            player.sendMessage("§cYou need Prestige " + skin.getMinPrestige() + " to unlock this minion skin.");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getMinionSkinManager().unlockSkin(player.getUniqueId(), skin);
+                                player.sendMessage("§aPurchased Minion Skin: " + skin.getRarity().getColorCode() + skin.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getMinionSkinManager().unlockSkin(player.getUniqueId(), skin);
+                            player.sendMessage("§aUnlocked Minion Skin (Prestige reward): " + skin.getRarity().getColorCode() + skin.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cMinion Skin unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Island Furniture purchases (foundation)
+            if ("BUY_FURNITURE".equals(action)) {
+                NamespacedKey furnKey = new NamespacedKey(plugin, "slayer_shop_furniture");
+                String furnName = pdc.get(furnKey, PersistentDataType.STRING);
+                if (furnName != null && plugin.getIslandFurnitureManager() != null) {
+                    try {
+                        IslandFurnitureType furn = IslandFurnitureType.valueOf(furnName);
+                        int cost = furn.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < furn.getMinPrestige()) {
+                            player.sendMessage("§cRequires Prestige " + furn.getMinPrestige() + "+");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getIslandFurnitureManager().unlockFurniture(player.getUniqueId(), furn);
+                                player.sendMessage("§aPurchased Furniture: " + furn.getRarity().getColorCode() + furn.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getIslandFurnitureManager().unlockFurniture(player.getUniqueId(), furn);
+                            player.sendMessage("§aUnlocked Furniture (Prestige): " + furn.getRarity().getColorCode() + furn.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cFurniture unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Island Music purchases (new)
+            if ("BUY_MUSIC".equals(action)) {
+                NamespacedKey musicKey = new NamespacedKey(plugin, "slayer_shop_music");
+                String musicName = pdc.get(musicKey, PersistentDataType.STRING);
+                if (musicName != null && plugin.getIslandMusicManager() != null) {
+                    try {
+                        IslandMusicType music = IslandMusicType.valueOf(musicName);
+                        int cost = music.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < music.getMinPrestige()) {
+                            player.sendMessage("§cRequires Prestige " + music.getMinPrestige() + "+");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getIslandMusicManager().unlockMusic(player.getUniqueId(), music);
+                                player.sendMessage("§aPurchased Island Music: " + music.getRarity().getColorCode() + music.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getIslandMusicManager().unlockMusic(player.getUniqueId(), music);
+                            player.sendMessage("§aUnlocked Island Music (Prestige): " + music.getRarity().getColorCode() + music.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cMusic unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Overhead Cosmetic purchases (new system)
+            if ("BUY_OVERHEAD".equals(action)) {
+                NamespacedKey overheadKey = new NamespacedKey(plugin, "slayer_shop_overhead");
+                String cosmeticName = pdc.get(overheadKey, PersistentDataType.STRING);
+                if (cosmeticName != null && plugin.getOverheadCosmeticManager() != null) {
+                    try {
+                        OverheadCosmetic cosmetic = OverheadCosmetic.valueOf(cosmeticName);
+                        int cost = cosmetic.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < cosmetic.getMinPrestige()) {
+                            player.sendMessage("§cRequires Prestige " + cosmetic.getMinPrestige() + "+");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getOverheadCosmeticManager().unlock(player.getUniqueId(), cosmetic);
+                                player.sendMessage("§aPurchased Overhead Cosmetic: " + cosmetic.getRarity().getColorCode() + cosmetic.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getOverheadCosmeticManager().unlock(player.getUniqueId(), cosmetic);
+                            player.sendMessage("§aUnlocked Overhead Cosmetic (Prestige): " + cosmetic.getRarity().getColorCode() + cosmetic.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cOverhead Cosmetic unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Emote Cosmetic purchases (new)
+            if ("BUY_EMOTE".equals(action)) {
+                NamespacedKey emoteKey = new NamespacedKey(plugin, "slayer_shop_emote");
+                String emoteName = pdc.get(emoteKey, PersistentDataType.STRING);
+                if (emoteName != null && plugin.getEmoteCosmeticManager() != null) {
+                    try {
+                        EmoteCosmetic emote = EmoteCosmetic.valueOf(emoteName);
+                        int cost = emote.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < emote.getMinPrestige()) {
+                            player.sendMessage("§cRequires Prestige " + emote.getMinPrestige() + "+");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getEmoteCosmeticManager().unlock(player.getUniqueId(), emote);
+                                player.sendMessage("§aPurchased Emote: " + emote.getRarity().getColorCode() + emote.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getEmoteCosmeticManager().unlock(player.getUniqueId(), emote);
+                            player.sendMessage("§aUnlocked Emote (Prestige): " + emote.getRarity().getColorCode() + emote.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cEmote unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Island Structure purchases (new)
+            if ("BUY_STRUCTURE".equals(action)) {
+                NamespacedKey structureKey = new NamespacedKey(plugin, "slayer_shop_structure");
+                String structureName = pdc.get(structureKey, PersistentDataType.STRING);
+                if (structureName != null && plugin.getIslandStructureManager() != null) {
+                    try {
+                        IslandStructureCosmetic structure = IslandStructureCosmetic.valueOf(structureName);
+                        int cost = structure.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < structure.getMinPrestige()) {
+                            player.sendMessage("§cRequires Prestige " + structure.getMinPrestige() + "+");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getIslandStructureManager().unlockStructure(player.getUniqueId(), structure);
+                                player.sendMessage("§aPurchased Island Structure: " + structure.getRarity().getColorCode() + structure.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getIslandStructureManager().unlockStructure(player.getUniqueId(), structure);
+                            player.sendMessage("§aUnlocked Island Structure (Prestige): " + structure.getRarity().getColorCode() + structure.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cStructure unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Chat Bubble purchases (new)
+            if ("BUY_CHAT_BUBBLE".equals(action)) {
+                NamespacedKey bubbleKey = new NamespacedKey(plugin, "slayer_shop_chatbubble");
+                String bubbleName = pdc.get(bubbleKey, PersistentDataType.STRING);
+                if (bubbleName != null && plugin.getChatBubbleCosmeticManager() != null) {
+                    try {
+                        ChatBubbleCosmetic bubble = ChatBubbleCosmetic.valueOf(bubbleName);
+                        int cost = bubble.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < bubble.getMinPrestige()) {
+                            player.sendMessage("§cRequires Prestige " + bubble.getMinPrestige() + "+");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getChatBubbleCosmeticManager().unlock(player.getUniqueId(), bubble);
+                                player.sendMessage("§aPurchased Chat Bubble: " + bubble.getRarity().getColorCode() + bubble.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getChatBubbleCosmeticManager().unlock(player.getUniqueId(), bubble);
+                            player.sendMessage("§aUnlocked Chat Bubble (Prestige): " + bubble.getRarity().getColorCode() + bubble.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cChat bubble unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Island Weather purchases (new)
+            if ("BUY_WEATHER".equals(action)) {
+                NamespacedKey weatherKey = new NamespacedKey(plugin, "slayer_shop_weather");
+                String weatherName = pdc.get(weatherKey, PersistentDataType.STRING);
+                if (weatherName != null && plugin.getIslandWeatherCosmeticManager() != null) {
+                    try {
+                        IslandWeatherCosmetic weather = IslandWeatherCosmetic.valueOf(weatherName);
+                        int cost = weather.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < weather.getMinPrestige()) {
+                            player.sendMessage("§cRequires Prestige " + weather.getMinPrestige() + "+");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getIslandWeatherCosmeticManager().unlockWeather(player.getUniqueId(), weather);
+                                player.sendMessage("§aPurchased Island Weather: " + weather.getRarity().getColorCode() + weather.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getIslandWeatherCosmeticManager().unlockWeather(player.getUniqueId(), weather);
+                            player.sendMessage("§aUnlocked Island Weather (Prestige): " + weather.getRarity().getColorCode() + weather.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cWeather unlock error.");
+                    }
+                }
+                player.closeInventory();
+                return;
+            }
+
+            // Accessory purchases (new)
+            if ("BUY_ACCESSORY".equals(action)) {
+                NamespacedKey accKey = new NamespacedKey(plugin, "slayer_shop_accessory");
+                String accName = pdc.get(accKey, PersistentDataType.STRING);
+                if (accName != null && plugin.getAccessoryCosmeticManager() != null) {
+                    try {
+                        AccessoryCosmetic acc = AccessoryCosmetic.valueOf(accName);
+                        int cost = acc.getTokenCost();
+                        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        int prestige = (island != null && plugin.getPrestigeManager() != null)
+                                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
+
+                        if (prestige < acc.getMinPrestige()) {
+                            player.sendMessage("§cRequires Prestige " + acc.getMinPrestige() + "+");
+                            player.closeInventory();
+                            return;
+                        }
+
+                        if (cost > 0) {
+                            if (plugin.getBossManager() != null && plugin.getBossManager().consumeSlayerTokens(player, cost)) {
+                                plugin.getAccessoryCosmeticManager().unlock(player.getUniqueId(), acc);
+                                player.sendMessage("§aPurchased Accessory: " + acc.getRarity().getColorCode() + acc.getDisplayName());
+                            } else {
+                                player.sendMessage("§cNot enough Slayer Tokens!");
+                            }
+                        } else {
+                            plugin.getAccessoryCosmeticManager().unlock(player.getUniqueId(), acc);
+                            player.sendMessage("§aUnlocked Accessory (Prestige): " + acc.getRarity().getColorCode() + acc.getDisplayName());
+                        }
+                    } catch (Exception ex) {
+                        player.sendMessage("§cAccessory unlock error.");
                     }
                 }
                 player.closeInventory();

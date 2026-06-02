@@ -37,8 +37,15 @@ public class ParticleTrailManager {
     // Simple per-player tick counters for rainbow / animation effects (lightweight)
     private final Map<UUID, Integer> playerTickCounters = new ConcurrentHashMap<>();
 
+    // Bounded cache constants for large-scale server compression (CHM review per IMPROVEMENTS.md)
+    private static final int MAX_PLAYERS_TRAILS = 5000; // cap players with trail data in mem for 1000+ player servers
+
     public ParticleTrailManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
+        // Periodic bounded eviction + cleanup for tasks/maps (large scale memory compression)
+        if (plugin.getThreadSafety() != null) {
+            plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCaches, 20L * 60 * 5, 20L * 60 * 5);
+        }
     }
 
     public void loadPlayerTrails(UUID uuid) {
@@ -701,5 +708,48 @@ public class ParticleTrailManager {
         playerTickCounters.remove(uuid);
         plugin.getDatabaseManager().saveUnlockedParticleTrails(uuid, Collections.emptySet());
         plugin.getDatabaseManager().saveActiveParticleTrail(uuid, "NONE");
+    }
+
+    /**
+     * Bounded eviction for trail maps (active, unlocked, tasks, counters).
+     * Addresses large scale CHM compression: prevents unbounded growth with 1000s of players unlocking/using trails.
+     * LRU-ish simple size cap; stops tasks for evicted to prevent leaks.
+     * Cross-ref: "compression of ConcurrentHashMaps (review all for eviction)", "more CHM bounds in all managers (e.g. other cosmetics like trails/pets)".
+     */
+    private void cleanupCaches() {
+        if (unlockedTrails.size() > MAX_PLAYERS_TRAILS) {
+            java.util.Iterator<UUID> it = unlockedTrails.keySet().iterator();
+            int toRemove = unlockedTrails.size() - (MAX_PLAYERS_TRAILS - 500);
+            while (it.hasNext() && toRemove > 0) {
+                UUID u = it.next(); it.remove();
+                activeTrails.remove(u);
+                playerTickCounters.remove(u);
+                stopTrailTask(u); // prevent task leak on eviction
+                toRemove--;
+            }
+        }
+        if (activeTrails.size() > MAX_PLAYERS_TRAILS) {
+            java.util.Iterator<UUID> it = activeTrails.keySet().iterator();
+            int toRemove = activeTrails.size() - (MAX_PLAYERS_TRAILS - 500);
+            while (it.hasNext() && toRemove > 0) {
+                UUID u = it.next(); it.remove();
+                stopTrailTask(u);
+                toRemove--;
+            }
+        }
+        if (activeTasks.size() > MAX_PLAYERS_TRAILS) {
+            java.util.Iterator<UUID> it = activeTasks.keySet().iterator();
+            int toRemove = activeTasks.size() - (MAX_PLAYERS_TRAILS - 500);
+            while (it.hasNext() && toRemove > 0) {
+                UUID u = it.next();
+                stopTrailTask(u);
+                toRemove--;
+            }
+        }
+        if (playerTickCounters.size() > MAX_PLAYERS_TRAILS) {
+            java.util.Iterator<UUID> it = playerTickCounters.keySet().iterator();
+            int toRemove = playerTickCounters.size() - (MAX_PLAYERS_TRAILS - 500);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
     }
 }

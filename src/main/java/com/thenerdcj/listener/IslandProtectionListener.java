@@ -15,7 +15,13 @@ import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.vehicle.*;
+import org.bukkit.event.world.WorldUnloadEvent;
 import net.kyori.adventure.text.Component;
+import org.bukkit.entity.EnderDragon;
+import org.bukkit.entity.EntityType;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.entity.DragonFireball;
 
 public class IslandProtectionListener implements Listener {
 
@@ -31,6 +37,10 @@ public class IslandProtectionListener implements Listener {
     private boolean pistonProtection;
     private boolean fireProtection;
     private boolean endermanGrief;
+
+    // Pending home island attribution for classic Ender Dragon respawn via End Crystals (central fountain spawn loc)
+    // Allows "the island that spawned it" even when dragon entity appears at world origin rather than island grid.
+    private String pendingCrystalDragonHome = null;
 
     public IslandProtectionListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -139,8 +149,18 @@ public class IslandProtectionListener implements Listener {
         // Invalidate + delta adjustment (Phase 1 incremental worth optimization)
         Island island = islandManager.getIslandAt(e.getBlock().getLocation());
         if (island != null && plugin.getIslandWorthManager() != null) {
-            plugin.getIslandWorthManager().invalidateCache(island);
-            plugin.getIslandWorthManager().adjustBlockWorth(island, e.getBlock().getType(), -1);
+            if (plugin.getIslandWorthManager().isProfileHotPaths()) {
+                long start = System.nanoTime();
+                plugin.getIslandWorthManager().invalidateCache(island);
+                plugin.getIslandWorthManager().adjustBlockWorth(island, e.getBlock().getType(), -1);
+                long ns = System.nanoTime() - start;
+                if (ns > 100_000L) {
+                    plugin.getLogger().info("[IslandProtectionListener] PROFILE: adjustBlockWorth (break) took " + (ns / 1_000_000.0) + " ms");
+                }
+            } else {
+                plugin.getIslandWorthManager().invalidateCache(island);
+                plugin.getIslandWorthManager().adjustBlockWorth(island, e.getBlock().getType(), -1);
+            }
         }
     }
 
@@ -173,8 +193,33 @@ public class IslandProtectionListener implements Listener {
         // Invalidate + delta adjustment (Phase 1 incremental worth optimization)
         Island island = islandManager.getIslandAt(e.getBlock().getLocation());
         if (island != null && plugin.getIslandWorthManager() != null) {
-            plugin.getIslandWorthManager().invalidateCache(island);
-            plugin.getIslandWorthManager().adjustBlockWorth(island, e.getBlock().getType(), +1);
+            if (plugin.getIslandWorthManager().isProfileHotPaths()) {
+                long start = System.nanoTime();
+                plugin.getIslandWorthManager().invalidateCache(island);
+                plugin.getIslandWorthManager().adjustBlockWorth(island, e.getBlock().getType(), +1);
+                long ns = System.nanoTime() - start;
+                if (ns > 100_000L) {
+                    plugin.getLogger().info("[IslandProtectionListener] PROFILE: adjustBlockWorth (place) took " + (ns / 1_000_000.0) + " ms");
+                }
+            } else {
+                plugin.getIslandWorthManager().invalidateCache(island);
+                plugin.getIslandWorthManager().adjustBlockWorth(island, e.getBlock().getType(), +1);
+            }
+        }
+
+        // Dragon summon tracking: record the island that placed an End Crystal in the End.
+        // This attributes the subsequently spawned Ender Dragon to "the island that spawned it"
+        // even if the actual dragon spawn location is the central fountain (grid 0,0, not a player island).
+        if (e.getBlockPlaced().getType() == Material.END_CRYSTAL) {
+            if (e.getBlockPlaced().getWorld().getEnvironment() == World.Environment.THE_END) {
+                Island crystalIsland = islandManager.getIslandAt(e.getBlockPlaced().getLocation());
+                if (crystalIsland == null && e.getPlayer() != null) {
+                    crystalIsland = islandManager.getIsland(e.getPlayer().getUniqueId(), World.Environment.THE_END);
+                }
+                if (crystalIsland != null) {
+                    pendingCrystalDragonHome = crystalIsland.getId();
+                }
+            }
         }
     }
 
@@ -203,9 +248,31 @@ public class IslandProtectionListener implements Listener {
 
     @EventHandler
     public void onEntityExplode(EntityExplodeEvent e) {
-        if (explosionProtection) {
-            e.blockList().removeIf(block -> islandManager.getIslandAt(block.getLocation()) != null);
+        if (!explosionProtection) return;
+
+        EnderDragon dragon = resolveDragonForExplosion(e.getEntity());
+        if (dragon != null) {
+            // Special case for Ender Dragon (or its fireballs): only protect non-home islands.
+            // The home ("spawned") island can be damaged by its dragon as part of the fight.
+            // This projects/protects surrounding islands while allowing destruction on the attributed home island.
+            String homeId = (plugin.getBossManager() != null) ? plugin.getBossManager().getDragonHomeIsland(dragon.getUniqueId()) : null;
+            if (homeId != null) {
+                e.blockList().removeIf(block -> {
+                    Island island = islandManager.getIslandAt(block.getLocation());
+                    return island != null && !homeId.equals(island.getId());
+                });
+                // Anti-cheat audit for projection (even if filtered, log attempt context)
+                if (plugin.getAntiCheatManager() != null) {
+                    plugin.getAntiCheatManager().reportDragonGriefAttempt(null, "EnderDragon home=" + homeId);
+                }
+            } else {
+                e.blockList().removeIf(block -> islandManager.getIslandAt(block.getLocation()) != null);
+            }
+            return;
         }
+
+        // Default: protect all islands from other explosions (creepers, tnt, wither, etc.)
+        e.blockList().removeIf(block -> islandManager.getIslandAt(block.getLocation()) != null);
     }
 
     @EventHandler
@@ -305,6 +372,85 @@ public class IslandProtectionListener implements Listener {
                 e.setCancelled(true);
             }
         }
+
+        // Ender Dragon protection: project (protect) islands from other players' dragons
+        // The dragon can destroy blocks ONLY on "the island that spawned it" (home island where it was summoned/spawned).
+        // This prevents griefing of surrounding islands in shared End or multi-island dimensions.
+        if (e.getEntity() instanceof EnderDragon dragon) {
+            Island blockIsland = islandManager.getIslandAt(e.getBlock().getLocation());
+            if (blockIsland == null) return; // allow wilderness
+
+            if (plugin.getBossManager() != null) {
+                String homeId = plugin.getBossManager().getDragonHomeIsland(dragon.getUniqueId());
+                if (homeId == null || !homeId.equals(blockIsland.getId())) {
+                    e.setCancelled(true);
+                }
+                // else: matches home island -> allow destruction (as per design for the spawned island)
+            } else {
+                // fallback: protect all islands if no boss manager
+                e.setCancelled(true);
+            }
+        }
+    }
+
+    /**
+     * Associate naturally spawned Ender Dragons (e.g. in the End dimension) with the island at spawn location.
+     * Player-spawned dragons (via BossManager.spawnBoss) register their home in BossManager.
+     * Classic crystal-based respawns are attributed via pendingCrystalDragonHome (set on END_CRYSTAL place).
+     * This supports "the dragon can destroy the island that spawned it".
+     */
+    @EventHandler
+    public void onEnderDragonSpawn(CreatureSpawnEvent e) {
+        if (e.getEntityType() != EntityType.ENDER_DRAGON) return;
+        Island island = islandManager.getIslandAt(e.getLocation());
+        if (island == null && pendingCrystalDragonHome != null) {
+            // Central fountain respawn (common "spawn the ender dragon" via crystals) landed on spawn grid (no island).
+            // Attribute to the island of the player who placed the summoning crystal(s).
+            if (plugin.getBossManager() != null) {
+                plugin.getBossManager().registerDragonHome(e.getEntity().getUniqueId(), pendingCrystalDragonHome);
+            }
+            pendingCrystalDragonHome = null;
+            return;
+        }
+        if (island != null && plugin.getBossManager() != null) {
+            plugin.getBossManager().registerDragonHome(e.getEntity().getUniqueId(), island.getId());
+        }
+        // consume stale pending if a direct island spawn occurred
+        if (pendingCrystalDragonHome != null) {
+            pendingCrystalDragonHome = null;
+        }
+    }
+
+    @EventHandler
+    public void onEnderDragonDeath(EntityDeathEvent e) {
+        if (e.getEntity() instanceof EnderDragon && plugin.getBossManager() != null) {
+            plugin.getBossManager().removeBoss(e.getEntity().getUniqueId());
+        }
+        // Clear any pending crystal attribution
+        pendingCrystalDragonHome = null;
+    }
+
+    // ==================== FOLIA WORLD UNLOAD HOOK (edge case cleanup for large servers) ====================
+
+    @EventHandler
+    public void onWorldUnload(WorldUnloadEvent e) {
+        World world = e.getWorld();
+        if (world == null) return;
+        // Delegate cleanup to managers holding per-world / per-island active entities (holograms, minions, furniture, structures)
+        // Prevents holding references to entities in unloaded worlds (Folia region safety + memory).
+        if (plugin.getHologramManager() != null) {
+            plugin.getHologramManager().onWorldUnload(world);
+        }
+        if (plugin.getMinionManager() != null) {
+            plugin.getMinionManager().onWorldUnload(world);
+        }
+        if (plugin.getIslandFurnitureManager() != null) {
+            plugin.getIslandFurnitureManager().onWorldUnload(world);
+        }
+        if (plugin.getIslandStructureManager() != null) {
+            plugin.getIslandStructureManager().onWorldUnload(world);
+        }
+        plugin.getLogger().info("[FoliaSkyblock] Folia unload cleanup performed for world: " + world.getName());
     }
 
     // ==================== SPAWN PROTECTION ====================
@@ -319,5 +465,22 @@ public class IslandProtectionListener implements Listener {
                 e.setCancelled(true);
             }
         }
+    }
+
+    /**
+     * Resolves an EnderDragon from a direct entity or from a projectile it fired (e.g. DragonFireball).
+     * Used to apply home-island destruction rules for both the dragon entity and its fireballs/attacks.
+     * This ensures the "dragon can destroy the island that spawned it" rule applies to fireballs too.
+     */
+    private EnderDragon resolveDragonForExplosion(org.bukkit.entity.Entity explodingEntity) {
+        if (explodingEntity instanceof EnderDragon dragon) {
+            return dragon;
+        }
+        if (explodingEntity instanceof DragonFireball fireball) {
+            if (fireball.getShooter() instanceof EnderDragon dragon) {
+                return dragon;
+            }
+        }
+        return null;
     }
 }

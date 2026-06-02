@@ -33,10 +33,16 @@ public class IslandManager {
     // Combat tracking for reset safety
     private final Map<UUID, Long> lastCombatTime = new ConcurrentHashMap<>();
 
+    // Bounded for large scale (caches, hoppers cap for perf)
+    private static final int MAX_CACHE_SIZE = 2000; // for position caches
+    private static final int MAX_HOPPERS_PER_ISLAND = 100; // cap example for hoppers (large scale sink/perf)
+
     public IslandManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
         this.gridManager = plugin.getGridManager();
+        // Periodic cleanup for caches/CHM compression + hopper cap enforcement note
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCaches, 20L * 60 * 5, 20L * 60 * 5);
     }
 
     // ==================== ISLAND CREATION ====================
@@ -90,10 +96,18 @@ public class IslandManager {
                                     biome = Biome.PLAINS;
                                 }
 
+                                // Early game / onboarding: seed first-island quests immediately (in-mem, lightweight)
+                                if (plugin.getQuestManager() != null) {
+                                    plugin.getQuestManager().generateOnboardingQuests(island.getId());
+                                    plugin.getQuestManager().generateDailyQuests(island.getId());
+                                    plugin.getQuestManager().generateWeeklyQuests(island.getId());
+                                }
+
                                 // Use RegionScheduler for generation when possible
                                 runGenerationOnRegionScheduler(player, island, biome, isDonor);
 
                                 MessageUtil.sendMessage(player, "§a§lIsland created in " + dimension.name() + "!");
+                                MessageUtil.sendMessage(player, "§7Complete your §b/quests §7to earn rewards and unlock a free starter cosmetic trail!");
                                 return true;
                             });
                 });
@@ -112,6 +126,33 @@ public class IslandManager {
                     plugin.getMinionManager().loadMinionDataForIsland(islandKey);
                     plugin.getThreadSafety().runOnMainThread(() ->
                             plugin.getMinionManager().respawnMinionsForIsland(island));
+
+                    // Island Furniture / Housing decor - ensure visuals
+                    if (plugin.getIslandFurnitureManager() != null) {
+                        plugin.getIslandFurnitureManager().respawnAllFurnitureForIsland(islandKey, island.getCenter(null) != null ? island.getCenter(null).getWorld() : null);
+                    }
+
+                    // Island Music & Ambience
+                    if (plugin.getIslandMusicManager() != null) {
+                        plugin.getIslandMusicManager().loadActiveForIsland(islandKey);
+                        plugin.getIslandMusicManager().onPlayerEnterIsland(player, island);
+                    }
+
+                    // Island Structures (use respawn for consistency with furniture + full DB load inside)
+                    if (plugin.getIslandStructureManager() != null) {
+                        plugin.getIslandStructureManager().respawnAllStructuresForIsland(islandKey, island.getCenter(null) != null ? island.getCenter(null).getWorld() : null);
+                    }
+
+                    // Island Weather Cosmetics
+                    if (plugin.getIslandWeatherCosmeticManager() != null) {
+                        plugin.getIslandWeatherCosmeticManager().loadActiveForIsland(islandKey);
+                        plugin.getIslandWeatherCosmeticManager().onPlayerEnterIsland(player, island);
+                    }
+
+                    // Core Collections (per-island unique discovery tracking)
+                    if (plugin.getCollectionManager() != null) {
+                        plugin.getCollectionManager().loadForIsland(islandKey);
+                    }
                 }
             } catch (Exception e) {
                 plugin.getLogger().warning("Failed to load island for " + player.getName() + " in " + dim);
@@ -524,5 +565,33 @@ public class IslandManager {
 
     public void clearHopperCount(String islandId) {
         if (islandId != null) islandHopperCounts.remove(islandId);
+    }
+
+    /**
+     * Bounded eviction for caches and hopper counts (large scale compression + caps for hoppers/auctions per suggestions).
+     * Use LRU-ish for caches; cap hoppers.
+     */
+    private void cleanupCaches() {
+        if (positionToIslandCache.size() > MAX_CACHE_SIZE) {
+            java.util.Iterator<GridPosition> it = positionToIslandCache.keySet().iterator();
+            int toRemove = positionToIslandCache.size() - (MAX_CACHE_SIZE - 200);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
+        if (shortLivedTickCache.size() > MAX_CACHE_SIZE) {
+            java.util.Iterator<GridPosition> it = shortLivedTickCache.keySet().iterator();
+            int toRemove = shortLivedTickCache.size() - (MAX_CACHE_SIZE - 200);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
+        // Enforce hopper cap (example for large scale hoppers cap)
+        for (Map.Entry<String, Integer> e : new HashMap<>(islandHopperCounts).entrySet()) {
+            if (e.getValue() > MAX_HOPPERS_PER_ISLAND) {
+                islandHopperCounts.put(e.getKey(), MAX_HOPPERS_PER_ISLAND);
+            }
+        }
+        if (islandHopperCounts.size() > MAX_CACHE_SIZE) {
+            java.util.Iterator<String> it = islandHopperCounts.keySet().iterator();
+            int toRemove = islandHopperCounts.size() - (MAX_CACHE_SIZE - 200);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
     }
 }

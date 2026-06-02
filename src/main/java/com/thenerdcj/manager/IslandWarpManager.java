@@ -1,18 +1,13 @@
 package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
+import com.thenerdcj.database.IslandDAO;
 import com.thenerdcj.island.IslandWarp;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,13 +17,17 @@ import java.util.concurrent.ConcurrentHashMap;
 public class IslandWarpManager {
 
     private final FoliaSkyblock plugin;
-    private final DatabaseManager databaseManager;
-    private final Map<GridPosition, IslandWarp> warpCache = new ConcurrentHashMap<>();
+    // Real LRU for large scale (access-order LinkedHashMap like worthCache for compression)
+    private final Map<GridPosition, IslandWarp> warpCache = Collections.synchronizedMap(new LinkedHashMap<GridPosition, IslandWarp>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<GridPosition, IslandWarp> eldest) {
+            return size() > 500;
+        }
+    });
 
     public IslandWarpManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        this.databaseManager = plugin.getDatabaseManager();
-        // Table creation is now centralized in DatabaseManager.createTables()
+        // Table creation centralized; persistence now delegated to IslandDAO (withConnection, grid PK)
         plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCache, 36000L, 36000L);
     }
 
@@ -36,62 +35,23 @@ public class IslandWarpManager {
         IslandWarp cached = warpCache.get(pos);
         if (cached != null) return CompletableFuture.completedFuture(cached);
 
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = databaseManager.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(
-                         "SELECT * FROM island_warps WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
-                stmt.setInt(1, pos.getX());
-                stmt.setInt(2, pos.getZ());
-                stmt.setString(3, pos.getDimension().name());
-                ResultSet rs = stmt.executeQuery();
-
-                if (rs.next()) {
-                    IslandWarp warp = new IslandWarp(pos);
-                    org.bukkit.World world = Bukkit.getWorld(rs.getString("world"));
-                    if (world != null) {
-                        Location loc = new Location(
-                                world,
-                                rs.getDouble("x"),
-                                rs.getDouble("y"),
-                                rs.getDouble("z"),
-                                (float) rs.getDouble("yaw"),
-                                (float) rs.getDouble("pitch")
-                        );
-                        warp.setWarpLocation(loc);
-                        warp.setEnabled(rs.getBoolean("enabled"));
-                    }
-                    warpCache.put(pos, warp);
-                    return warp;
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to load island warp: " + e.getMessage());
-            }
+        // Delegate to IslandDAO (withConnection promoted)
+        IslandDAO dao = plugin.getDatabaseManager().getIslandDAO();
+        return dao.loadIslandWarp(pos).thenApply(w -> {
+            warpCache.put(pos, w);
+            return w;
+        }).exceptionally(ex -> {
+            plugin.getLogger().severe("Failed to load island warp via DAO: " + ex.getMessage());
             return new IslandWarp(pos);
         });
     }
 
     public CompletableFuture<Void> saveWarp(IslandWarp warp) {
         GridPosition pos = warp.getGridPosition();
-        return CompletableFuture.runAsync(() -> {
-            try (Connection conn = databaseManager.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO island_warps (grid_x, grid_z, dimension, world, x, y, z, yaw, pitch, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-                stmt.setInt(1, pos.getX());
-                stmt.setInt(2, pos.getZ());
-                stmt.setString(3, pos.getDimension().name());
-                stmt.setString(4, warp.getWarpLocation() != null ? warp.getWarpLocation().getWorld().getName() : "world");
-                stmt.setDouble(5, warp.getWarpLocation() != null ? warp.getWarpLocation().getX() : 0);
-                stmt.setDouble(6, warp.getWarpLocation() != null ? warp.getWarpLocation().getY() : 64);
-                stmt.setDouble(7, warp.getWarpLocation() != null ? warp.getWarpLocation().getZ() : 0);
-                stmt.setDouble(8, warp.getWarpLocation() != null ? warp.getWarpLocation().getYaw() : 0);
-                stmt.setDouble(9, warp.getWarpLocation() != null ? warp.getWarpLocation().getPitch() : 0);
-                stmt.setBoolean(10, warp.isEnabled());
-                stmt.executeUpdate();
-                warpCache.put(pos, warp);
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to save island warp: " + e.getMessage());
-            }
-        });
+        IslandDAO dao = plugin.getDatabaseManager().getIslandDAO();
+        dao.saveIslandWarp(warp);
+        warpCache.put(pos, warp);
+        return CompletableFuture.completedFuture(null);
     }
 
     public CompletableFuture<Boolean> setWarp(GridPosition pos, Location location) {
@@ -115,47 +75,34 @@ public class IslandWarpManager {
     }
 
     /**
-     * Get all public warps for the browse GUI
+     * Get all public warps for the browse GUI (no limit).
+     * Delegates to IslandDAO (now supports limit for large scale compression).
      */
     public CompletableFuture<Map<GridPosition, IslandWarp>> getAllPublicWarps() {
-        return CompletableFuture.supplyAsync(() -> {
-            Map<GridPosition, IslandWarp> publicWarps = new java.util.concurrent.ConcurrentHashMap<>();
-            try (Connection conn = databaseManager.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(
-                         "SELECT * FROM island_warps WHERE enabled = 1")) {
-                ResultSet rs = stmt.executeQuery();
+        return getAllPublicWarps(0);
+    }
 
-                while (rs.next()) {
-                    GridPosition pos = new GridPosition(
-                            rs.getInt("grid_x"),
-                            rs.getInt("grid_z"),
-                            org.bukkit.World.Environment.valueOf(rs.getString("dimension"))
-                    );
-
-                    IslandWarp warp = new IslandWarp(pos);
-                    org.bukkit.World world = Bukkit.getWorld(rs.getString("world"));
-                    if (world != null) {
-                        org.bukkit.Location loc = new org.bukkit.Location(
-                                world,
-                                rs.getDouble("x"),
-                                rs.getDouble("y"),
-                                rs.getDouble("z"),
-                                (float) rs.getDouble("yaw"),
-                                (float) rs.getDouble("pitch")
-                        );
-                        warp.setWarpLocation(loc);
-                        warp.setEnabled(rs.getBoolean("enabled"));
-                        publicWarps.put(pos, warp);
-                    }
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to load all public warps: " + e.getMessage());
+    /**
+     * Get public warps with optional limit for DB/memory compression on large servers (100s-1000+ public warps possible).
+     * limit <=0 means all (compat). See DAO + IMPROVEMENTS compression suggestions (paged data, bounded globals).
+     */
+    public CompletableFuture<Map<GridPosition, IslandWarp>> getAllPublicWarps(int limit) {
+        long start = System.nanoTime();
+        IslandDAO dao = plugin.getDatabaseManager().getIslandDAO();
+        return dao.loadAllPublicWarps(limit).thenApply(map -> {
+            warpCache.putAll(map);
+            if (plugin.getIslandWorthManager() != null && plugin.getIslandWorthManager().isProfileHotPaths()) {
+                long ns = System.nanoTime() - start;
+                if (ns > 1_000_000L) plugin.getLogger().info("[IslandWarpManager] PROFILE: getAllPublicWarps took " + (ns / 1_000_000.0) + " ms (large scale global query, limit=" + limit + ")");
             }
-            return publicWarps;
+            return map;
+        }).exceptionally(ex -> {
+            plugin.getLogger().severe("Failed to load all public warps via DAO: " + ex.getMessage());
+            return new java.util.concurrent.ConcurrentHashMap<>();
         });
     }
 
     private void cleanupCache() {
-        if (warpCache.size() > 500) warpCache.clear();
+        // Real LRU now via LinkedHashMap access-order removeEldest (auto evicts when >500); no manual needed.
     }
 }

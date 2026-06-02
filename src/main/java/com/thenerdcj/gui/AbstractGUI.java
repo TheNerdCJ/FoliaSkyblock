@@ -21,6 +21,9 @@ import java.util.function.Consumer;
  * Provides consistent styling, filler glass, button helpers, and click handling.
  * All new GUIs should extend this class for maintainability and clean UX.
  *
+ * @deprecated Legacy base. Modern GUIs use BaseGUI (with GUIUtils + MessageUtil.legacy + PDC ACTION_KEY + resilient startsWith guards).
+ * AbstractGUI retained for any remaining references; its createItem/createButton are @Deprecated.
+ *
  * Production notes:
  * - Uses Folia-safe practices (no blocking operations in click handlers).
  * - Click actions should be registered via a central listener or per-GUI map if complex.
@@ -56,7 +59,12 @@ public abstract class AbstractGUI implements InventoryHolder {
 
     /**
      * Creates a clean ItemStack with name and optional lore.
+     * @deprecated Use GUIUtils.createItem (or GUIUtils.createNavButton for PDC actions) + MessageUtil.legacy for titles.
+     * All modern GUIs should extend BaseGUI (or implement Listener + use BaseGUI patterns) for PDC, pagination,
+     * resilient title guards (startsWith), SoundUtil, and consistent Adventure-ready item construction.
+     * AbstractGUI is legacy and retained only for backward compatibility during transition.
      */
+    @Deprecated
     protected ItemStack createItem(Material material, String name, String... lore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
@@ -76,7 +84,9 @@ public abstract class AbstractGUI implements InventoryHolder {
     /**
      * Helper to create a button (same as createItem for now, but can be extended
      * with action registration in a full implementation).
+     * @deprecated Migrate to GUIUtils + BaseGUI patterns.
      */
+    @Deprecated
     protected ItemStack createButton(Material material, String name, String... lore) {
         return createItem(material, name, lore);
     }

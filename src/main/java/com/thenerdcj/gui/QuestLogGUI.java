@@ -53,6 +53,11 @@ public class QuestLogGUI implements Listener {
             return;
         }
 
+        if (plugin.getQuestManager() != null) {
+            plugin.getQuestManager().generateOnboardingQuests(islandId);
+            plugin.getQuestManager().generateDailyQuests(islandId);
+            plugin.getQuestManager().generateWeeklyQuests(islandId);
+        }
         plugin.getQuestManager().getQuestsForIsland(islandId).thenAccept(quests -> {
             plugin.getThreadSafety().runOnMainThread(() -> {
                 Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lQuest Log"));

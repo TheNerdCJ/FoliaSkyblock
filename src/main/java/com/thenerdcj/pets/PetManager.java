@@ -316,6 +316,7 @@ public class PetManager {
         // Called from listener
         // First load persisted collection (so we don't re-award XP on every login)
         loadPetCollectionFromDB(uuid);
+        loadPetSkinsFromDB(uuid);
 
         if (!ownedPets.containsKey(uuid)) {
             plugin.getDatabaseManager().loadPlayerPets(uuid, this);
@@ -335,10 +336,36 @@ public class PetManager {
         }
     }
 
+    private void loadPetSkinsFromDB(UUID uuid) {
+        Set<String> skinIds = plugin.getDatabaseManager().loadPlayerPetSkins(uuid);
+        Set<PetSkin> skins = ConcurrentHashMap.newKeySet();
+        for (String id : skinIds) {
+            try {
+                PetSkin s = PetSkin.valueOf(id);
+                if (!s.isNone()) skins.add(s);
+            } catch (Exception ignored) {}
+        }
+        ownedSkins.put(uuid, skins);
+    }
+
     public void savePlayer(UUID uuid) {
         CosmeticPet active = getActivePet(uuid);
         List<CosmeticPet> owned = getOwnedPets(uuid);
         plugin.getDatabaseManager().savePlayerPets(uuid, owned, active);
+
+        // Persist unlocked pet skins collection
+        Set<PetSkin> skins = ownedSkins.getOrDefault(uuid, Collections.emptySet());
+        Set<String> skinIds = new HashSet<>();
+        for (PetSkin s : skins) skinIds.add(s.name());
+        plugin.getDatabaseManager().savePlayerPetSkins(uuid, skinIds);
+    }
+
+    private Set<String> getSkinIdSet(UUID uuid) {
+        Set<String> ids = new HashSet<>();
+        for (PetSkin s : getOwnedSkins(uuid)) {
+            ids.add(s.name());
+        }
+        return ids;
     }
 
     /**
@@ -564,6 +591,9 @@ public class PetManager {
                 plugin.getIslandManager().addIslandXp(player, xp);
                 player.sendMessage("§a§lPet Skin Collection §7» Unlocked " + skin.getRarity().getColorCode() + skin.getDisplayName() + " §7(§a+" + xp + " XP§7)");
             }
+
+            // Persist the unlocked skin
+            plugin.getDatabaseManager().savePlayerPetSkins(uuid, getSkinIdSet(uuid));
         }
     }
 

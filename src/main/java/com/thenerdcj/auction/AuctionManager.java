@@ -19,6 +19,13 @@ public class AuctionManager {
     private static final long AUCTION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
     private static final double AUCTION_TAX = 0.05; // 5% tax on sale
 
+    // Bounded for large scale CHM compression (auctions can grow with many players)
+    private static final int MAX_ACTIVE_AUCTIONS = 5000;
+    private static final int MAX_PLAYER_AUCTIONS = 1000; // per player limit implicit, but bound map
+
+    // Event sink for auctions (dirty on create/bid/sell for event-driven global tops/views instead of periodic)
+    private volatile boolean auctionsDirty = true;
+
     public AuctionManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         loadActiveAuctions();
@@ -27,6 +34,9 @@ public class AuctionManager {
         // Use ThreadSafety for Folia-aware async repeating
         // Note: This is intentionally async; deliveries inside are scheduled to main via ThreadSafety
         plugin.getThreadSafety().runRepeatingOnMainThread(this::checkExpiredAuctions, 20L * 60, 20L * 60); // This will run on main - better to have async version
+
+        // Periodic bounded CHM eviction for large scale (auctions)
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCaches, 20L * 60 * 5, 20L * 60 * 5);
 
         // Actually, for background expiration, better to keep async. Using direct for now.
         // For full Folia, we could add runRepeatingAsync to ThreadSafety in future.
@@ -105,6 +115,7 @@ public class AuctionManager {
 
                 activeAuctions.put(auctionId, auction);
                 playerAuctions.computeIfAbsent(seller.getUniqueId(), k -> new ArrayList<>()).add(auctionId);
+                auctionsDirty = true; // event sink for large scale event-driven auction views/tops
 
                 plugin.getDatabaseManager().saveAuction(auction).thenRun(() -> {
                     // Broadcast can be done from async, but we schedule it to main for cleanliness
@@ -145,6 +156,9 @@ public class AuctionManager {
             return CompletableFuture.completedFuture(false);
         }
 
+        final long profileStart = (plugin.getIslandWorthManager() != null && plugin.getIslandWorthManager().isProfileHotPaths()) ? System.nanoTime() : 0;
+        auctionsDirty = true; // event sink
+
         // Async balance check — no blocking join inside supplyAsync
         return plugin.getEconomyManager().getPlayerBalance(bidder.getUniqueId()).thenCompose(balance -> {
             if (balance < bidAmount) {
@@ -171,6 +185,11 @@ public class AuctionManager {
             plugin.getDatabaseManager().updateAuction(updatedAuction);
 
             sendMessageSafely(bidder, "§aBid placed! §e$" + String.format("%,.0f", bidAmount) + " §aon §b" + auction.getItemMaterial());
+
+            if (profileStart != 0) {
+                long ns = System.nanoTime() - profileStart;
+                if (ns > 500_000L) plugin.getLogger().info("[AuctionManager] PROFILE: placeBid took " + (ns / 1_000_000.0) + " ms");
+            }
 
             return CompletableFuture.completedFuture(true);
         });
@@ -252,4 +271,26 @@ public class AuctionManager {
     private void sendMessageSafely(Player player, String message) {
         plugin.getThreadSafety().sendMessageSafely(player, message);
     }
+
+    /**
+     * Bounded eviction for activeAuctions/playerAuctions (large scale compression for auctions).
+     * Per "more caps (hoppers, auctions...)", "compression of ConcurrentHashMaps".
+     */
+    private void cleanupCaches() {
+        if (activeAuctions.size() > MAX_ACTIVE_AUCTIONS) {
+            java.util.Iterator<String> it = activeAuctions.keySet().iterator();
+            int toRemove = activeAuctions.size() - (MAX_ACTIVE_AUCTIONS - 500);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
+        if (playerAuctions.size() > MAX_PLAYER_AUCTIONS) {
+            java.util.Iterator<UUID> it = playerAuctions.keySet().iterator();
+            int toRemove = playerAuctions.size() - (MAX_PLAYER_AUCTIONS - 100);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
+    }
+
+    public boolean isAuctionsDirty() { return auctionsDirty; }
+    public void clearAuctionsDirty() { auctionsDirty = false; }
+
+    // Example event sink usage: call after mutations in create/placeBid etc to mark dirty for event-driven compression of periodic auction views/tops.
 }

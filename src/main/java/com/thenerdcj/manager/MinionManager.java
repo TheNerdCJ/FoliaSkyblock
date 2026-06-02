@@ -2,6 +2,8 @@ package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.cosmetic.MinionSkinManager;
+import com.thenerdcj.cosmetic.MinionSkin;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -32,6 +34,9 @@ public class MinionManager {
     private final Map<String, List<ArmorStand>> activeMinions = new HashMap<>();
     private final Map<String, Integer> islandFuels = new HashMap<>();
 
+    // Bounded for large scale CHM/memory compression (many islands with minions/fuel)
+    private static final int MAX_ISLANDS_MINIONS = 2000;
+
     // Real fuel items: Material -> fuel units provided (config-driven)
     private static final Map<Material, Integer> FUEL_VALUES = new EnumMap<>(Material.class);
     static {
@@ -54,6 +59,9 @@ public class MinionManager {
                 saveIslandFuel(islandId);
             }
         }, 20L * 60 * 5, 20L * 60 * 5); // Every 5 minutes
+
+        // Periodic bounded CHM eviction for large scale (minions/fuel per island)
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCaches, 20L * 60 * 5, 20L * 60 * 5);
     }
 
     private void loadConfig() {
@@ -132,6 +140,22 @@ public class MinionManager {
         spawnMinionEntity(player, island, type, islandId, newTotal);
 
         player.sendMessage("§aPlaced §e" + type.getDisplayName() + "§a minion! (" + newTotal + "/" + getMaxMinionSlots(islandId) + " slots used).");
+
+        // Early game / onboarding quest hook (FIRST minion quest) - safe, called from GUI/main
+        if (plugin.getQuestManager() != null && island != null) {
+            // Guard + report via expanded anti-cheat (minion place also feeds spam detection)
+            if (plugin.getAntiCheatManager() != null) {
+                if (plugin.getAntiCheatManager().isFlaggedForQuestExploit(player) ||
+                    plugin.getAntiCheatManager().isFlaggedForMinionSpam(player)) {
+                    player.sendMessage("§cAnti-cheat: Quest/minion progress temporarily suppressed.");
+                    return true; // still placed, but no progress credit
+                }
+                plugin.getAntiCheatManager().reportHighQuestProgress(player, "first_minion");
+                plugin.getAntiCheatManager().recordMinionPlace(player);
+            }
+            plugin.getQuestManager().addProgressToIsland(island.getId(), com.thenerdcj.quest.Quest.QuestCategory.CHALLENGE, 1);
+        }
+
         return true;
     }
 
@@ -160,8 +184,20 @@ public class MinionManager {
         stand.setArms(true);
         stand.setSmall(true);
 
+        // Apply cosmetic Minion Skin - prefer per-minion assignment, fallback to owner active (Play-to-Win visual only)
         Material helmetMat = type.getIcon();
-        stand.getEquipment().setHelmet(new ItemStack(helmetMat));
+        ItemStack helmet = new ItemStack(helmetMat);
+        UUID islandOwner = (island != null) ? island.getOwnerUuid() : (player != null ? player.getUniqueId() : null);
+        MinionSkinManager skinMgr = (plugin != null) ? plugin.getMinionSkinManager() : null;
+        if (skinMgr != null && islandOwner != null && island != null) {
+            MinionSkin skin = skinMgr.getAssignedOrActiveSkin(island.getId(), minionNumber, islandOwner);
+            if (skin != null && !skin.isNone()) {
+                helmet = skinMgr.getMinionHelmetForSkin(skin, helmetMat);
+                // Light premium particle accents (Folia-safe)
+                skinMgr.spawnMinionCosmeticParticles(stand, skin);
+            }
+        }
+        stand.getEquipment().setHelmet(helmet);
 
         activeMinions.computeIfAbsent(islandId, k -> new ArrayList<>()).add(stand);
         scheduleResourceTask(stand, player, type, islandId);
@@ -172,6 +208,8 @@ public class MinionManager {
             if (minion == null || !minion.isValid() || minion.isDead()) {
                 return;
             }
+            long start = 0;
+            if (plugin.getIslandWorthManager() != null && plugin.getIslandWorthManager().isProfileHotPaths()) start = System.nanoTime();
 
             int currentFuel = islandFuels.getOrDefault(islandId, 1000);
             // Polish: More efficient minions consume slightly less fuel per cycle
@@ -198,6 +236,10 @@ public class MinionManager {
             if (owner != null && owner.isOnline()) {
                 String niceName = resource.name().toLowerCase().replace('_', ' ');
                 owner.sendActionBar("§7" + type.getDisplayName() + " Minion produced §a+" + amount + " " + niceName + " (fuel: " + islandFuels.getOrDefault(islandId, 0) + ")");
+            }
+            if (start != 0) {
+                long ns = System.nanoTime() - start;
+                if (ns > 500_000L) plugin.getLogger().info("[MinionManager] PROFILE: minion produce cycle took " + (ns / 1_000_000.0) + " ms (hot path for large minion farms)");
             }
         };
 
@@ -230,6 +272,33 @@ public class MinionManager {
     /** Expose for admin command (temporary direct access) */
     public Map<String, Integer> getIslandFuels() {
         return islandFuels;
+    }
+
+    /** Helper for per-minion skin assignment (polish) */
+    public MinionSkin getAssignedSkinForMinion(String islandId, int minionNum, UUID owner) {
+        if (plugin.getMinionSkinManager() != null) {
+            return plugin.getMinionSkinManager().getAssignedOrActiveSkin(islandId, minionNum, owner);
+        }
+        return null;
+    }
+
+    public void assignSkinToMinionSlot(String islandId, int minionNum, MinionSkin skin, UUID owner) {
+        if (plugin.getMinionSkinManager() != null) {
+            plugin.getMinionSkinManager().assignSkinToMinion(islandId, minionNum, skin, owner);
+            saveMinionDataForIsland(islandId); // triggers assignment save
+        }
+    }
+
+    /** Clear a specific per-minion assignment (polish UX). */
+    public void clearSkinAssignmentForMinionSlot(String islandId, int minionNum, UUID owner) {
+        if (plugin.getMinionSkinManager() != null) {
+            plugin.getMinionSkinManager().clearMinionAssignment(islandId, minionNum);
+            // Explicit DB delete for the cleared slot
+            if (plugin.getDatabaseManager() != null) {
+                plugin.getDatabaseManager().deleteMinionSkinAssignment(islandId, minionNum);
+            }
+            saveMinionDataForIsland(islandId);
+        }
     }
 
     /**
@@ -272,7 +341,18 @@ public class MinionManager {
                 stand.setBasePlate(false);
                 stand.setArms(true);
                 stand.setSmall(true);
-                stand.getEquipment().setHelmet(new ItemStack(type.getIcon()));
+
+                // Cosmetic Minion Skin application (per-minion assignment or owner's active theme)
+                ItemStack helmet = new ItemStack(type.getIcon());
+                MinionSkinManager skinMgr = (plugin != null) ? plugin.getMinionSkinManager() : null;
+                if (skinMgr != null && island != null) {
+                    MinionSkin skin = skinMgr.getAssignedOrActiveSkin(island.getId(), minionNumber, island.getOwnerUuid());
+                    if (skin != null && !skin.isNone()) {
+                        helmet = skinMgr.getMinionHelmetForSkin(skin, type.getIcon());
+                        skinMgr.spawnMinionCosmeticParticles(stand, skin);
+                    }
+                }
+                stand.getEquipment().setHelmet(helmet);
 
                 activeMinions.computeIfAbsent(islandId, k -> new ArrayList<>()).add(stand);
                 scheduleResourceTask(stand, null, type, islandId);  // owner null is ok for actionbar
@@ -377,6 +457,11 @@ public class MinionManager {
         plugin.getDatabaseManager().loadIslandFuel(islandId).thenAccept(fuel -> {
             islandFuels.put(islandId, fuel);
         });
+
+        // Load per-minion skin assignments (polish)
+        if (plugin.getMinionSkinManager() != null) {
+            plugin.getMinionSkinManager().loadMinionAssignmentsForIsland(islandId);
+        }
     }
 
     public void saveMinionDataForIsland(String islandId) {
@@ -387,6 +472,10 @@ public class MinionManager {
         }
         for (Map.Entry<MinionType, Integer> entry : counts.entrySet()) {
             plugin.getDatabaseManager().saveMinionData(islandId, entry.getKey().ordinal(), entry.getValue());
+        }
+        // Save per-minion skin assignments (polish)
+        if (plugin.getMinionSkinManager() != null) {
+            plugin.getMinionSkinManager().saveMinionAssignmentsForIsland(islandId);
         }
     }
 
@@ -406,5 +495,44 @@ public class MinionManager {
             case 4 -> MinionType.DIAMOND;
             default -> null;
         };
+    }
+
+    /**
+     * Folia world unload hook - clears active entity refs for minions in the unloading world to avoid stale refs.
+     */
+    public void onWorldUnload(org.bukkit.World world) {
+        if (world == null) return;
+        // Best-effort: scan active entities and remove those in this world; island keys are grid based so we drop matching world
+        activeMinions.values().forEach(list -> list.removeIf(e -> e != null && e.isValid() && e.getWorld() != null && e.getWorld().equals(world)));
+        // Note: placed maps by islandId (grid) are kept; on re-load of dim they respawn via Island load hooks.
+        plugin.getLogger().info("[MinionManager] World unload cleanup done for " + world.getName());
+        cleanupCaches();
+    }
+
+    /**
+     * Bounded eviction for minion/fuel maps (large scale compression for 1000+ islands).
+     * Per "Minion/Hologram: ... avoid any global lists iteration without bounds", "more CHM bounds".
+     */
+    private void cleanupCaches() {
+        if (placedMinionsByType.size() > MAX_ISLANDS_MINIONS) {
+            java.util.Iterator<String> it = placedMinionsByType.keySet().iterator();
+            int toRemove = placedMinionsByType.size() - (MAX_ISLANDS_MINIONS - 200);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
+        if (activeMinions.size() > MAX_ISLANDS_MINIONS) {
+            java.util.Iterator<String> it = activeMinions.keySet().iterator();
+            int toRemove = activeMinions.size() - (MAX_ISLANDS_MINIONS - 200);
+            while (it.hasNext() && toRemove > 0) {
+                String id = it.next(); it.remove();
+                List<ArmorStand> list = activeMinions.remove(id); // already removed key
+                if (list != null) for (ArmorStand e : list) if (e != null && e.isValid()) e.remove();
+                toRemove--;
+            }
+        }
+        if (islandFuels.size() > MAX_ISLANDS_MINIONS) {
+            java.util.Iterator<String> it = islandFuels.keySet().iterator();
+            int toRemove = islandFuels.size() - (MAX_ISLANDS_MINIONS - 200);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
     }
 }

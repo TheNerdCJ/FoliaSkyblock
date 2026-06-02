@@ -132,6 +132,16 @@ public class WardrobeManager {
                 inv.setChestplate(armor[1]);
                 inv.setLeggings(armor[2]);
                 inv.setBoots(armor[3]);
+
+                // Re-apply any active cosmetic helmet skin after equipping real armor
+                if (plugin.getHelmetSkinManager() != null) {
+                    com.thenerdcj.cosmetic.HelmetSkin activeSkin = plugin.getHelmetSkinManager().getActiveHelmetSkin(uuid);
+                    if (activeSkin != null && !activeSkin.isNone() && inv.getHelmet() != null) {
+                        ItemStack helmet = inv.getHelmet();
+                        activeSkin.applyToHelmet(helmet);
+                        inv.setHelmet(helmet);
+                    }
+                }
             }
 
             if (equipSet != null) {

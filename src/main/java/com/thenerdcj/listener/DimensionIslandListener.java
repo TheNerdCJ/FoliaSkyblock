@@ -49,7 +49,21 @@ public class DimensionIslandListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onWorldChange(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
+        World.Environment oldDimension = event.getFrom().getEnvironment();
         World.Environment newDimension = player.getWorld().getEnvironment();
+
+        // Polish: call leave hooks for previous island's cosmetics (music/weather particle loops)
+        if (!oldDimension.equals(newDimension)) {
+            Island oldIsland = plugin.getIslandManager().getIsland(player.getUniqueId(), oldDimension);
+            if (oldIsland != null) {
+                if (plugin.getIslandWeatherCosmeticManager() != null) {
+                    plugin.getIslandWeatherCosmeticManager().onPlayerLeaveIsland(player, oldIsland);
+                }
+                if (plugin.getIslandMusicManager() != null) {
+                    plugin.getIslandMusicManager().onPlayerLeaveIsland(player, oldIsland);
+                }
+            }
+        }
 
         // Check if player has an island in the new dimension
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), newDimension);
@@ -76,6 +90,44 @@ public class DimensionIslandListener implements Listener {
         } else {
             // Player has an island here - show quick info
             player.sendMessage("§aWelcome to your §e" + island.getBiomeName() + "§a island (Level " + island.getLevel() + ")");
+
+            // Polish: trigger island cosmetic enter hooks for weather/music (Folia-safe delegation)
+            if (plugin.getIslandWeatherCosmeticManager() != null) {
+                plugin.getIslandWeatherCosmeticManager().onPlayerEnterIsland(player, island);
+            }
+            if (plugin.getIslandMusicManager() != null) {
+                plugin.getIslandMusicManager().onPlayerEnterIsland(player, island);
+            }
+
+            // Housing decor (furniture/structures) - respawn visuals on enter for coverage (e.g. after dim switch or reload edge cases)
+            if (plugin.getIslandFurnitureManager() != null) {
+                org.bukkit.World w = (island.getCenter(null) != null) ? island.getCenter(null).getWorld() : player.getWorld();
+                plugin.getIslandFurnitureManager().respawnAllFurnitureForIsland(island.getId(), w);
+            }
+            if (plugin.getIslandStructureManager() != null) {
+                org.bukkit.World w = (island.getCenter(null) != null) ? island.getCenter(null).getWorld() : player.getWorld();
+                plugin.getIslandStructureManager().respawnAllStructuresForIsland(island.getId(), w);
+            }
+
+            // Housing set bonus visuals on enter (active placed sets "shine" for the player and visitors)
+            if (plugin.getIslandFurnitureManager() != null) {
+                plugin.getIslandFurnitureManager().onPlayerEnterIsland(player, island);
+            }
+
+            // Broader integration: re-apply player-based cosmetic visuals (accessories, overhead) on island enter/dim change
+            // Ensures displays persist/re-spawn across world changes (Folia-safe via setActive which triggers spawn)
+            if (plugin.getAccessoryCosmeticManager() != null) {
+                com.thenerdcj.cosmetic.AccessoryCosmetic acc = plugin.getAccessoryCosmeticManager().getActive(player.getUniqueId());
+                if (!acc.isNone()) {
+                    plugin.getAccessoryCosmeticManager().setActive(player, acc);
+                }
+            }
+            if (plugin.getOverheadCosmeticManager() != null) {
+                com.thenerdcj.cosmetic.OverheadCosmetic ov = plugin.getOverheadCosmeticManager().getActive(player.getUniqueId());
+                if (!ov.isNone()) {
+                    plugin.getOverheadCosmeticManager().setActive(player, ov);
+                }
+            }
         }
     }
 }

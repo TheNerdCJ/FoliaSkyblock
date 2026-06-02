@@ -29,9 +29,14 @@ public class HologramManager {
     private final Map<Integer, ScheduledTask> dynamicTasks = new ConcurrentHashMap<>();
     private final LegacyComponentSerializer legacySerializer = MessageUtil.getLegacySerializer();
 
+    // Bounded for large scale (many dynamic/top holograms on large servers)
+    private static final int MAX_HOLOGRAMS = 1000;
+
     public HologramManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
+        // Periodic bound for compression
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCaches, 20L * 60 * 5, 20L * 60 * 5);
     }
 
     public void loadAndSpawnAll() {
@@ -217,6 +222,10 @@ public class HologramManager {
         HologramData data = holo.getData();
         if (!data.isDynamic() || holo.getDisplays().isEmpty()) return;
 
+        long start = 0;
+        if (plugin.getIslandWorthManager() != null && plugin.getIslandWorthManager().isProfileHotPaths()) start = System.nanoTime();
+        final long profileStart = start;
+
         List<TextDisplay> displays = holo.getDisplays();
         Location loc = displays.get(0).getLocation();
 
@@ -234,6 +243,10 @@ public class HologramManager {
                 primary.getScheduler().run(plugin, t -> updateTask.run(), null);
             } else {
                 plugin.getServer().getRegionScheduler().execute(plugin, loc, updateTask);
+            }
+            if (profileStart != 0) {
+                long ns = System.nanoTime() - profileStart;
+                if (ns > 500_000L) plugin.getLogger().info("[HologramManager] PROFILE: refreshDynamicContent took " + (ns / 1_000_000.0) + " ms (hot path for dynamic holograms on large servers)");
             }
         });
     }
@@ -290,5 +303,62 @@ public class HologramManager {
             }
         }
         activeHolograms.clear();
+    }
+
+    /**
+     * Folia edge-case hook: called on WorldUnloadEvent to drop tracking of holograms in the unloaded world.
+     * Prevents stale entity references and scheduler tasks attached to displays in unloaded regions.
+     */
+    public void onWorldUnload(World world) {
+        if (world == null) return;
+        List<Integer> toRemove = new ArrayList<>();
+        for (Map.Entry<Integer, Hologram> entry : activeHolograms.entrySet()) {
+            List<TextDisplay> displays = entry.getValue().getDisplays();
+            if (!displays.isEmpty()) {
+                TextDisplay first = displays.get(0);
+                if (first != null && first.isValid() && first.getWorld() != null && first.getWorld().equals(world)) {
+                    // Remove the visual entities too
+                    for (TextDisplay d : displays) {
+                        if (d != null && d.isValid()) d.remove();
+                    }
+                    toRemove.add(entry.getKey());
+                }
+            }
+        }
+        for (int id : toRemove) {
+            activeHolograms.remove(id);
+            ScheduledTask t = dynamicTasks.remove(id);
+            if (t != null) t.cancel();
+        }
+        if (!toRemove.isEmpty()) {
+            plugin.getLogger().info("[HologramManager] Cleaned " + toRemove.size() + " holograms for unloaded world " + world.getName());
+        }
+    }
+
+    /**
+     * Bounded eviction for activeHolograms/dynamicTasks (large scale compression, avoid unbounded globals).
+     * Ties to "Minion/Hologram: ensure all ticking uses EntityScheduler ... avoid any global lists iteration without bounds".
+     */
+    private void cleanupCaches() {
+        if (activeHolograms.size() > MAX_HOLOGRAMS) {
+            java.util.Iterator<Integer> it = activeHolograms.keySet().iterator();
+            int toRemove = activeHolograms.size() - (MAX_HOLOGRAMS - 100);
+            while (it.hasNext() && toRemove > 0) {
+                int id = it.next(); it.remove();
+                ScheduledTask t = dynamicTasks.remove(id);
+                if (t != null) t.cancel();
+                toRemove--;
+            }
+        }
+        if (dynamicTasks.size() > MAX_HOLOGRAMS) {
+            java.util.Iterator<Integer> it = dynamicTasks.keySet().iterator();
+            int toRemove = dynamicTasks.size() - (MAX_HOLOGRAMS - 100);
+            while (it.hasNext() && toRemove > 0) {
+                int id = it.next();
+                ScheduledTask t = dynamicTasks.remove(id);
+                if (t != null) t.cancel();
+                toRemove--;
+            }
+        }
     }
 }

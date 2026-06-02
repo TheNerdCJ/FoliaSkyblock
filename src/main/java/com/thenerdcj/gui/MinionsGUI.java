@@ -4,6 +4,8 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.manager.MinionManager;
 import com.thenerdcj.manager.MinionType;
+import com.thenerdcj.cosmetic.MinionSkin;
+import com.thenerdcj.cosmetic.MinionSkinManager;
 import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -36,7 +38,9 @@ public class MinionsGUI implements Listener {
 
     private final FoliaSkyblock plugin;
     private final MinionManager minionManager;
+    private final MinionSkinManager minionSkinManager;
     private final NamespacedKey MINION_TYPE_KEY;
+    private final NamespacedKey MINION_SKIN_ASSIGN_KEY;
 
     public MinionsGUI(FoliaSkyblock plugin) {
         this(plugin, true);
@@ -48,7 +52,9 @@ public class MinionsGUI implements Listener {
     public MinionsGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
         this.minionManager = plugin.getMinionManager();
+        this.minionSkinManager = plugin.getMinionSkinManager();
         this.MINION_TYPE_KEY = new NamespacedKey(plugin, "minion_type");
+        this.MINION_SKIN_ASSIGN_KEY = new NamespacedKey(plugin, "minion_skin_assign");
         if (autoRegister) {
             Bukkit.getPluginManager().registerEvents(this, plugin);
         }
@@ -186,9 +192,36 @@ public class MinionsGUI implements Listener {
             inv.setItem(28, none);
         }
 
+        // Skin assignment section for per-minion polish (uses foundation in manager)
+        if (hasIsland && minionSkinManager != null) {
+            ItemStack skinHeader = GUIUtils.createItem(Material.LEATHER_HELMET, "§6§lMinion Skin Assignments (per-minion)",
+                    "§7Your active skin: §f" + (minionSkinManager.getActiveSkin(player.getUniqueId()) != null ? minionSkinManager.getActiveSkin(player.getUniqueId()).getDisplayName() : "None"),
+                    "§7Click a slot below to assign current active skin to that specific minion #",
+                    "§7(Assigned overrides the global active skin for that minion only)",
+                    "§7Shift+Click slot to clear assignment | Set global via /minionskins or Wardrobe tab");
+            inv.setItem(36, skinHeader);
+
+            String idForSkin = islandId;
+            int skinSlot = 37;
+            for (int m = 1; m <= maxSlots && skinSlot < 43; m++) {
+                MinionSkin assigned = minionManager.getAssignedSkinForMinion(idForSkin, m, player.getUniqueId());
+                String label = "§eMinion #" + m;
+                String desc = (assigned != null && !assigned.isNone()) ? "§aAssigned: " + assigned.getDisplayName() : "§7Uses global active skin";
+                ItemStack sItem = GUIUtils.createItem(Material.LEATHER_HELMET, label, desc,
+                        "§7Click: assign your current active global skin here",
+                        "§7Shift+Click: clear this minion's assignment (falls back to global)");
+                ItemMeta sm = sItem.getItemMeta();
+                if (sm != null) {
+                    sm.getPersistentDataContainer().set(MINION_SKIN_ASSIGN_KEY, PersistentDataType.INTEGER, m);
+                    sItem.setItemMeta(sm);
+                }
+                inv.setItem(skinSlot++, sItem);
+            }
+        }
+
         // Fill remaining empty slots with subtle glass - modernized (GUIUtils)
         ItemStack glass = GUIUtils.createItem(Material.LIGHT_GRAY_STAINED_GLASS_PANE, " ");
-        int[] skipSlots = {0,1,2,3,4,5,6,7,8,9,13,18,19,20,21,22,23,24,25,26,40,49};
+        int[] skipSlots = {0,1,2,3,4,5,6,7,8,9,13,18,19,20,21,22,23,24,25,26,36,37,38,39,40,41,42,49};
         for (int i = 0; i < 54; i++) {
             if (inv.getItem(i) == null) {
                 boolean skip = false;
@@ -292,6 +325,55 @@ public class MinionsGUI implements Listener {
                             player.sendMessage("§aRemoved one §e" + typeToRemove.getDisplayName() + "§a minion.");
                         } else {
                             player.sendMessage("§cNo " + typeToRemove.getDisplayName() + " minions left.");
+                        }
+                        openMinionsGUI(player);
+                    }
+                }
+            }
+            return;
+        }
+
+        // Per-minion skin assignment clicks (slots 37-42) - uses per-minion foundation + UX polish
+        if (slot >= 37 && slot <= 42) {
+            ItemMeta meta = clicked.getItemMeta();
+            if (meta != null) {
+                PersistentDataContainer pdc = meta.getPersistentDataContainer();
+                Integer minionNum = pdc.get(MINION_SKIN_ASSIGN_KEY, PersistentDataType.INTEGER);
+                if (minionNum != null) {
+                    Island island = plugin.getIslandManager().getIslandByOwner(player.getUniqueId(), player.getWorld().getEnvironment());
+                    if (island != null) {
+                        String id = island.getGridPosition().getX() + "," + island.getGridPosition().getZ();
+                        boolean isClear = event.isShiftClick();
+                        if (isClear) {
+                            // Clear this minion's assignment
+                            minionManager.clearSkinAssignmentForMinionSlot(id, minionNum, player.getUniqueId());
+                            player.sendMessage("§eCleared skin assignment for minion #" + minionNum + " §7(now uses global active)");
+                            player.sendActionBar("§7Minion #" + minionNum + " assignment cleared");
+                            // Folia-safe feedback particles
+                            com.thenerdcj.util.ThreadSafety ts = plugin.getThreadSafety();
+                            org.bukkit.Location pLoc = player.getLocation();
+                            ts.runAtLocation(pLoc, () -> {
+                                if (pLoc.getWorld() != null) {
+                                    pLoc.getWorld().spawnParticle(org.bukkit.Particle.SMOKE, pLoc.clone().add(0, 1.2, 0), 8, 0.4, 0.4, 0.4, 0.01);
+                                }
+                            });
+                        } else {
+                            MinionSkin current = (minionSkinManager != null) ? minionSkinManager.getActiveSkin(player.getUniqueId()) : null;
+                            if (current != null && !current.isNone()) {
+                                minionManager.assignSkinToMinionSlot(id, minionNum, current, player.getUniqueId());
+                                player.sendMessage("§aAssigned " + current.getDisplayName() + " skin to minion #" + minionNum + " §7(overrides global)");
+                                player.sendActionBar("§aMinion #" + minionNum + " now uses " + current.getDisplayName());
+                                // Folia-safe feedback particles
+                                com.thenerdcj.util.ThreadSafety ts = plugin.getThreadSafety();
+                                org.bukkit.Location pLoc = player.getLocation();
+                                ts.runAtLocation(pLoc, () -> {
+                                    if (pLoc.getWorld() != null) {
+                                        pLoc.getWorld().spawnParticle(org.bukkit.Particle.HAPPY_VILLAGER, pLoc.clone().add(0, 1.2, 0), 10, 0.5, 0.5, 0.5, 0.02);
+                                    }
+                                });
+                            } else {
+                                player.sendMessage("§cNo active minion skin to assign. Set one via /minionskins or Wardrobe.");
+                            }
                         }
                         openMinionsGUI(player);
                     }

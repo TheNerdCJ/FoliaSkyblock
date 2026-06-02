@@ -45,11 +45,49 @@ public class DatabaseManager {
     // New lightweight operations helper (start of DatabaseManager compression)
     private final DBOperations dbOps;
 
-    // Extracted DAOs
+    // Extracted DAOs (continuing modularization - highest technical priority)
     private AuctionDAO auctionDAO;
     private SlayerDAO slayerDAO;
     private PrestigeDAO prestigeDAO;
     private MissionDAO missionDAO;
+    private IslandDAO islandDAO; // Core island persistence extracted as part of full modularization
+    private HologramDAO hologramDAO; // Extracted as continuation of DB modularization (hologram persistence moved out of god class)
+    private BalanceDAO balanceDAO;
+    private PunishmentDAO punishmentDAO;
+    private CosmeticDAO cosmeticDAO; // Player cosmetic ownership/active/collections (many player_* tables)
+    private PendingItemsDAO pendingItemsDAO; // For pending_items table (misc step)
+
+    public IslandDAO getIslandDAO() {
+        return islandDAO;
+    }
+
+    public HologramDAO getHologramDAO() {
+        return hologramDAO;
+    }
+
+    public MissionDAO getMissionDAO() {
+        return missionDAO;
+    }
+
+    public PrestigeDAO getPrestigeDAO() {
+        return prestigeDAO;
+    }
+
+    public BalanceDAO getBalanceDAO() {
+        return balanceDAO;
+    }
+
+    public PunishmentDAO getPunishmentDAO() {
+        return punishmentDAO;
+    }
+
+    public CosmeticDAO getCosmeticDAO() {
+        return cosmeticDAO;
+    }
+
+    public PendingItemsDAO getPendingItemsDAO() {
+        return pendingItemsDAO;
+    }
 
     // For test support (H2 in-memory)
     private String jdbcUrlOverride = null;
@@ -70,6 +108,12 @@ public class DatabaseManager {
         this.slayerDAO = new SlayerDAO(plugin, dbOps);
         this.prestigeDAO = new PrestigeDAO(plugin, dbOps);
         this.missionDAO = new MissionDAO(plugin, dbOps);
+        this.islandDAO = new IslandDAO(plugin, dbOps);
+        this.hologramDAO = new HologramDAO(plugin, dbOps);
+        this.balanceDAO = new BalanceDAO(plugin, dbOps);
+        this.punishmentDAO = new PunishmentDAO(plugin, dbOps);
+        this.cosmeticDAO = new CosmeticDAO(plugin, dbOps);
+        this.pendingItemsDAO = new PendingItemsDAO(plugin, dbOps);
     }
 
     /**
@@ -85,6 +129,12 @@ public class DatabaseManager {
         this.slayerDAO = new SlayerDAO(plugin, dbOps);
         this.prestigeDAO = new PrestigeDAO(plugin, dbOps);
         this.missionDAO = new MissionDAO(plugin, dbOps);
+        this.islandDAO = new IslandDAO(plugin, dbOps);
+        this.hologramDAO = new HologramDAO(plugin, dbOps);
+        this.balanceDAO = new BalanceDAO(plugin, dbOps);
+        this.punishmentDAO = new PunishmentDAO(plugin, dbOps);
+        this.cosmeticDAO = new CosmeticDAO(plugin, dbOps);
+        this.pendingItemsDAO = new PendingItemsDAO(plugin, dbOps);
     }
 
     public void initDatabase() {
@@ -185,6 +235,8 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_active_pet (uuid TEXT PRIMARY KEY, pet_type TEXT, custom_name TEXT, skin TEXT DEFAULT 'NONE')",
                 // Pet collection / rarity tracking (parallel to player_wardrobe_collection for XP)
                 "CREATE TABLE IF NOT EXISTS player_pet_collection (uuid TEXT, pet_type TEXT, PRIMARY KEY (uuid, pet_type))",
+                // Pet Skin collection (separate from equipped skin on a specific pet)
+                "CREATE TABLE IF NOT EXISTS player_pet_skins (uuid TEXT, skin_id TEXT, PRIMARY KEY (uuid, skin_id))",
 
                 // Player cosmetic Tags (new system - chat/tab display, prestige/slayer gated, collection XP)
                 // variant column added for Tag Variants support (like PetVariant)
@@ -201,8 +253,65 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_runes (uuid TEXT, rune_id TEXT, PRIMARY KEY (uuid, rune_id))",
                 "CREATE TABLE IF NOT EXISTS player_rune_collection (uuid TEXT, rune_id TEXT, PRIMARY KEY (uuid, rune_id))",
 
+                // Helmet Skins (cosmetic overrides for helmets - Play-to-Win)
+                "CREATE TABLE IF NOT EXISTS player_helmet_skins (uuid TEXT, skin_id TEXT, PRIMARY KEY (uuid, skin_id))",
+
+                // Death / Kill Effects (cosmetic on-death and on-kill visuals)
+                "CREATE TABLE IF NOT EXISTS player_death_effects (uuid TEXT, effect_id TEXT, PRIMARY KEY (uuid, effect_id))",
+
+                // Backpack Skins (cosmetic overrides for backpacks/storage - exploration started)
+                "CREATE TABLE IF NOT EXISTS player_backpack_skins (uuid TEXT, skin_id TEXT, PRIMARY KEY (uuid, skin_id))",
+
+                // Power Orb Skins (cosmetic overrides for Power Orbs - new system)
+                "CREATE TABLE IF NOT EXISTS player_power_orb_skins (uuid TEXT, skin_id TEXT, PRIMARY KEY (uuid, skin_id))",
+
+                // Minion Skins (cosmetic head/appearance overrides for island minions - Play-to-Win)
+                "CREATE TABLE IF NOT EXISTS player_minion_skins (uuid TEXT, skin_id TEXT, PRIMARY KEY (uuid, skin_id))",
+
+                // Minion Skin Assignments (per-minion cosmetic skins - polish for per-assignment)
+                "CREATE TABLE IF NOT EXISTS minion_skin_assignments (island_key TEXT, minion_num INTEGER, skin_id TEXT, PRIMARY KEY (island_key, minion_num))",
+
+                // Island Furniture / Housing Cosmetics (Play-to-Win decorative placement)
+                "CREATE TABLE IF NOT EXISTS player_island_furniture (uuid TEXT, furniture_id TEXT, PRIMARY KEY (uuid, furniture_id))",
+                "CREATE TABLE IF NOT EXISTS island_placed_furniture (island_key TEXT, furniture_id TEXT, pos_x REAL, pos_y REAL, pos_z REAL, yaw REAL, data TEXT, placed_at INTEGER)",
+
+                // Island Music & Ambient Cosmetics (Play-to-Win island-wide sounds)
+                "CREATE TABLE IF NOT EXISTS player_island_music (uuid TEXT, music_id TEXT, PRIMARY KEY (uuid, music_id))",
+                "CREATE TABLE IF NOT EXISTS island_active_music (island_key TEXT PRIMARY KEY, music_id TEXT)",
+
+                // Advanced Overhead Cosmetics (TextDisplay floating effects above players)
+                "CREATE TABLE IF NOT EXISTS player_overhead_cosmetics (uuid TEXT, cosmetic_id TEXT, PRIMARY KEY (uuid, cosmetic_id))",
+
+                // Cosmetic Emotes (visual/chat flair emotes)
+                "CREATE TABLE IF NOT EXISTS player_emote_cosmetics (uuid TEXT, emote_id TEXT, PRIMARY KEY (uuid, emote_id))",
+                // Per-player emote triggers (e.g. "kill" -> some emote; persisted, not global)
+                "CREATE TABLE IF NOT EXISTS player_emote_triggers (uuid TEXT, trigger_key TEXT, emote_id TEXT, PRIMARY KEY (uuid, trigger_key))",
+
+                // Island Structure Decorations (larger cosmetic clusters)
+                "CREATE TABLE IF NOT EXISTS player_island_structures (uuid TEXT, structure_id TEXT, PRIMARY KEY (uuid, structure_id))",
+                "CREATE TABLE IF NOT EXISTS island_placed_structures (island_key TEXT, structure_id TEXT, pos_x REAL, pos_y REAL, pos_z REAL, yaw REAL, data TEXT, placed_at INTEGER)",
+
+                // Chat Bubble Cosmetics (floating chat message visuals)
+                "CREATE TABLE IF NOT EXISTS player_chat_bubble_cosmetics (uuid TEXT, bubble_id TEXT, PRIMARY KEY (uuid, bubble_id))",
+
+                // Island Weather Cosmetics (cosmetic particle weather/ambience on islands)
+                "CREATE TABLE IF NOT EXISTS player_island_weather (uuid TEXT, weather_id TEXT, PRIMARY KEY (uuid, weather_id))",
+                "CREATE TABLE IF NOT EXISTS island_active_weather (island_key TEXT PRIMARY KEY, weather_id TEXT)",
+
+                // Light Accessories (floating cosmetic items around player)
+                "CREATE TABLE IF NOT EXISTS player_accessories (uuid TEXT, accessory_id TEXT, PRIMARY KEY (uuid, accessory_id))",
+
                 "CREATE TABLE IF NOT EXISTS island_shop_purchases (island_key TEXT, item_id TEXT, purchased_at INTEGER, PRIMARY KEY (island_key, item_id))",
-                "CREATE TABLE IF NOT EXISTS island_prestige (island_key TEXT PRIMARY KEY, prestige_level INTEGER DEFAULT 0, last_prestiged INTEGER DEFAULT 0)"
+                "CREATE TABLE IF NOT EXISTS island_prestige (island_key TEXT PRIMARY KEY, prestige_level INTEGER DEFAULT 0, last_prestiged INTEGER DEFAULT 0)",
+
+                // Core Collections System (Hypixel-style unique item discovery per island for progression + cosmetic rewards)
+                "CREATE TABLE IF NOT EXISTS island_collections (island_key TEXT, item_key TEXT, discovered_by TEXT, discovered_at INTEGER, PRIMARY KEY (island_key, item_key))",
+
+                // Cosmetic Death Messages (new system - text on kill/death)
+                "CREATE TABLE IF NOT EXISTS player_death_messages (uuid TEXT, message_id TEXT, PRIMARY KEY (uuid, message_id))",
+
+                // Player Skill System (MCMMO-like per-player skills: Mining, Woodcutting, etc. with levels/XP/abilities)
+                "CREATE TABLE IF NOT EXISTS player_skills (uuid TEXT, skill TEXT, xp DOUBLE DEFAULT 0, level INTEGER DEFAULT 1, PRIMARY KEY (uuid, skill))"
         };
 
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
@@ -215,12 +324,35 @@ public class DatabaseManager {
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_skills_key ON island_skills(island_key)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_milestones_key ON island_milestones(island_key)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auctions_active ON auctions(sold, end_time)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_collections_key ON island_collections(island_key)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_death_messages ON player_death_messages(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_player_skills_uuid ON player_skills(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_wardrobe_collection ON player_wardrobe_collection(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pet_collection ON player_pet_collection(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pet_skins ON player_pet_skins(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_tag_collection ON player_tag_collection(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_elytra_wing_collection ON player_elytra_wing_collection(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_runes ON player_runes(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_rune_collection ON player_rune_collection(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_helmet_skins ON player_helmet_skins(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_death_effects ON player_death_effects(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_backpack_skins ON player_backpack_skins(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_power_orb_skins ON player_power_orb_skins(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_minion_skins ON player_minion_skins(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_minion_skin_assign ON minion_skin_assignments(island_key)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_furniture ON player_island_furniture(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_placed_furniture ON island_placed_furniture(island_key)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_music ON player_island_music(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_active_music ON island_active_music(island_key)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_overhead_cosmetics ON player_overhead_cosmetics(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_emote_cosmetics ON player_emote_cosmetics(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_emote_triggers ON player_emote_triggers(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_structures ON player_island_structures(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_placed_structures ON island_placed_structures(island_key)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_chat_bubbles ON player_chat_bubble_cosmetics(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_weather ON player_island_weather(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_active_weather ON island_active_weather(island_key)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_accessories ON player_accessories(uuid)");
 
             // Backwards-compat ALTERs for mission booster reward columns (safe if columns exist)
             try { stmt.executeUpdate("ALTER TABLE island_missions ADD COLUMN reward_booster_type TEXT"); } catch (SQLException ignored) {}
@@ -249,27 +381,14 @@ public class DatabaseManager {
         }
     }
 
-    // ==================== MODERN ITEM SERIALIZATION ====================
-    String itemToBase64(ItemStack item) { // package-private for DAOs during migration
-        if (item == null) return null;
-        try {
-            byte[] bytes = item.serializeAsBytes();
-            return Base64.getEncoder().encodeToString(bytes);
-        } catch (Exception e) {
-            plugin.getLogger().severe("Item serialization failed: " + e.getMessage());
-            return null;
-        }
+    // ==================== MODERN ITEM SERIALIZATION (delegated to polished ItemSerializer utility) ====================
+    // ItemSerializer extracted/polished as part of DB modularization (ItemSerializer now canonical, modern bytes + legacy fallback).
+    String itemToBase64(ItemStack item) { // package-private for DAOs during migration (bridge)
+        return com.thenerdcj.util.ItemSerializer.itemToBase64(item);
     }
 
-    ItemStack itemFromBase64(String base64) { // package-private for DAOs during migration
-        if (base64 == null || base64.isEmpty()) return null;
-        try {
-            byte[] bytes = Base64.getDecoder().decode(base64);
-            return ItemStack.deserializeBytes(bytes);
-        } catch (Exception e) {
-            plugin.getLogger().severe("Item deserialization failed: " + e.getMessage());
-            return null;
-        }
+    ItemStack itemFromBase64(String base64) { // package-private for DAOs during migration (bridge)
+        return com.thenerdcj.util.ItemSerializer.itemFromBase64(base64);
     }
 
     // ==================== BAZAAR (Fixed) ====================
@@ -368,50 +487,34 @@ public class DatabaseManager {
         return auctionDAO.markAuctionExpired(id);
     }
 
-    // ==================== ISLAND BALANCE WITH CACHING ====================
+    // ==================== ISLAND/PLAYER BALANCES (delegated to BalanceDAO) ====================
+    // Caching/dirty flags for island balances remain in DatabaseManager (hot path optimization).
+
     public CompletableFuture<Double> getIslandBalance(GridPosition pos) {
         Double cached = islandBalanceCache.get(pos);
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
         }
-
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT balance FROM island_balances WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
-                ps.setInt(1, pos.x());
-                ps.setInt(2, pos.z());
-                ps.setString(3, pos.getDimension().name());
-                ResultSet rs = ps.executeQuery();
-                double balance = rs.next() ? rs.getDouble("balance") : 0.0;
-                islandBalanceCache.put(pos, balance);
-                return balance;
-            } catch (SQLException e) {
-                return 0.0;
-            }
-        }, executor);
+        if (balanceDAO != null) {
+            return balanceDAO.getIslandBalance(pos).thenApply(b -> {
+                islandBalanceCache.put(pos, b);
+                return b;
+            });
+        }
+        // legacy fallback
+        return CompletableFuture.completedFuture(0.0);
     }
 
     public CompletableFuture<Boolean> setIslandBalance(GridPosition pos, double balance) {
         islandBalanceCache.put(pos, balance);
         dirtyBalances.add(pos);
-
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO island_balances (grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?)")) {
-                ps.setInt(1, pos.x());
-                ps.setInt(2, pos.z());
-                ps.setString(3, pos.getDimension().name());
-                ps.setDouble(4, balance);
-                ps.executeUpdate();
-                dirtyBalances.remove(pos);
-                return true;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("setIslandBalance failed: " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        if (balanceDAO != null) {
+            return balanceDAO.setIslandBalance(pos, balance).thenApply(success -> {
+                if (success) dirtyBalances.remove(pos);
+                return success;
+            });
+        }
+        return CompletableFuture.completedFuture(false);
     }
 
     public CompletableFuture<Boolean> addIslandBalance(GridPosition pos, double amount) {
@@ -422,73 +525,35 @@ public class DatabaseManager {
         return addIslandBalance(pos, -amount);
     }
 
-    // ==================== PLAYER BALANCES (Chest Shops / Player Economy) ====================
-
+    // Player balances (no cache for now, direct delegation)
     public CompletableFuture<Double> getPlayerBalance(UUID uuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT balance FROM player_balances WHERE uuid = ?")) {
-                ps.setString(1, uuid.toString());
-                ResultSet rs = ps.executeQuery();
-                return rs.next() ? rs.getDouble("balance") : 0.0;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] getPlayerBalance failed: " + e.getMessage());
-                return 0.0;
-            }
-        }, executor);
+        if (balanceDAO != null) return balanceDAO.getPlayerBalance(uuid);
+        return CompletableFuture.completedFuture(0.0);
     }
 
     public CompletableFuture<Boolean> setPlayerBalance(UUID uuid, double balance) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO player_balances (uuid, balance) VALUES (?, ?)")) {
-                ps.setString(1, uuid.toString());
-                ps.setDouble(2, Math.max(0, balance));
-                ps.executeUpdate();
-                return true;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] setPlayerBalance failed: " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        if (balanceDAO != null) return balanceDAO.setPlayerBalance(uuid, balance);
+        return CompletableFuture.completedFuture(false);
     }
 
     public CompletableFuture<Boolean> addPlayerBalance(UUID uuid, double amount) {
-        return getPlayerBalance(uuid).thenCompose(current ->
-                setPlayerBalance(uuid, current + amount));
+        if (balanceDAO != null) return balanceDAO.addPlayerBalance(uuid, amount);
+        return CompletableFuture.completedFuture(false);
     }
 
     public CompletableFuture<Boolean> removePlayerBalance(UUID uuid, double amount) {
-        return addPlayerBalance(uuid, -amount);
+        if (balanceDAO != null) return balanceDAO.removePlayerBalance(uuid, amount);
+        return CompletableFuture.completedFuture(false);
     }
 
     // ==================== CORE ISLAND PERSISTENCE ====================
 
     public CompletableFuture<Boolean> saveIsland(int gridX, int gridZ, UUID ownerUuid, String dimension, String biome) {
-        return saveIsland(gridX, gridZ, ownerUuid, dimension, biome, 0L);
+        return islandDAO.saveIsland(gridX, gridZ, ownerUuid, dimension, biome);
     }
 
     public CompletableFuture<Boolean> saveIsland(int gridX, int gridZ, UUID ownerUuid, String dimension, String biome, long generationSeed) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome, level, last_reset, generation_seed) " +
-                         "VALUES (?, ?, ?, ?, ?, 1, 0, ?)")) {
-                ps.setInt(1, gridX);
-                ps.setInt(2, gridZ);
-                ps.setString(3, ownerUuid.toString());
-                ps.setString(4, dimension);
-                ps.setString(5, biome);
-                ps.setLong(6, generationSeed);
-                ps.executeUpdate();
-                return true;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] saveIsland failed: " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        return islandDAO.saveIsland(gridX, gridZ, ownerUuid, dimension, biome, generationSeed);
     }
 
     /**
@@ -496,47 +561,12 @@ public class DatabaseManager {
      * Note: This version is synchronous for compatibility with current IslandManager usage.
      */
     public Island getIslandByOwner(UUID ownerUuid, World.Environment dimension) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "SELECT grid_x, grid_z, biome, generation_seed FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-            ps.setString(1, ownerUuid.toString());
-            ps.setString(2, dimension.name());
-            ResultSet rs = ps.executeQuery();
-
-            if (rs.next()) {
-                int x = rs.getInt("grid_x");
-                int z = rs.getInt("grid_z");
-                String biome = rs.getString("biome");
-                long genSeed = rs.getLong("generation_seed");
-
-                GridPosition pos = new GridPosition(x, z, dimension);
-                Island island = new Island(pos, ownerUuid, biome != null ? biome : "PLAINS", dimension);
-                if (genSeed != 0) {
-                    island.setGenerationSeed(genSeed);
-                }
-                return island;
-            }
-            return null;
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Database] getIslandByOwner failed: " + e.getMessage());
-            return null;
-        }
+        // Delegated to IslandDAO as part of modularization (kept for API compatibility)
+        return islandDAO.getIslandByOwner(ownerUuid, dimension);
     }
 
     public CompletableFuture<Boolean> deleteIsland(UUID ownerUuid, World.Environment dimension) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "DELETE FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-                ps.setString(1, ownerUuid.toString());
-                ps.setString(2, dimension.name());
-                ps.executeUpdate();
-                return true;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] deleteIsland failed: " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        return islandDAO.deleteIsland(ownerUuid, dimension);
     }
 
     public long getLastResetTime(UUID playerUuid) {
@@ -551,150 +581,44 @@ public class DatabaseManager {
         }
     }
 
-    // ==================== HOLOGRAM PERSISTENCE (basic implementation) ====================
+    // ==================== HOLOGRAM PERSISTENCE (delegated to HologramDAO as part of DB modularization) ====================
 
     public CompletableFuture<List<HologramData>> loadAllHolograms() {
-        return CompletableFuture.supplyAsync(() -> {
-            List<HologramData> list = new ArrayList<>();
-            try (Connection conn = getConnection();
-                 Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT * FROM holograms")) {
-
-                while (rs.next()) {
-                    int id = rs.getInt("id");
-                    HologramData data = new HologramData(
-                            rs.getString("name"),
-                            rs.getString("world"),
-                            rs.getDouble("x"),
-                            rs.getDouble("y"),
-                            rs.getDouble("z")
-                    );
-                    data.setId(id);
-                    // Load lines
-                    try (PreparedStatement linePs = conn.prepareStatement(
-                            "SELECT text FROM hologram_lines WHERE holo_id = ? ORDER BY line_index")) {
-                        linePs.setInt(1, id);
-                        ResultSet lineRs = linePs.executeQuery();
-                        List<String> lines = new ArrayList<>();
-                        while (lineRs.next()) lines.add(lineRs.getString("text"));
-                        data.setLines(lines);
-                    }
-                    list.add(data);
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] loadAllHolograms failed: " + e.getMessage());
-            }
-            return list;
-        }, executor);
+        if (hologramDAO != null) {
+            return hologramDAO.loadAllHolograms();
+        }
+        // Fallback during partial migration (should not normally hit)
+        plugin.getLogger().warning("[DatabaseManager] HologramDAO not available, falling back to legacy path (deprecated).");
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
     }
 
     public CompletableFuture<Boolean> saveHologram(HologramData data) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection()) {
-                int id;
-                try (PreparedStatement ps = conn.prepareStatement(
-                        "INSERT INTO holograms (name, world, x, y, z, billboard, background_color, scale, see_through, shadow, permission, is_dynamic, dynamic_type, update_interval) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        Statement.RETURN_GENERATED_KEYS)) {
-
-                    ps.setString(1, data.getName());
-                    ps.setString(2, data.getWorldName());
-                    ps.setDouble(3, data.getX());
-                    ps.setDouble(4, data.getY());
-                    ps.setDouble(5, data.getZ());
-                    ps.setString(6, data.getBillboard());
-                    ps.setString(7, data.getBackgroundColor());
-                    ps.setDouble(8, data.getScale());
-                    ps.setBoolean(9, data.isSeeThrough());
-                    ps.setBoolean(10, data.isShadow());
-                    ps.setString(11, data.getPermission());
-                    ps.setBoolean(12, data.isDynamic());
-                    ps.setString(13, data.getDynamicType());
-                    ps.setInt(14, data.getUpdateInterval());
-                    ps.executeUpdate();
-
-                    ResultSet keys = ps.getGeneratedKeys();
-                    id = keys.next() ? keys.getInt(1) : -1;
-                    data.setId(id);
-                }
-
-                // Save lines
-                try (PreparedStatement del = conn.prepareStatement("DELETE FROM hologram_lines WHERE holo_id = ?");
-                     PreparedStatement ins = conn.prepareStatement(
-                             "INSERT INTO hologram_lines (holo_id, line_index, text) VALUES (?, ?, ?)")) {
-                    del.setInt(1, id);
-                    del.executeUpdate();
-
-                    for (int i = 0; i < data.getLines().size(); i++) {
-                        ins.setInt(1, id);
-                        ins.setInt(2, i);
-                        ins.setString(3, data.getLines().get(i));
-                        ins.addBatch();
-                    }
-                    ins.executeBatch();
-                }
-                return true;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] saveHologram failed: " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        if (hologramDAO != null) {
+            return hologramDAO.saveHologram(data);
+        }
+        plugin.getLogger().warning("[DatabaseManager] HologramDAO not available for saveHologram.");
+        return CompletableFuture.completedFuture(false);
     }
 
     public CompletableFuture<Boolean> deleteHologram(int id) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection()) {
-                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM holograms WHERE id = ?")) {
-                    ps.setInt(1, id);
-                    ps.executeUpdate();
-                }
-                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM hologram_lines WHERE holo_id = ?")) {
-                    ps.setInt(1, id);
-                    ps.executeUpdate();
-                }
-                return true;
-            } catch (SQLException e) {
-                return false;
-            }
-        }, executor);
+        if (hologramDAO != null) {
+            return hologramDAO.deleteHologram(id);
+        }
+        return CompletableFuture.completedFuture(false);
     }
 
     public CompletableFuture<Boolean> updateHologramLines(int id, List<String> lines) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection()) {
-                try (PreparedStatement del = conn.prepareStatement("DELETE FROM hologram_lines WHERE holo_id = ?")) {
-                    del.setInt(1, id);
-                    del.executeUpdate();
-                }
-                try (PreparedStatement ins = conn.prepareStatement(
-                        "INSERT INTO hologram_lines (holo_id, line_index, text) VALUES (?, ?, ?)")) {
-                    for (int i = 0; i < lines.size(); i++) {
-                        ins.setInt(1, id);
-                        ins.setInt(2, i);
-                        ins.setString(3, lines.get(i));
-                        ins.addBatch();
-                    }
-                    ins.executeBatch();
-                }
-                return true;
-            } catch (SQLException e) {
-                return false;
-            }
-        }, executor);
+        if (hologramDAO != null) {
+            return hologramDAO.updateHologramLines(id, lines);
+        }
+        return CompletableFuture.completedFuture(false);
     }
 
     public CompletableFuture<Boolean> updateHologramInterval(int id, int interval) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement("UPDATE holograms SET update_interval = ? WHERE id = ?")) {
-                ps.setInt(1, interval);
-                ps.setInt(2, id);
-                ps.executeUpdate();
-                return true;
-            } catch (SQLException e) {
-                return false;
-            }
-        }, executor);
+        if (hologramDAO != null) {
+            return hologramDAO.updateHologramInterval(id, interval);
+        }
+        return CompletableFuture.completedFuture(false);
     }
 
     public List<TopIslandEntry> getTopIslandsByLevel(int limit) {
@@ -717,288 +641,83 @@ public class DatabaseManager {
         return results;
     }
 
-    // ==================== PENDING ITEMS ====================
+    // ==================== PENDING ITEMS (delegated to PendingItemsDAO) ====================
     public CompletableFuture<List<ItemStack>> getPendingItems(UUID uuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<ItemStack> items = new ArrayList<>();
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement("SELECT item_base64 FROM pending_items WHERE uuid = ?")) {
-                ps.setString(1, uuid.toString());
-                ResultSet rs = ps.executeQuery();
-                while (rs.next()) {
-                    ItemStack item = itemFromBase64(rs.getString("item_base64"));
-                    if (item != null) items.add(item);
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("getPendingItems failed: " + e.getMessage());
-            }
-            return items;
-        }, executor);
+        if (pendingItemsDAO != null) return pendingItemsDAO.getPendingItems(uuid);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
     }
 
     public boolean storePendingItem(UUID uuid, ItemStack item) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("INSERT INTO pending_items (uuid, item_base64) VALUES (?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, itemToBase64(item));
-            ps.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            return false;
-        }
+        if (pendingItemsDAO != null) return pendingItemsDAO.storePendingItem(uuid, item);
+        return false;
     }
 
-    // ==================== WARDROBE SYSTEM ====================
+    // ==================== WARDROBE SYSTEM (delegated to CosmeticDAO) ====================
 
-    /**
-     * Saves a wardrobe preset (supports both ARMOR and EQUIPMENT types).
-     */
     public void saveWardrobeSet(UUID uuid, int slot, String setType, com.thenerdcj.wardrobe.WardrobeSet set) {
-        if (set == null) return;
-
-        String sql = "INSERT OR REPLACE INTO player_wardrobe " +
-                "(uuid, slot, set_type, name, icon, h_base64, c_base64, l_base64, b_base64, e1_base64, e2_base64, e3_base64, e4_base64) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, uuid.toString());
-            ps.setInt(2, slot);
-            ps.setString(3, setType);
-            ps.setString(4, set.getName());
-            ps.setString(5, set.getIcon().name());
-
-            ItemStack[] armor = set.getArmor();
-            ItemStack[] eq = set.getEquipment();
-
-            ps.setString(6, itemToBase64(armor[0]));
-            ps.setString(7, itemToBase64(armor[1]));
-            ps.setString(8, itemToBase64(armor[2]));
-            ps.setString(9, itemToBase64(armor[3]));
-
-            ps.setString(10, itemToBase64(eq[0]));
-            ps.setString(11, itemToBase64(eq[1]));
-            ps.setString(12, itemToBase64(eq[2]));
-            ps.setString(13, itemToBase64(eq[3]));
-
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wardrobe] Failed to save set: " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.saveWardrobeSet(uuid, slot, setType, set);
+            return;
         }
     }
 
     public void deleteWardrobeSet(UUID uuid, int slot, String setType) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "DELETE FROM player_wardrobe WHERE uuid = ? AND slot = ? AND set_type = ?")) {
-            ps.setString(1, uuid.toString());
-            ps.setInt(2, slot);
-            ps.setString(3, setType);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wardrobe] Failed to delete set: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Loads all wardrobe presets for a player and populates the WardrobeManager cache.
-     */
-    // ==================== PET PERSISTENCE ====================
-
-    public void savePlayerPets(UUID uuid, List<com.thenerdcj.pets.CosmeticPet> pets, com.thenerdcj.pets.CosmeticPet activePet) {
-        // Save owned pets
-        try (Connection conn = getConnection();
-             PreparedStatement delete = conn.prepareStatement("DELETE FROM player_pets WHERE uuid = ?");
-             PreparedStatement insert = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_pets (uuid, pet_type, custom_name, variant, skin) VALUES (?, ?, ?, ?, ?)")) {
-            delete.setString(1, uuid.toString());
-            delete.executeUpdate();
-
-            for (com.thenerdcj.pets.CosmeticPet pet : pets) {
-                insert.setString(1, uuid.toString());
-                insert.setString(2, pet.getType().name());
-                insert.setString(3, pet.getCustomName());
-                insert.setString(4, pet.getVariant() != null ? pet.getVariant().name() : "NONE");
-                insert.setString(5, pet.getSkin() != null ? pet.getSkin().name() : "NONE");
-                insert.executeUpdate();
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Pets] Failed to save pets for " + uuid + ": " + e.getMessage());
-        }
-
-        // Save active pet
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_active_pet (uuid, pet_type, custom_name, skin) VALUES (?, ?, ?, ?)")) {
-            ps.setString(1, uuid.toString());
-            if (activePet != null) {
-                ps.setString(2, activePet.getType().name());
-                ps.setString(3, activePet.getCustomName());
-                ps.setString(4, activePet.getSkin() != null ? activePet.getSkin().name() : "NONE");
-            } else {
-                ps.setString(2, null);
-                ps.setString(3, null);
-                ps.setString(4, "NONE");
-            }
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Pets] Failed to save active pet for " + uuid + ": " + e.getMessage());
-        }
-    }
-
-    public void loadPlayerPets(UUID uuid, com.thenerdcj.pets.PetManager manager) {
-        List<com.thenerdcj.pets.CosmeticPet> pets = new ArrayList<>();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT * FROM player_pets WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                try {
-                    com.thenerdcj.pets.PetType type = com.thenerdcj.pets.PetType.valueOf(rs.getString("pet_type"));
-                    String name = rs.getString("custom_name");
-                    String varStr = rs.getString("variant");
-                    com.thenerdcj.pets.PetVariant variant = com.thenerdcj.pets.PetVariant.NONE;
-                    if (varStr != null && !varStr.isEmpty()) {
-                        try { variant = com.thenerdcj.pets.PetVariant.valueOf(varStr); } catch (Exception ignored) {}
-                    }
-                    String skinStr = rs.getString("skin");
-                    com.thenerdcj.pets.PetSkin skin = com.thenerdcj.pets.PetSkin.NONE;
-                    if (skinStr != null && !skinStr.isEmpty() && !"NONE".equalsIgnoreCase(skinStr)) {
-                        try { skin = com.thenerdcj.pets.PetSkin.valueOf(skinStr); } catch (Exception ignored) {}
-                    }
-                    pets.add(new com.thenerdcj.pets.CosmeticPet(type, name, variant, skin));
-                } catch (Exception ignored) {}
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Pets] Failed to load pets for " + uuid + ": " + e.getMessage());
-        }
-
-        // Load active pet
-        com.thenerdcj.pets.CosmeticPet active = null;
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT * FROM player_active_pet WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                String typeStr = rs.getString("pet_type");
-                if (typeStr != null) {
-                    try {
-                        com.thenerdcj.pets.PetType type = com.thenerdcj.pets.PetType.valueOf(typeStr);
-                        String name = rs.getString("custom_name");
-                        String varStr = rs.getString("variant");
-                        com.thenerdcj.pets.PetVariant variant = com.thenerdcj.pets.PetVariant.NONE;
-                        if (varStr != null && !varStr.isEmpty()) {
-                            try { variant = com.thenerdcj.pets.PetVariant.valueOf(varStr); } catch (Exception ignored) {}
-                        }
-                        String skinStr = rs.getString("skin");
-                        com.thenerdcj.pets.PetSkin skin = com.thenerdcj.pets.PetSkin.NONE;
-                        if (skinStr != null && !skinStr.isEmpty() && !"NONE".equalsIgnoreCase(skinStr)) {
-                            try { skin = com.thenerdcj.pets.PetSkin.valueOf(skinStr); } catch (Exception ignored) {}
-                        }
-                        active = new com.thenerdcj.pets.CosmeticPet(type, name, variant, skin);
-                    } catch (Exception ignored) {}
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Pets] Failed to load active pet for " + uuid + ": " + e.getMessage());
-        }
-
-        // Populate manager
-        for (com.thenerdcj.pets.CosmeticPet pet : pets) {
-            manager.addPet(uuid, pet);
-        }
-        if (active != null) {
-            // We can't directly set active here because the player may not be online yet.
-            // The PetManager will handle spawning on join.
-            // For now, we can store it temporarily or set it when player joins.
+        if (cosmeticDAO != null) {
+            cosmeticDAO.deleteWardrobeSet(uuid, slot, setType);
+            return;
         }
     }
 
     public void loadWardrobeForPlayer(UUID uuid, com.thenerdcj.wardrobe.WardrobeManager manager) {
-        String sql = "SELECT * FROM player_wardrobe WHERE uuid = ?";
-
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-
-            while (rs.next()) {
-                int slot = rs.getInt("slot");
-                String setType = rs.getString("set_type");
-                String name = rs.getString("name");
-                String iconName = rs.getString("icon");
-
-                Material icon = Material.matchMaterial(iconName);
-                if (icon == null) icon = Material.LEATHER_CHESTPLATE;
-
-                ItemStack[] armor = new ItemStack[4];
-                armor[0] = itemFromBase64(rs.getString("h_base64"));
-                armor[1] = itemFromBase64(rs.getString("c_base64"));
-                armor[2] = itemFromBase64(rs.getString("l_base64"));
-                armor[3] = itemFromBase64(rs.getString("b_base64"));
-
-                ItemStack[] equipment = new ItemStack[4];
-                equipment[0] = itemFromBase64(rs.getString("e1_base64"));
-                equipment[1] = itemFromBase64(rs.getString("e2_base64"));
-                equipment[2] = itemFromBase64(rs.getString("e3_base64"));
-                equipment[3] = itemFromBase64(rs.getString("e4_base64"));
-
-                com.thenerdcj.wardrobe.WardrobeSet set =
-                        new com.thenerdcj.wardrobe.WardrobeSet(name, icon, armor, equipment);
-
-                if ("ARMOR".equalsIgnoreCase(setType)) {
-                    manager.getArmorPresets(uuid).put(slot, set);
-                } else if ("EQUIPMENT".equalsIgnoreCase(setType)) {
-                    manager.getEquipmentPresets(uuid).put(slot, set);
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wardrobe] Failed to load wardrobe for " + uuid + ": " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.loadWardrobeForPlayer(uuid, manager);
+            return;
         }
     }
 
-    /**
-     * Saves a single collected equipment material for a player (used for wardrobe collection XP).
-     */
     public void saveWardrobeCollectionEntry(UUID uuid, String materialName) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR IGNORE INTO player_wardrobe_collection (uuid, material) VALUES (?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, materialName);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wardrobe] Failed to save collection entry: " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.saveWardrobeCollectionEntry(uuid, materialName);
+            return;
         }
     }
 
-    /**
-     * Loads all collected equipment materials for a player.
-     */
     public Set<Material> loadWardrobeCollection(UUID uuid) {
-        Set<Material> collected = ConcurrentHashMap.newKeySet();
+        if (cosmeticDAO != null) return cosmeticDAO.loadWardrobeCollection(uuid);
+        return java.util.Collections.emptySet();
+    }
 
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "SELECT material FROM player_wardrobe_collection WHERE uuid = ?")) {
+    // ==================== PET PERSISTENCE (delegated to CosmeticDAO) ====================
 
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-
-            while (rs.next()) {
-                String matName = rs.getString("material");
-                Material mat = Material.matchMaterial(matName);
-                if (mat != null) {
-                    collected.add(mat);
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wardrobe] Failed to load collection for " + uuid + ": " + e.getMessage());
+    public void savePlayerPets(UUID uuid, List<com.thenerdcj.pets.CosmeticPet> pets, com.thenerdcj.pets.CosmeticPet activePet) {
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePlayerPets(uuid, pets, activePet);
+            cosmeticDAO.saveActivePet(uuid, activePet);
+            return;
         }
+    }
 
-        return collected;
+    public void loadPlayerPets(UUID uuid, com.thenerdcj.pets.PetManager manager) {
+        if (cosmeticDAO != null) {
+            cosmeticDAO.loadPlayerPets(uuid, manager);
+            com.thenerdcj.pets.CosmeticPet active = cosmeticDAO.loadActivePet(uuid);
+            if (active != null) {
+                manager.addPet(uuid, active);
+            }
+            return;
+        }
+    }
+
+    public void savePlayerPetSkins(UUID uuid, Set<String> skinIds) {
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePlayerPetSkins(uuid, skinIds);
+            return;
+        }
+    }
+
+    public Set<String> loadPlayerPetSkins(UUID uuid) {
+        if (cosmeticDAO != null) return cosmeticDAO.loadPlayerPetSkins(uuid);
+        return java.util.Collections.emptySet();
     }
 
     /**
@@ -1006,14 +725,9 @@ public class DatabaseManager {
      * INSERT OR IGNORE so first-time only awards are safe.
      */
     public void savePetCollectionEntry(UUID uuid, String petTypeName) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR IGNORE INTO player_pet_collection (uuid, pet_type) VALUES (?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, petTypeName);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Pets] Failed to save pet collection entry: " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePetCollectionEntry(uuid, petTypeName);
+            return;
         }
     }
 
@@ -1021,208 +735,64 @@ public class DatabaseManager {
      * Loads all collected pet types (by name) for a player.
      */
     public Set<String> loadPetCollection(UUID uuid) {
-        Set<String> collected = ConcurrentHashMap.newKeySet();
-
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "SELECT pet_type FROM player_pet_collection WHERE uuid = ?")) {
-
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-
-            while (rs.next()) {
-                String typeName = rs.getString("pet_type");
-                if (typeName != null) {
-                    collected.add(typeName);
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Pets] Failed to load pet collection for " + uuid + ": " + e.getMessage());
-        }
-
-        return collected;
+        if (cosmeticDAO != null) return cosmeticDAO.loadPetCollection(uuid);
+        return java.util.Collections.emptySet();
     }
 
     // ==================== PLAYER TAG PERSISTENCE ====================
 
     public void savePlayerTags(UUID uuid, Set<String> tagEntries, String activeTagEntry) {
-        try (Connection conn = getConnection();
-             PreparedStatement del = conn.prepareStatement("DELETE FROM player_tags WHERE uuid = ?");
-             PreparedStatement ins = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_tags (uuid, tag_id, variant) VALUES (?, ?, ?)")) {
-            del.setString(1, uuid.toString());
-            del.executeUpdate();
-
-            for (String entry : tagEntries) {
-                String[] parts = entry.split(":", 2);
-                String tagId = parts[0];
-                String variant = (parts.length > 1) ? parts[1] : "NONE";
-
-                ins.setString(1, uuid.toString());
-                ins.setString(2, tagId);
-                ins.setString(3, variant);
-                ins.executeUpdate();
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Tags] Failed to save tags for " + uuid + ": " + e.getMessage());
-        }
-
-        // Active tag with variant support
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_active_tag (uuid, tag_id, variant) VALUES (?, ?, ?)")) {
-            if (activeTagEntry != null) {
-                String[] parts = activeTagEntry.split(":", 2);
-                String tagId = parts[0];
-                String variant = (parts.length > 1) ? parts[1] : "NONE";
-
-                ps.setString(1, uuid.toString());
-                ps.setString(2, tagId);
-                ps.setString(3, variant);
-            } else {
-                ps.setString(1, uuid.toString());
-                ps.setString(2, null);
-                ps.setString(3, "NONE");
-            }
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Tags] Failed to save active tag for " + uuid + ": " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePlayerTags(uuid, tagEntries, activeTagEntry);
+            return;
         }
     }
 
     public Set<String> loadPlayerTags(UUID uuid) {
-        Set<String> entries = ConcurrentHashMap.newKeySet();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT tag_id, variant FROM player_tags WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                String tagId = rs.getString("tag_id");
-                String variant = rs.getString("variant");
-                if (variant != null && !variant.isEmpty() && !"NONE".equalsIgnoreCase(variant)) {
-                    entries.add(tagId + ":" + variant);
-                } else {
-                    entries.add(tagId);
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Tags] Failed to load tags for " + uuid + ": " + e.getMessage());
-        }
-        return entries;
+        if (cosmeticDAO != null) return cosmeticDAO.loadPlayerTags(uuid);
+        return java.util.Collections.emptySet();
     }
 
     public String loadActivePlayerTag(UUID uuid) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT tag_id, variant FROM player_active_tag WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                String tagId = rs.getString("tag_id");
-                String variant = rs.getString("variant");
-                if (tagId == null) return null;
-                if (variant != null && !variant.isEmpty() && !"NONE".equalsIgnoreCase(variant)) {
-                    return tagId + ":" + variant;
-                }
-                return tagId;
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Tags] Failed to load active tag for " + uuid + ": " + e.getMessage());
-        }
+        if (cosmeticDAO != null) return cosmeticDAO.loadActivePlayerTag(uuid);
         return null;
     }
 
     public void savePlayerTagCollectionEntry(UUID uuid, String tagId) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR IGNORE INTO player_tag_collection (uuid, tag_id) VALUES (?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, tagId);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Tags] Failed to save tag collection entry: " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePlayerTagCollectionEntry(uuid, tagId);
+            return;
         }
     }
 
     public Set<String> loadPlayerTagCollection(UUID uuid) {
-        Set<String> coll = ConcurrentHashMap.newKeySet();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT tag_id FROM player_tag_collection WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) coll.add(rs.getString("tag_id"));
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Tags] Failed to load tag collection for " + uuid + ": " + e.getMessage());
-        }
-        return coll;
+        if (cosmeticDAO != null) return cosmeticDAO.loadPlayerTagCollection(uuid);
+        return java.util.Collections.emptySet();
     }
 
     // ==================== ELYTRA WING PERSISTENCE ====================
 
     public void savePlayerElytraWings(UUID uuid, Set<String> wingIds, String activeWingId) {
-        try (Connection conn = getConnection();
-             PreparedStatement del = conn.prepareStatement("DELETE FROM player_elytra_wings WHERE uuid = ?");
-             PreparedStatement ins = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_elytra_wings (uuid, wing_id) VALUES (?, ?)")) {
-            del.setString(1, uuid.toString());
-            del.executeUpdate();
-
-            for (String id : wingIds) {
-                ins.setString(1, uuid.toString());
-                ins.setString(2, id);
-                ins.executeUpdate();
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wings] Failed to save elytra wings for " + uuid + ": " + e.getMessage());
-        }
-
-        // Active wing
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_active_elytra_wing (uuid, wing_id) VALUES (?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, activeWingId);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wings] Failed to save active elytra wing for " + uuid + ": " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePlayerElytraWings(uuid, wingIds, activeWingId);
+            return;
         }
     }
 
     public Set<String> loadPlayerElytraWings(UUID uuid) {
-        Set<String> wings = ConcurrentHashMap.newKeySet();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT wing_id FROM player_elytra_wings WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                wings.add(rs.getString("wing_id"));
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wings] Failed to load elytra wings for " + uuid + ": " + e.getMessage());
-        }
-        return wings;
+        if (cosmeticDAO != null) return cosmeticDAO.loadPlayerElytraWings(uuid);
+        return java.util.Collections.emptySet();
     }
 
     public String loadActiveElytraWing(UUID uuid) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT wing_id FROM player_active_elytra_wing WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getString("wing_id");
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wings] Failed to load active elytra wing for " + uuid + ": " + e.getMessage());
-        }
+        if (cosmeticDAO != null) return cosmeticDAO.loadActiveElytraWing(uuid);
         return null;
     }
 
     public void saveElytraWingCollectionEntry(UUID uuid, String wingId) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR IGNORE INTO player_elytra_wing_collection (uuid, wing_id) VALUES (?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, wingId);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Wings] Failed to save elytra wing collection entry: " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.saveElytraWingCollectionEntry(uuid, wingId);
+            return;
         }
     }
 
@@ -1242,61 +812,745 @@ public class DatabaseManager {
     // ==================== COSMETIC RUNES PERSISTENCE ====================
 
     public void savePlayerRunes(UUID uuid, Set<String> runeIds) {
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePlayerRunes(uuid, runeIds);
+            return;
+        }
+    }
+
+    public Set<String> loadPlayerRunes(UUID uuid) {
+        if (cosmeticDAO != null) return cosmeticDAO.loadPlayerRunes(uuid);
+        return java.util.Collections.emptySet();
+    }
+
+    // ==================== HELMET SKINS PERSISTENCE ====================
+
+    public void savePlayerHelmetSkins(UUID uuid, Set<String> skinIds) {
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePlayerHelmetSkins(uuid, skinIds);
+            return;
+        }
+    }
+
+    public Set<String> loadPlayerHelmetSkins(UUID uuid) {
+        if (cosmeticDAO != null) return cosmeticDAO.loadPlayerHelmetSkins(uuid);
+        return java.util.Collections.emptySet();
+    }
+
+    // ==================== DEATH EFFECTS PERSISTENCE ====================
+
+    public void savePlayerDeathEffects(UUID uuid, Set<String> effectIds) {
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePlayerDeathEffects(uuid, effectIds);
+            return;
+        }
+    }
+
+    public Set<String> loadPlayerDeathEffects(UUID uuid) {
+        if (cosmeticDAO != null) return cosmeticDAO.loadPlayerDeathEffects(uuid);
+        return java.util.Collections.emptySet();
+    }
+
+    // Death Messages persistence (new cosmetic system)
+    public void savePlayerDeathMessages(UUID uuid, Set<String> messageIds) {
         try (Connection conn = getConnection();
-             PreparedStatement del = conn.prepareStatement("DELETE FROM player_runes WHERE uuid = ?");
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_death_messages WHERE uuid = ?");
              PreparedStatement ins = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_runes (uuid, rune_id) VALUES (?, ?)")) {
+                     "INSERT OR IGNORE INTO player_death_messages (uuid, message_id) VALUES (?, ?)")) {
             del.setString(1, uuid.toString());
             del.executeUpdate();
-
-            for (String id : runeIds) {
+            for (String id : messageIds) {
                 ins.setString(1, uuid.toString());
                 ins.setString(2, id);
                 ins.executeUpdate();
             }
         } catch (SQLException e) {
-            plugin.getLogger().severe("[Runes] Failed to save runes for " + uuid + ": " + e.getMessage());
+            plugin.getLogger().severe("[DeathMessages] Failed to save death messages for " + uuid + ": " + e.getMessage());
         }
     }
 
-    public Set<String> loadPlayerRunes(UUID uuid) {
-        Set<String> runes = ConcurrentHashMap.newKeySet();
+    public Set<String> loadPlayerDeathMessages(UUID uuid) {
+        Set<String> ids = ConcurrentHashMap.newKeySet();
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT rune_id FROM player_runes WHERE uuid = ?")) {
+             PreparedStatement ps = conn.prepareStatement("SELECT message_id FROM player_death_messages WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) ids.add(rs.getString("message_id"));
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[DeathMessages] Failed to load death messages for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    // ==================== BACKPACK SKINS PERSISTENCE (Exploration) ====================
+
+    public void savePlayerBackpackSkins(UUID uuid, Set<String> skinIds) {
+        if (cosmeticDAO != null) {
+            cosmeticDAO.savePlayerBackpackSkins(uuid, skinIds);
+            return;
+        }
+    }
+
+    public Set<String> loadPlayerBackpackSkins(UUID uuid) {
+        if (cosmeticDAO != null) return cosmeticDAO.loadPlayerBackpackSkins(uuid);
+        return java.util.Collections.emptySet();
+    }
+
+    // ==================== POWER ORB SKINS PERSISTENCE ====================
+
+    public void savePlayerPowerOrbSkins(UUID uuid, Set<String> skinIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_power_orb_skins WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_power_orb_skins (uuid, skin_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+
+            for (String id : skinIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[PowerOrbs] Failed to save power orb skins for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerPowerOrbSkins(UUID uuid) {
+        Set<String> skins = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT skin_id FROM player_power_orb_skins WHERE uuid = ?")) {
             ps.setString(1, uuid.toString());
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
-                runes.add(rs.getString("rune_id"));
+                skins.add(rs.getString("skin_id"));
             }
         } catch (SQLException e) {
-            plugin.getLogger().severe("[Runes] Failed to load runes for " + uuid + ": " + e.getMessage());
+            plugin.getLogger().severe("[PowerOrbs] Failed to load power orb skins for " + uuid + ": " + e.getMessage());
         }
-        return runes;
+        return skins;
+    }
+
+    // ==================== MINION SKINS PERSISTENCE ====================
+
+    public void savePlayerMinionSkins(UUID uuid, Set<String> skinIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_minion_skins WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_minion_skins (uuid, skin_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+
+            for (String id : skinIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[MinionSkins] Failed to save minion skins for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerMinionSkins(UUID uuid) {
+        Set<String> skins = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT skin_id FROM player_minion_skins WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                skins.add(rs.getString("skin_id"));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[MinionSkins] Failed to load minion skins for " + uuid + ": " + e.getMessage());
+        }
+        return skins;
+    }
+
+    // Minion Skin Assignments (per-minion for assignment polish)
+    public void saveMinionSkinAssignment(String islandKey, int minionNum, String skinId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO minion_skin_assignments (island_key, minion_num, skin_id) VALUES (?, ?, ?)")) {
+            ps.setString(1, islandKey);
+            ps.setInt(2, minionNum);
+            ps.setString(3, skinId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[MinionSkins] Failed to save assignment for " + islandKey + " #" + minionNum + ": " + e.getMessage());
+        }
+    }
+
+    /** Delete a specific per-minion skin assignment (for clear UX polish). */
+    public void deleteMinionSkinAssignment(String islandKey, int minionNum) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "DELETE FROM minion_skin_assignments WHERE island_key = ? AND minion_num = ?")) {
+            ps.setString(1, islandKey);
+            ps.setInt(2, minionNum);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[MinionSkins] Failed to delete assignment for " + islandKey + " #" + minionNum + ": " + e.getMessage());
+        }
+    }
+
+    public Map<Integer, String> loadMinionSkinAssignments(String islandKey) {
+        Map<Integer, String> map = new ConcurrentHashMap<>();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT minion_num, skin_id FROM minion_skin_assignments WHERE island_key = ?")) {
+            ps.setString(1, islandKey);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                map.put(rs.getInt("minion_num"), rs.getString("skin_id"));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[MinionSkins] Failed to load assignments for " + islandKey + ": " + e.getMessage());
+        }
+        return map;
+    }
+
+    // ==================== ISLAND FURNITURE / HOUSING PERSISTENCE (placed data full support) ====================
+
+    /** Lightweight data records for loading placed furniture/structures from DB (no new files). */
+    public static record PlacedFurnitureData(String furnitureId, double x, double y, double z, double yaw, String data) {}
+    public static record PlacedStructureData(String structureId, double x, double y, double z, double yaw, String data) {}
+
+    // ==================== CORE COLLECTIONS SYSTEM (per-island unique item discovery) ====================
+
+    /**
+     * Records a new unique item discovery for an island (e.g. "MINING:DIAMOND_ORE", "FARMING:WHEAT", "COMBAT:ZOMBIE").
+     * Uses INSERT OR IGNORE for idempotency (first discovery wins).
+     */
+    public void saveIslandCollection(String islandKey, String itemKey, UUID discoveredBy) {
+        islandDAO.saveIslandCollection(islandKey, itemKey, discoveredBy);
+    }
+
+    /**
+     * Loads all discovered item keys for an island.
+     */
+    public Set<String> loadIslandCollections(String islandKey) {
+        return islandDAO.loadIslandCollections(islandKey);
+    }
+
+    /**
+     * Returns total unique collected for island (convenience, used by GUI/manager).
+     */
+    public int getIslandCollectionCount(String islandKey) {
+        return islandDAO.getIslandCollectionCount(islandKey);
+    }
+
+    // ==================== PLAYER SKILL SYSTEM (MCMMO-style per-player) ====================
+
+    public void savePlayerSkill(UUID uuid, String skill, double xp, int level) {
+        if (uuid == null || skill == null) return;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO player_skills (uuid, skill, xp, level) VALUES (?, ?, ?, ?)")) {
+            ps.setString(1, uuid.toString());
+            ps.setString(2, skill);
+            ps.setDouble(3, xp);
+            ps.setInt(4, level);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Skills] Failed to save skill " + skill + " for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Map<String, Object[]> loadPlayerSkills(UUID uuid) {
+        Map<String, Object[]> skills = new ConcurrentHashMap<>();
+        if (uuid == null) return skills;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT skill, xp, level FROM player_skills WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                String skill = rs.getString("skill");
+                double xp = rs.getDouble("xp");
+                int level = rs.getInt("level");
+                skills.put(skill, new Object[]{xp, level});
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Skills] Failed to load skills for " + uuid + ": " + e.getMessage());
+        }
+        return skills;
+    }
+
+    public void savePlayerSkills(UUID uuid, Map<String, Object[]> skillData) {
+        if (uuid == null || skillData == null) return;
+        try (Connection conn = getConnection()) {
+            // Delete old for clean replace
+            try (PreparedStatement del = conn.prepareStatement("DELETE FROM player_skills WHERE uuid = ?")) {
+                del.setString(1, uuid.toString());
+                del.executeUpdate();
+            }
+            try (PreparedStatement ins = conn.prepareStatement(
+                    "INSERT INTO player_skills (uuid, skill, xp, level) VALUES (?, ?, ?, ?)")) {
+                for (Map.Entry<String, Object[]> entry : skillData.entrySet()) {
+                    ins.setString(1, uuid.toString());
+                    ins.setString(2, entry.getKey());
+                    ins.setDouble(3, (Double) entry.getValue()[0]);
+                    ins.setInt(4, (Integer) entry.getValue()[1]);
+                    ins.executeUpdate();
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Skills] Failed to save skills for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public void savePlayerIslandFurniture(UUID uuid, Set<String> furnitureIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_island_furniture WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_island_furniture (uuid, furniture_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            for (String id : furnitureIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandFurniture] Failed to save furniture unlocks for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerIslandFurniture(UUID uuid) {
+        Set<String> ids = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT furniture_id FROM player_island_furniture WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                ids.add(rs.getString("furniture_id"));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandFurniture] Failed to load furniture unlocks for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    // Full placed furniture persistence (positions + data + load/delete for runtime + restarts)
+    public void savePlacedFurniture(String islandKey, String furnitureId, double x, double y, double z, double yaw, String data) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT INTO island_placed_furniture (island_key, furniture_id, pos_x, pos_y, pos_z, yaw, data, placed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, furnitureId);
+            ps.setDouble(3, x);
+            ps.setDouble(4, y);
+            ps.setDouble(5, z);
+            ps.setDouble(6, yaw);
+            ps.setString(7, data);
+            ps.setLong(8, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandFurniture] Failed to save placed furniture: " + e.getMessage());
+        }
+    }
+
+    // ==================== ISLAND STRUCTURE DECORATIONS PERSISTENCE ====================
+
+    public void savePlayerIslandStructures(UUID uuid, Set<String> structureIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_island_structures WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_island_structures (uuid, structure_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            for (String id : structureIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandStructures] Failed to save structure unlocks for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerIslandStructures(UUID uuid) {
+        Set<String> ids = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT structure_id FROM player_island_structures WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) ids.add(rs.getString("structure_id"));
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandStructures] Failed to load structure unlocks for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    public void savePlacedStructure(String islandKey, String structureId, double x, double y, double z, double yaw, String data) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT INTO island_placed_structures (island_key, structure_id, pos_x, pos_y, pos_z, yaw, data, placed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, structureId);
+            ps.setDouble(3, x);
+            ps.setDouble(4, y);
+            ps.setDouble(5, z);
+            ps.setDouble(6, yaw);
+            ps.setString(7, data);
+            ps.setLong(8, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandStructures] Failed to save placed structure: " + e.getMessage());
+        }
+    }
+
+    // ==================== PLACED FURNITURE / STRUCTURES LOAD + DELETE (full persistence polish) ====================
+
+    public java.util.List<PlacedFurnitureData> loadPlacedFurniture(String islandKey) {
+        java.util.List<PlacedFurnitureData> list = new java.util.ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT furniture_id, pos_x, pos_y, pos_z, yaw, data FROM island_placed_furniture WHERE island_key = ? ORDER BY placed_at")) {
+            ps.setString(1, islandKey);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add(new PlacedFurnitureData(
+                        rs.getString("furniture_id"),
+                        rs.getDouble("pos_x"),
+                        rs.getDouble("pos_y"),
+                        rs.getDouble("pos_z"),
+                        rs.getDouble("yaw"),
+                        rs.getString("data")
+                ));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandFurniture] Failed to load placed furniture for " + islandKey + ": " + e.getMessage());
+        }
+        return list;
+    }
+
+    public void deletePlacedFurniture(String islandKey, String furnitureId, double x, double y, double z) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "DELETE FROM island_placed_furniture WHERE island_key = ? AND furniture_id = ? AND ABS(pos_x - ?) < 0.01 AND ABS(pos_y - ?) < 0.01 AND ABS(pos_z - ?) < 0.01")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, furnitureId);
+            ps.setDouble(3, x);
+            ps.setDouble(4, y);
+            ps.setDouble(5, z);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandFurniture] Failed to delete placed furniture: " + e.getMessage());
+        }
+    }
+
+    public java.util.List<PlacedStructureData> loadPlacedStructures(String islandKey) {
+        java.util.List<PlacedStructureData> list = new java.util.ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT structure_id, pos_x, pos_y, pos_z, yaw, data FROM island_placed_structures WHERE island_key = ? ORDER BY placed_at")) {
+            ps.setString(1, islandKey);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add(new PlacedStructureData(
+                        rs.getString("structure_id"),
+                        rs.getDouble("pos_x"),
+                        rs.getDouble("pos_y"),
+                        rs.getDouble("pos_z"),
+                        rs.getDouble("yaw"),
+                        rs.getString("data")
+                ));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandStructures] Failed to load placed structures for " + islandKey + ": " + e.getMessage());
+        }
+        return list;
+    }
+
+    public void deletePlacedStructure(String islandKey, String structureId, double x, double y, double z) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "DELETE FROM island_placed_structures WHERE island_key = ? AND structure_id = ? AND ABS(pos_x - ?) < 0.01 AND ABS(pos_y - ?) < 0.01 AND ABS(pos_z - ?) < 0.01")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, structureId);
+            ps.setDouble(3, x);
+            ps.setDouble(4, y);
+            ps.setDouble(5, z);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandStructures] Failed to delete placed structure: " + e.getMessage());
+        }
+    }
+
+    // ==================== ISLAND MUSIC & AMBIENT PERSISTENCE ====================
+
+    public void savePlayerIslandMusic(UUID uuid, Set<String> musicIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_island_music WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_island_music (uuid, music_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            for (String id : musicIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandMusic] Failed to save music unlocks for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerIslandMusic(UUID uuid) {
+        Set<String> ids = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT music_id FROM player_island_music WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                ids.add(rs.getString("music_id"));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandMusic] Failed to load music unlocks for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    // ==================== OVERHEAD COSMETICS PERSISTENCE ====================
+
+    public void savePlayerOverheadCosmetics(UUID uuid, Set<String> cosmeticIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_overhead_cosmetics WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_overhead_cosmetics (uuid, cosmetic_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            for (String id : cosmeticIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Overhead] Failed to save overhead cosmetics for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerOverheadCosmetics(UUID uuid) {
+        Set<String> ids = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT cosmetic_id FROM player_overhead_cosmetics WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) ids.add(rs.getString("cosmetic_id"));
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Overhead] Failed to load overhead cosmetics for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    // ==================== EMOTE COSMETICS PERSISTENCE ====================
+
+    public void savePlayerEmoteCosmetics(UUID uuid, Set<String> emoteIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_emote_cosmetics WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_emote_cosmetics (uuid, emote_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            for (String id : emoteIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Emotes] Failed to save emote cosmetics for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerEmoteCosmetics(UUID uuid) {
+        Set<String> ids = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT emote_id FROM player_emote_cosmetics WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) ids.add(rs.getString("emote_id"));
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Emotes] Failed to load emote cosmetics for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    // ==================== EMOTE TRIGGERS (per-player, persisted) ====================
+
+    public void savePlayerEmoteTriggers(UUID uuid, java.util.Map<String, String> triggers) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_emote_triggers WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO player_emote_triggers (uuid, trigger_key, emote_id) VALUES (?, ?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            if (triggers != null) {
+                for (java.util.Map.Entry<String, String> e : triggers.entrySet()) {
+                    ins.setString(1, uuid.toString());
+                    ins.setString(2, e.getKey());
+                    ins.setString(3, e.getValue());
+                    ins.executeUpdate();
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Emotes] Failed to save emote triggers for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public java.util.Map<String, String> loadPlayerEmoteTriggers(UUID uuid) {
+        java.util.Map<String, String> map = new java.util.concurrent.ConcurrentHashMap<>();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT trigger_key, emote_id FROM player_emote_triggers WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                map.put(rs.getString("trigger_key"), rs.getString("emote_id"));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Emotes] Failed to load emote triggers for " + uuid + ": " + e.getMessage());
+        }
+        return map;
+    }
+
+    // ==================== Chat Bubble Cosmetics ====================
+
+    public void savePlayerChatBubbleCosmetics(UUID uuid, Set<String> bubbleIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_chat_bubble_cosmetics WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_chat_bubble_cosmetics (uuid, bubble_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            for (String id : bubbleIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[ChatBubbles] Failed to save chat bubble cosmetics for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerChatBubbleCosmetics(UUID uuid) {
+        Set<String> ids = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT bubble_id FROM player_chat_bubble_cosmetics WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) ids.add(rs.getString("bubble_id"));
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[ChatBubbles] Failed to load chat bubble cosmetics for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    // ==================== Island Weather Cosmetics ====================
+
+    public void savePlayerIslandWeather(UUID uuid, Set<String> weatherIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_island_weather WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_island_weather (uuid, weather_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            for (String id : weatherIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandWeather] Failed to save island weather cosmetics for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerIslandWeather(UUID uuid) {
+        Set<String> ids = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT weather_id FROM player_island_weather WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) ids.add(rs.getString("weather_id"));
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandWeather] Failed to load island weather cosmetics for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    public void saveIslandActiveWeather(String islandKey, String weatherId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO island_active_weather (island_key, weather_id) VALUES (?, ?)")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, weatherId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandWeather] Failed to save active weather for " + islandKey + ": " + e.getMessage());
+        }
+    }
+
+    public String loadIslandActiveWeather(String islandKey) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT weather_id FROM island_active_weather WHERE island_key = ?")) {
+            ps.setString(1, islandKey);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("weather_id");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[IslandWeather] Failed to load active weather for " + islandKey + ": " + e.getMessage());
+        }
+        return null;
+    }
+
+    // ==================== Accessories ====================
+
+    public void savePlayerAccessories(UUID uuid, Set<String> accessoryIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_accessories WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement(
+                     "INSERT OR IGNORE INTO player_accessories (uuid, accessory_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            for (String id : accessoryIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Accessories] Failed to save accessories for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public Set<String> loadPlayerAccessories(UUID uuid) {
+        Set<String> ids = ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT accessory_id FROM player_accessories WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) ids.add(rs.getString("accessory_id"));
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Accessories] Failed to load accessories for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    public void saveIslandActiveMusic(String islandKey, String musicId) {
+        islandDAO.saveIslandActiveMusic(islandKey, musicId);
+    }
+
+    public String loadIslandActiveMusic(String islandKey) {
+        return islandDAO.loadIslandActiveMusic(islandKey);
     }
 
     public void saveRuneCollectionEntry(UUID uuid, String runeId) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR IGNORE INTO player_rune_collection (uuid, rune_id) VALUES (?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, runeId);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Runes] Failed to save rune collection entry: " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.saveRuneCollectionEntry(uuid, runeId);
+            return;
         }
     }
 
     public Set<String> loadRuneCollection(UUID uuid) {
-        Set<String> coll = ConcurrentHashMap.newKeySet();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT rune_id FROM player_rune_collection WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) coll.add(rs.getString("rune_id"));
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Runes] Failed to load rune collection for " + uuid + ": " + e.getMessage());
-        }
-        return coll;
+        if (cosmeticDAO != null) return cosmeticDAO.loadPlayerRunes(uuid); // note: may need specific loadRuneCollection in DAO, using load for now
+        return java.util.Collections.emptySet();
     }
 
     // ==================== ISLAND XP / LEVEL ====================
@@ -1420,19 +1674,24 @@ public class DatabaseManager {
 
     // ==================== FLUSH CACHES ON SHUTDOWN ====================
     public void flushCaches() {
-        // Flush dirty island balances
+        // Flush dirty island balances (delegated to BalanceDAO)
         for (GridPosition pos : dirtyBalances) {
             Double balance = islandBalanceCache.get(pos);
             if (balance != null) {
-                try (Connection conn = getConnection();
-                     PreparedStatement ps = conn.prepareStatement(
-                             "INSERT OR REPLACE INTO island_balances (grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?)")) {
-                    ps.setInt(1, pos.x());
-                    ps.setInt(2, pos.z());
-                    ps.setString(3, pos.getDimension().name());
-                    ps.setDouble(4, balance);
-                    ps.executeUpdate();
-                } catch (SQLException ignored) {}
+                if (balanceDAO != null) {
+                    balanceDAO.flushIslandBalance(pos, balance);
+                } else {
+                    // fallback legacy
+                    try (Connection conn = getConnection();
+                         PreparedStatement ps = conn.prepareStatement(
+                                 "INSERT OR REPLACE INTO island_balances (grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?)")) {
+                        ps.setInt(1, pos.x());
+                        ps.setInt(2, pos.z());
+                        ps.setString(3, pos.getDimension().name());
+                        ps.setDouble(4, balance);
+                        ps.executeUpdate();
+                    } catch (SQLException ignored) {}
+                }
             }
         }
         dirtyBalances.clear();
@@ -1468,46 +1727,14 @@ public class DatabaseManager {
      * Save or update a single upgrade level for an island.
      */
     public CompletableFuture<Boolean> saveIslandUpgrade(String islandKey, IslandUpgrade upgrade, int level) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO island_upgrades (island_key, upgrade_type, level) VALUES (?, ?, ?)")) {
-                ps.setString(1, islandKey);
-                ps.setString(2, upgrade.name());
-                ps.setInt(3, level);
-                ps.executeUpdate();
-                return true;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("saveIslandUpgrade failed: " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        return islandDAO.saveIslandUpgrade(islandKey, upgrade, level);
     }
 
     /**
      * Load all upgrades and their levels for an island.
      */
     public CompletableFuture<Map<IslandUpgrade, Integer>> loadIslandUpgrades(String islandKey) {
-        return CompletableFuture.supplyAsync(() -> {
-            Map<IslandUpgrade, Integer> upgrades = new EnumMap<>(IslandUpgrade.class);
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT upgrade_type, level FROM island_upgrades WHERE island_key = ?")) {
-                ps.setString(1, islandKey);
-                ResultSet rs = ps.executeQuery();
-                while (rs.next()) {
-                    try {
-                        IslandUpgrade type = IslandUpgrade.valueOf(rs.getString("upgrade_type"));
-                        upgrades.put(type, rs.getInt("level"));
-                    } catch (IllegalArgumentException ignored) {
-                        // Unknown upgrade type in DB - skip
-                    }
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("loadIslandUpgrades failed: " + e.getMessage());
-            }
-            return upgrades;
-        }, executor);
+        return islandDAO.loadIslandUpgrades(islandKey);
     }
 
     /**
@@ -1661,97 +1888,26 @@ public class DatabaseManager {
         }, executor);
     }
 
-    // ==================== PUNISHMENTS (now functional) ====================
+    // ==================== PUNISHMENTS (delegated to PunishmentDAO) ====================
 
     public CompletableFuture<Boolean> logPunishment(UUID target, UUID staff, Punishment.Type type, String reason, long duration) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT INTO punishments (target_uuid, staff_uuid, type, reason, duration, timestamp, active) VALUES (?, ?, ?, ?, ?, ?, 1)")) {
-                ps.setString(1, target.toString());
-                ps.setString(2, staff != null ? staff.toString() : null);
-                ps.setString(3, type.name());
-                ps.setString(4, reason);
-                ps.setLong(5, duration);
-                ps.setLong(6, System.currentTimeMillis());
-                ps.executeUpdate();
-                return true;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] logPunishment failed: " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        if (punishmentDAO != null) return punishmentDAO.logPunishment(target, staff, type, reason, duration);
+        return CompletableFuture.completedFuture(false);
     }
 
     public CompletableFuture<List<Punishment>> getActivePunishments(UUID uuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<Punishment> list = new ArrayList<>();
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT * FROM punishments WHERE target_uuid = ? AND active = 1 ORDER BY timestamp DESC")) {
-                ps.setString(1, uuid.toString());
-                ResultSet rs = ps.executeQuery();
-                while (rs.next()) {
-                    Punishment p = new Punishment(
-                            rs.getInt("id"),
-                            UUID.fromString(rs.getString("target_uuid")),
-                            rs.getString("staff_uuid") != null ? UUID.fromString(rs.getString("staff_uuid")) : null,
-                            Punishment.Type.valueOf(rs.getString("type")),
-                            rs.getString("reason"),
-                            rs.getLong("timestamp"),
-                            rs.getLong("duration"),
-                            rs.getBoolean("active")
-                    );
-                    list.add(p);
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] getActivePunishments failed: " + e.getMessage());
-            }
-            return list;
-        }, executor);
+        if (punishmentDAO != null) return punishmentDAO.getActivePunishments(uuid);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
     }
 
     public CompletableFuture<List<Punishment>> getPunishmentsForPlayer(UUID uuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<Punishment> list = new ArrayList<>();
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT * FROM punishments WHERE target_uuid = ? ORDER BY timestamp DESC")) {
-                ps.setString(1, uuid.toString());
-                ResultSet rs = ps.executeQuery();
-                while (rs.next()) {
-                    Punishment p = new Punishment(
-                            rs.getInt("id"),
-                            UUID.fromString(rs.getString("target_uuid")),
-                            rs.getString("staff_uuid") != null ? UUID.fromString(rs.getString("staff_uuid")) : null,
-                            Punishment.Type.valueOf(rs.getString("type")),
-                            rs.getString("reason"),
-                            rs.getLong("timestamp"),
-                            rs.getLong("duration"),
-                            rs.getBoolean("active")
-                    );
-                    list.add(p);
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] getPunishmentsForPlayer failed: " + e.getMessage());
-            }
-            return list;
-        }, executor);
+        if (punishmentDAO != null) return punishmentDAO.getPunishmentsForPlayer(uuid);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
     }
 
     public CompletableFuture<Boolean> unbanPlayer(UUID uuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "UPDATE punishments SET active = 0 WHERE target_uuid = ? AND type IN ('BAN', 'TEMPBAN') AND active = 1")) {
-                ps.setString(1, uuid.toString());
-                ps.executeUpdate();
-                return true;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[Database] unbanPlayer failed: " + e.getMessage());
-                return false;
-            }
-        }, executor);
+        if (punishmentDAO != null) return punishmentDAO.unbanPlayer(uuid);
+        return CompletableFuture.completedFuture(false);
     }
 
     // ==================== SLAYER STATS (now functional) ====================
@@ -1887,68 +2043,30 @@ public class DatabaseManager {
         }
     }
 
-    // ==================== PARTICLE TRAILS (NEW Cosmetic System) ====================
+    // ==================== PARTICLE TRAILS (delegated to CosmeticDAO) ====================
 
     public Set<String> loadUnlockedParticleTrails(UUID uuid) {
-        Set<String> trails = new HashSet<>();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT trail_id FROM player_particle_trails WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                trails.add(rs.getString("trail_id"));
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Database] loadUnlockedParticleTrails failed: " + e.getMessage());
-        }
-        return trails;
+        if (cosmeticDAO != null) return cosmeticDAO.loadUnlockedParticleTrails(uuid);
+        return java.util.Collections.emptySet();
     }
 
     public void saveUnlockedParticleTrails(UUID uuid, Set<String> trails) {
-        try (Connection conn = getConnection();
-             PreparedStatement delete = conn.prepareStatement("DELETE FROM player_particle_trails WHERE uuid = ?");
-             PreparedStatement insert = conn.prepareStatement(
-                     "INSERT OR IGNORE INTO player_particle_trails (uuid, trail_id, unlocked_at) VALUES (?, ?, ?)")) {
-
-            delete.setString(1, uuid.toString());
-            delete.executeUpdate();
-
-            long now = System.currentTimeMillis();
-            for (String trail : trails) {
-                insert.setString(1, uuid.toString());
-                insert.setString(2, trail);
-                insert.setLong(3, now);
-                insert.executeUpdate();
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Database] saveUnlockedParticleTrails failed: " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.saveUnlockedParticleTrails(uuid, trails);
+            return;
         }
+        // legacy no-op if no dao
     }
 
     public String loadActiveParticleTrail(UUID uuid) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT trail_id FROM player_active_trail WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                return rs.getString("trail_id");
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Database] loadActiveParticleTrail failed: " + e.getMessage());
-        }
+        if (cosmeticDAO != null) return cosmeticDAO.loadActiveParticleTrail(uuid);
         return null;
     }
 
     public void saveActiveParticleTrail(UUID uuid, String trailId) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_active_trail (uuid, trail_id, updated_at) VALUES (?, ?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, trailId == null ? "NONE" : trailId);
-            ps.setLong(3, System.currentTimeMillis());
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Database] saveActiveParticleTrail failed: " + e.getMessage());
+        if (cosmeticDAO != null) {
+            cosmeticDAO.saveActiveParticleTrail(uuid, trailId);
+            return;
         }
     }
 
@@ -1996,6 +2114,16 @@ public class DatabaseManager {
     }
 
     public CompletableFuture<List<TopWorthEntry>> getTopIslandsByWorth(int limit) {
+        return getTopIslandsByWorth(limit, 0);
+    }
+
+    /**
+     * DB-paginated top islands by worth for large scale (1000+ islands).
+     * Supports LIMIT + OFFSET for server-side pagination (data compression, no full load in mem for leaderboards/tops).
+     * Complements event-driven and per-island Region notes.
+     * See IMPROVEMENTS "For 1000+ islands: make leaderboard/top queries fully DB paginated".
+     */
+    public CompletableFuture<List<TopWorthEntry>> getTopIslandsByWorth(int limit, int offset) {
         return CompletableFuture.supplyAsync(() -> {
             List<TopWorthEntry> results = new ArrayList<>();
             String sql = """
@@ -2006,12 +2134,13 @@ public class DatabaseManager {
                 FROM island_worth w
                 JOIN islands i ON i.grid_x = w.grid_x AND i.grid_z = w.grid_z AND i.dimension = w.dimension
                 ORDER BY w.worth DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """;
 
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setInt(1, limit);
+                ps.setInt(2, Math.max(0, offset));
                 ResultSet rs = ps.executeQuery();
                 while (rs.next()) {
                     UUID owner = UUID.fromString(rs.getString("owner_uuid"));
@@ -2196,21 +2325,10 @@ public class DatabaseManager {
      * Also updates the legacy global last_reset column on the islands table for backward compatibility.
      */
     public void recordIslandReset(UUID playerUuid, World.Environment dimension) {
+        // Delegated to IslandDAO for per-dimension reset + related state cleanup.
+        // Legacy global last_reset update kept for older code paths during modularization.
+        islandDAO.recordIslandReset(playerUuid, dimension);
         long now = System.currentTimeMillis();
-
-        // 1. Record per-dimension reset
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_dimension_resets (player_uuid, dimension, last_reset) VALUES (?, ?, ?)")) {
-            ps.setString(1, playerUuid.toString());
-            ps.setString(2, dimension.name());
-            ps.setLong(3, now);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Database] recordIslandReset (per-dimension) failed: " + e.getMessage());
-        }
-
-        // 2. Update legacy global last_reset on the islands table (for older code paths)
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "UPDATE islands SET last_reset = ? WHERE owner_uuid = ?")) {

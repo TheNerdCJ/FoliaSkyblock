@@ -132,6 +132,56 @@ commands:
     usage: /<command>
     aliases: [minion]
 
+  minionskins:
+    description: Open the Minion Skins cosmetic menu (Play-to-Win)
+    usage: /<command>
+    aliases: [minionskin]
+
+  furniture:
+    description: Open the Island Furniture / Housing decor catalog
+    usage: /<command>
+    aliases: [housing, decor]
+
+  music:
+    description: Open the Island Music & Ambience menu
+    usage: /<command>
+    aliases: [ambience, sounds]
+
+  emotes:
+    description: Open the Cosmetic Emotes menu
+    usage: /<command>
+    aliases: [emote]
+
+  chatbubbles:
+    description: Open the Cosmetic Chat Bubbles menu (floating chat visuals)
+    usage: /<command>
+    aliases: [chatbubble, bubble, bubbles]
+
+  weather:
+    description: Open the Island Weather cosmetic effects catalog (set while on your island)
+    usage: /<command>
+    aliases: [islandweather, weathereffects, wfx]
+
+  accessories:
+    description: Open the Cosmetic Accessories menu (floating items around player)
+    usage: /<command>
+    aliases: [accessory]
+
+  collections:
+    description: View your island's Core Collections (unique items discovered through play)
+    usage: /<command>
+    aliases: [collection, coll]
+
+  skills:
+    description: View your per-player skills (MCMMO-inspired: Mining, Woodcutting, etc. with abilities)
+    usage: /<command>
+    aliases: [skill, mcstats]
+
+  deathmessages:
+    description: Open the Cosmetic Death Messages menu (custom text on death/kills)
+    usage: /<command>
+    aliases: [deathmessage, killmessages, killmessage]
+
   wardrobe:
     description: Open the wardrobe to save and swap armor + equipment loadouts
     usage: /<command>

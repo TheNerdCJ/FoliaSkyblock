@@ -18,7 +18,9 @@ public class DatabaseMigration {
     private final DatabaseManager dbManager; // legacy path (current)
     private final DBOperations dbOps;        // future modular path
 
-    private static final int CURRENT_SCHEMA_VERSION = 6; // bumped for generation_seed (donor personality reroll on dimension reset)
+    private static final int CURRENT_SCHEMA_VERSION = 8; // bumped for player skills system (player_skills table)
+    // Note: Further DAO extractions (HologramDAO, ItemSerializer polish, Mission/Prestige fixes) do not require schema bumps.
+    // Tables (holograms etc.) remain created centrally in DatabaseManager.initDatabase() during the migration bridge phase.
 
     public DatabaseMigration(FoliaSkyblock plugin, DatabaseManager dbManager) {
         this.plugin = plugin;
@@ -110,6 +112,17 @@ public class DatabaseMigration {
                 // Default 0 means "use pure position-derived seed" (backward compatible for existing islands).
                 executeIfNotExists(conn, "ALTER TABLE islands ADD COLUMN generation_seed BIGINT DEFAULT 0");
                 plugin.getLogger().info("§a[DB Migration v6] Added generation_seed column for donor island personality rerolls.");
+                break;
+            case 7:
+                // Core Collections system: new table is created via IF NOT EXISTS in DatabaseManager.initDatabase(),
+                // but ensure index and log the feature.
+                executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_island_collections_key ON island_collections(island_key)");
+                plugin.getLogger().info("§a[DB Migration v7] Core Collections system (island_collections) ready for unique item discovery tracking.");
+                break;
+            case 8:
+                // Player Skill System: table created in initDatabase IF NOT EXISTS, ensure index.
+                executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_player_skills_uuid ON player_skills(uuid)");
+                plugin.getLogger().info("§a[DB Migration v8] Player skills system (player_skills) ready - MCMMO-style per-player progression.");
                 break;
             default:
                 plugin.getLogger().warning("[DB] Unknown migration version: " + version);

@@ -38,7 +38,90 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Fully implemented fastbreak and fastplace detection
  * - Xray heuristics aware of custom IslandOreGenerator upgrades
  * - Play-to-Win protections (XP macro, dupes)
+ *
+ * =============================================
+ * DETAILED SKYBLOCK EXPLOIT GUIDE (per IMPROVEMENTS.md audit)
+ * =============================================
+ * This class implements heuristics for common Skyblock exploits. Expand here with more if new patterns emerge.
+ *
+ * 1. X-RAY / ORE MACROS:
+ *    - Detect high ore rates with low stone mined (classic xray, unless on custom upgraded IslandOreGenerator islands).
+ *    - Config: xray.enabled, xray.max-per-minute.
+ *    - Mitigation: flag + violation, alert staff. Neural can supplement.
+ *
+ * 2. FASTBREAK / FASTPLACE (macro / autoclicker):
+ *    - Track last break/place time per player.
+ *    - If delay < min-delay-ms (default 180ms), suspicious.
+ *    - Config: block.fastbreak/fastplace.
+ *    - Called from listeners on BlockBreak/Place.
+ *
+ * 3. XP MACRO / EXPLOIT (Play-to-Win critical - bypasses island leveling to unlock dimensions/bosses):
+ *    - Track recentXPGains in window (xpWindowMs=30s, threshold).
+ *    - isFlaggedForXPExploit and reportHighXPGain used by IslandXPListener, SkillListener, etc.
+ *    - High gain flags "High XP Gain (Possible Macro/Exploit - breaks Play to Win)".
+ *    - See isFlaggedForXPExploit, reportHighXPGain.
+ *
+ * 4. DUPES (shulker, hopper cross-claim, item dupe):
+ *    - Shulker place count tracking.
+ *    - recordHopperTransfer for cross-claim (different owner islands) or spawn/unclaimed.
+ *    - recentItemGains for rapid item actions.
+ *    - Flags "Shulker Box Duplication Pattern (common skyblock dupe)".
+ *
+ * 5. GENERATOR ABUSE / MACRO on custom gens:
+ *    - IslandOreGenerator levels affect rates; anti-cheat aware (lower suspicion on high level gens? but still monitor).
+ *    - High volume on low level gens = suspicious.
+ *
+ * 6. FLY/SPEED / MOVEMENT:
+ *    - Basic speed/fly thresholds, weights.
+ *    - Config: speed/fly.
+ *
+ * 7. OTHER (hopper dupe across claims, combat macros, etc.):
+ *    - See HopperDupeListener integration.
+ *    - NeuralCheatDetector for advanced patterns (experimental, default off).
+ *
+ * 8. QUEST SPAM / EARLY-GAME EXPLOIT (bypasses onboarding balance and Play-to-Win first-island design):
+ *    - Track recentQuestGains window; isFlaggedForQuestExploit + reportHighQuestProgress.
+ *    - Called from EarlyGameListener (all FIRST categories) and MinionManager first-minion hook.
+ *    - Flags "High Quest Progress (Possible Macro/Exploit - bypasses early game balance)".
+ *
+ * 9. COLLECTION ABUSE / MACRO (rapid first-discover or milestone farming for tokens/XP/cosmetics):
+ *    - recentCollectionDiscovers; isFlaggedForCollectionAbuse + reportCollectionDiscover.
+ *    - Integrated in CollectionManager.discover and CollectionListener paths (MONITOR).
+ *    - Prevents macroing unique item finds to farm collection rewards (25/50/100 milestone cosmetics/tokens).
+ *
+ * 10. DRAGON GRIEF / ISLAND PROJECTION BYPASS:
+ *    - reportDragonGriefAttempt (player-aware when possible) for attempts to damage non-home islands via dragon.
+ *    - Called from IslandProtectionListener onEntityExplode / crystal attribution mismatch paths.
+ *    - Flags "Dragon grief attempt on non-home island (projection violation)".
+ *
+ * 11. MINION / HOUSING SPAM (duping, placement spam causing lag or grief):
+ *    - recordMinionPlace + isFlaggedForMinionSpam; recordHousingPlace + isFlaggedForHousingSpam.
+ *    - Wired in MinionManager.placeMinion success + IslandFurnitureManager / IslandStructure place.
+ *    - Rate limit + flag "Minion/Housing placement spam (possible dupe/lag induction)".
+ *
+ * 12. ENCHANT POWER FARMING / ANVIL ABUSE (rapid custom enchant stacking or proc spam):
+ *    - isFlaggedForEnchantPowerAbuse + reportEnchantProc / recordAnvilCombine.
+ *    - Used by EnchantingTableGUI, AnvilListener, EnchantEffectListener for high-volume custom power.
+ *    - Protects custom enchant economy (no free power creep bypassing progression).
+ *
+ * ENFORCEMENT:
+ *    - flagViolation(player, reason, severity) -> increments violations, alerts if perm.
+ *    - Levels: level1 (warn), level2 (kick/temp), level3 (ban).
+ *    - saveViolationLogs() on disable for audit.
+ *    - Bypass: foliasb.bypass.anticheat or staffBypass.
+ *
+ * INTEGRATION:
+ *    - Listeners: AntiCheatListener, HopperDupeListener, etc. call record* and isFlagged*.
+ *    - PlayerQuitListener removes profile.
+ *    - Used in IslandXP, skills (to guard XP), etc. to protect Play-to-Win.
+ *
+ * AUDIT NOTES (from June 2026):
+ *    - Expand this guide with more Skyblock-specific (e.g. new dupe methods, generator throttling).
+ *    - Add logging/auditing for sensitive ops.
+ *    - Profile hot paths.
+ *    - Ensure no false positives on legit high-level islands/parties.
  */
+
 public class AntiCheatManager {
 
     private final FoliaSkyblock plugin;
@@ -83,6 +166,17 @@ public class AntiCheatManager {
     private final Map<UUID, List<Long>> recentXPGains = new ConcurrentHashMap<>();
     private final int xpGainThreshold = 100;
     private final long xpWindowMs = 30000;
+
+    // Expanded Skyblock exploit tracking (quest, collection, housing, minion, enchant, dragon)
+    private final Map<UUID, List<Long>> recentQuestGains = new ConcurrentHashMap<>();
+    private final Map<UUID, List<Long>> recentCollectionDiscovers = new ConcurrentHashMap<>();
+    private final Map<UUID, List<Long>> recentHousingPlaces = new ConcurrentHashMap<>();
+    private final Map<UUID, List<Long>> recentMinionPlaces = new ConcurrentHashMap<>();
+    private final Map<UUID, List<Long>> recentEnchantProcs = new ConcurrentHashMap<>();
+    private final long generalWindowMs = 60000; // 1 min for most non-XP rates
+    private final int questSpamThreshold = 20;
+    private final int collectionSpamThreshold = 10;
+    private final int placeSpamThreshold = 15;
 
     // === NEW: Fastbreak / Fastplace tracking ===
     private final Map<UUID, Long> lastBlockBreakTime = new ConcurrentHashMap<>();
@@ -141,6 +235,11 @@ public class AntiCheatManager {
             });
             recentItemGains.values().forEach(list -> list.removeIf(ts -> now - ts > 30000));
             recentXPGains.values().forEach(list -> list.removeIf(ts -> now - ts > xpWindowMs));
+            recentQuestGains.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
+            recentCollectionDiscovers.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
+            recentHousingPlaces.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
+            recentMinionPlaces.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
+            recentEnchantProcs.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
             shulkerPlaceCount.clear();
         }, 12000L, 12000L);
     }
@@ -534,6 +633,131 @@ public class AntiCheatManager {
         }
     }
 
+    // ==================== EXPANDED SKYBLOCK GUARDS (quest/collection/housing/minion/dragon/enchant) ====================
+
+    public boolean isFlaggedForQuestExploit(Player player) {
+        if (!enabled || player.hasPermission("foliasb.bypass.anticheat")) return false;
+        UUID uuid = player.getUniqueId();
+        List<Long> gains = recentQuestGains.get(uuid);
+        if (gains == null || gains.isEmpty()) return false;
+        long now = System.currentTimeMillis();
+        gains.removeIf(ts -> now - ts > generalWindowMs);
+        return gains.size() > questSpamThreshold;
+    }
+
+    public void reportHighQuestProgress(Player player, String source) {
+        if (!enabled || player.hasPermission("foliasb.bypass.anticheat")) return;
+        UUID uuid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        recentQuestGains.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
+        List<Long> gains = recentQuestGains.get(uuid);
+        gains.removeIf(ts -> now - ts > generalWindowMs);
+        if (gains.size() > (questSpamThreshold - 3)) {
+            flagViolation(player, "High Quest Progress from " + source + " (Possible Macro/Exploit - bypasses early game balance)", 4);
+            gains.clear();
+        }
+    }
+
+    public boolean isFlaggedForCollectionAbuse(Player player) {
+        if (!enabled || player.hasPermission("foliasb.bypass.anticheat")) return false;
+        UUID uuid = player.getUniqueId();
+        List<Long> gains = recentCollectionDiscovers.get(uuid);
+        if (gains == null || gains.isEmpty()) return false;
+        long now = System.currentTimeMillis();
+        gains.removeIf(ts -> now - ts > generalWindowMs);
+        return gains.size() > collectionSpamThreshold;
+    }
+
+    public void reportCollectionDiscover(Player player, String itemKey) {
+        if (!enabled || player == null || player.hasPermission("foliasb.bypass.anticheat")) return;
+        UUID uuid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        recentCollectionDiscovers.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
+        List<Long> gains = recentCollectionDiscovers.get(uuid);
+        gains.removeIf(ts -> now - ts > generalWindowMs);
+        if (gains.size() > (collectionSpamThreshold - 2)) {
+            flagViolation(player, "Rapid Collection Discover (" + itemKey + ") - Possible Macro (bypasses collection grind)", 5);
+            gains.clear();
+        }
+    }
+
+    public boolean isFlaggedForHousingSpam(Player player) {
+        if (!enabled || player.hasPermission("foliasb.bypass.anticheat")) return false;
+        UUID uuid = player.getUniqueId();
+        List<Long> places = recentHousingPlaces.get(uuid);
+        if (places == null || places.isEmpty()) return false;
+        long now = System.currentTimeMillis();
+        places.removeIf(ts -> now - ts > generalWindowMs);
+        return places.size() > placeSpamThreshold;
+    }
+
+    public void recordHousingPlace(Player player) {
+        if (!enabled || player == null || player.hasPermission("foliasb.bypass.anticheat")) return;
+        UUID uuid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        recentHousingPlaces.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
+        List<Long> places = recentHousingPlaces.get(uuid);
+        places.removeIf(ts -> now - ts > generalWindowMs);
+        if (places.size() > placeSpamThreshold) {
+            flagViolation(player, "Housing Placement Spam (possible lag/grief/dupe induction)", 3);
+            places.clear();
+        }
+    }
+
+    public boolean isFlaggedForMinionSpam(Player player) {
+        if (!enabled || player.hasPermission("foliasb.bypass.anticheat")) return false;
+        UUID uuid = player.getUniqueId();
+        List<Long> places = recentMinionPlaces.get(uuid);
+        if (places == null || places.isEmpty()) return false;
+        long now = System.currentTimeMillis();
+        places.removeIf(ts -> now - ts > generalWindowMs);
+        return places.size() > placeSpamThreshold;
+    }
+
+    public void recordMinionPlace(Player player) {
+        if (!enabled || player == null || player.hasPermission("foliasb.bypass.anticheat")) return;
+        UUID uuid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        recentMinionPlaces.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
+        List<Long> places = recentMinionPlaces.get(uuid);
+        places.removeIf(ts -> now - ts > generalWindowMs);
+        if (places.size() > placeSpamThreshold) {
+            flagViolation(player, "Minion Placement Spam (possible dupe/lag)", 4);
+            places.clear();
+        }
+    }
+
+    public boolean isFlaggedForEnchantPowerAbuse(Player player) {
+        if (!enabled || player.hasPermission("foliasb.bypass.anticheat")) return false;
+        UUID uuid = player.getUniqueId();
+        List<Long> procs = recentEnchantProcs.get(uuid);
+        if (procs == null || procs.isEmpty()) return false;
+        long now = System.currentTimeMillis();
+        procs.removeIf(ts -> now - ts > generalWindowMs);
+        return procs.size() > 30; // high proc volume
+    }
+
+    public void reportEnchantProc(Player player, String enchant) {
+        if (!enabled || player == null || player.hasPermission("foliasb.bypass.anticheat")) return;
+        UUID uuid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        recentEnchantProcs.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
+        List<Long> procs = recentEnchantProcs.get(uuid);
+        procs.removeIf(ts -> now - ts > generalWindowMs);
+        if (procs.size() > 25) {
+            flagViolation(player, "High volume custom enchant proc (" + enchant + ") - Possible power farming", 3);
+            procs.clear();
+        }
+    }
+
+    public void reportDragonGriefAttempt(Player player, String details) {
+        if (player != null && !player.hasPermission("foliasb.bypass.anticheat")) {
+            flagViolation(player, "Dragon grief attempt on non-home island (projection violation) " + details, 5);
+        } else if (plugin != null) {
+            plugin.getLogger().warning("[AntiCheat] Dragon grief attempt (no player or bypassed): " + details);
+        }
+    }
+
     // For listener integration - record place for fastplace
     public void recordBlockPlaceTime(Player player) {
         lastBlockPlaceTime.put(player.getUniqueId(), System.currentTimeMillis());
@@ -560,6 +784,9 @@ public class AntiCheatManager {
                 .limit(10)
                 .forEach(e -> out.println("  UUID " + e.getKey() + " violations: " + e.getValue()));
             out.println("Recent XP exploit attempts tracked: " + recentXPGains.size());
+            out.println("Recent quest/collection/housing/minion/enchant tracking sizes: " +
+                recentQuestGains.size() + "/" + recentCollectionDiscovers.size() + "/" +
+                recentHousingPlaces.size() + "/" + recentMinionPlaces.size() + "/" + recentEnchantProcs.size());
             out.println("=== End of shutdown log ===");
             out.println();
             plugin.getLogger().info("§a[AntiCheatManager] Violation logs saved to anticheat-violations.log for staff audit (Play to Win anti-exploit).");
@@ -629,6 +856,11 @@ public class AntiCheatManager {
         lastBlockBreakTime.remove(uuid);
         lastBlockPlaceTime.remove(uuid);
         staffBypassPlayers.remove(uuid);
+        recentQuestGains.remove(uuid);
+        recentCollectionDiscovers.remove(uuid);
+        recentHousingPlaces.remove(uuid);
+        recentMinionPlaces.remove(uuid);
+        recentEnchantProcs.remove(uuid);
     }
 
     // ==================== ADMIN DEBUG EXPOSURE ====================

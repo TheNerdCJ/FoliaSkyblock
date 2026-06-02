@@ -2,6 +2,7 @@ package com.thenerdcj.gui;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.enchant.CustomEnchantment;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -48,10 +49,10 @@ public class EnchantingTableGUI implements Listener {
             return;
         }
 
-        Inventory gui = Bukkit.createInventory(null, 54, "§5§lEnchanting Table §7(Custom Levels)");
+        Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§5§lEnchanting Table §7(Custom Levels)"));
 
         // Header
-        gui.setItem(4, createItem(Material.ENCHANTING_TABLE, "§5§lEnchanting Table",
+        gui.setItem(4, GUIUtils.createItem(Material.ENCHANTING_TABLE, "§5§lEnchanting Table",
                 "§7Enchant your items with powerful magic!",
                 "§7No level limits - Up to X enchantments!",
                 "",
@@ -73,7 +74,7 @@ public class EnchantingTableGUI implements Listener {
 
             if (nextLevel > enchant.getMaxLevel()) {
                 // Maxed out
-                gui.setItem(slot, createItem(Material.BARRIER,
+                gui.setItem(slot, GUIUtils.createItem(Material.BARRIER,
                         "§c§l" + enchant.getDisplayName() + " §7(MAX)",
                         "§7Level: §c" + enchant.getMaxLevel() + "§7/§c" + enchant.getMaxLevel(),
                         "§7" + enchant.getDescription(),
@@ -87,7 +88,7 @@ public class EnchantingTableGUI implements Listener {
                 Material icon = canAfford ? Material.ENCHANTED_BOOK : Material.BOOK;
                 String status = canAfford ? "§a§lClick to enchant!" : "§c§lNot enough XP!";
 
-                gui.setItem(slot, createItem(icon,
+                gui.setItem(slot, GUIUtils.createItem(icon,
                         enchant.getColorCode() + "§l" + enchant.getDisplayName() + " " +
                                 (nextLevel > 1 ? CustomEnchantment.toRoman(nextLevel) : ""),
                         "§7Level: §e" + nextLevel + "§7/§e" + enchant.getMaxLevel(),
@@ -103,7 +104,7 @@ public class EnchantingTableGUI implements Listener {
         }
 
         // Close button
-        gui.setItem(49, createItem(Material.BARRIER, "§c§lClose", "§7Click to close"));
+        gui.setItem(49, GUIUtils.createItem(Material.BARRIER, "§c§lClose", "§7Click to close"));
 
         player.openInventory(gui);
     }
@@ -127,7 +128,7 @@ public class EnchantingTableGUI implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
-        if (!event.getView().getTitle().contains("Enchanting Table")) return;
+        if (!event.getView().getTitle().startsWith("§5§lEnchanting Table")) return;
 
         event.setCancelled(true);
 
@@ -173,8 +174,8 @@ public class EnchantingTableGUI implements Listener {
                 double balanceCost = xpCost * 10; // $10 per XP level
                 plugin.getEconomyManager().removePlayerBalance(player.getUniqueId(), balanceCost);
 
-                // Apply enchantment
-                enchant.apply(itemToEnchant, nextLevel);
+                // Apply enchantment (upgraded PDC + lore)
+                plugin.getEnchantmentManager().applyEnchantment(itemToEnchant, enchant, nextLevel);
 
                 // Update the display
                 event.getInventory().setItem(22, itemToEnchant);
@@ -195,9 +196,5 @@ public class EnchantingTableGUI implements Listener {
                 return;
             }
         }
-    }
-
-    private ItemStack createItem(Material material, String name, String... lore) {
-        return GUIUtils.createItem(material, name, lore);
     }
 }

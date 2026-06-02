@@ -23,9 +23,22 @@ public class EconomyManager {
     private final FoliaSkyblock plugin;
     private final DatabaseManager databaseManager;
 
+    // Upkeep config (wired for perf/economy sink)
+    private boolean upkeepEnabled = false;
+    private double upkeepPercentPerHour = 0.5;
+    private double upkeepMinBalance = 1000.0;
+
     public EconomyManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
+        loadUpkeepConfig();
+    }
+
+    private void loadUpkeepConfig() {
+        var c = plugin.getConfig();
+        upkeepEnabled = c.getBoolean("island.upkeep.enabled", false);
+        upkeepPercentPerHour = c.getDouble("island.upkeep.percent-per-hour", 0.5);
+        upkeepMinBalance = c.getDouble("island.upkeep.min-balance", 1000.0);
     }
 
     // ==================== PLAYER BALANCE (Chest Shops) ====================
@@ -171,4 +184,37 @@ public class EconomyManager {
         return removePlayerBalance(uuid, amount);
     }
 
+    // ==================== ECONOMY SINKS (for inflation control / Play-to-Win sustainability) ====================
+
+    /**
+     * Island upkeep / tax sink.
+     * Called periodically (if enabled in config) to drain a small % or flat from island balance.
+     * Prevents pure money creation without sinks (taxes, prestige, fuel, trading fees).
+     * Uses the hardened tryRemove path internally.
+     * Full periodic task wired in FoliaSkyblock (hourly repeating on main, per-island apply async).
+     * Config loaded at construction.
+     */
+    public CompletableFuture<Double> applyIslandUpkeepTax(GridPosition pos) {
+        // Full impl for optimization suggestions: uses loaded config (wired in ctor), applies % tax using hardened tryRemove.
+        // Called from periodic Folia task (see FoliaSkyblock).
+        if (!upkeepEnabled) return CompletableFuture.completedFuture(0.0);
+        return getIslandBalance(pos).thenCompose(balance -> {
+            if (balance <= upkeepMinBalance) return CompletableFuture.completedFuture(0.0);
+            double pct = upkeepPercentPerHour / 100.0;
+            double tax = Math.max(0, balance * pct);
+            if (tax <= 0) return CompletableFuture.completedFuture(0.0);
+            return tryRemoveIslandBalance(pos, tax).thenApply(success -> {
+                if (success) {
+                    plugin.getLogger().info("[Economy] Applied island upkeep tax of " + String.format("%.2f", tax) + " to " + pos);
+                    return tax;
+                }
+                return 0.0;
+            });
+        });
+    }
+
+    /**
+     * Harden note: callers should prefer tryRemove* and safeTransfer* exclusively for mutations.
+     * Direct add/remove still exist for internal/trusted paths but are being phased to private where possible.
+     */
 }

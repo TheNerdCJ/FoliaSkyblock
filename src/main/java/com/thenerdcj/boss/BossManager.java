@@ -60,12 +60,27 @@ public class BossManager {
     // Slayer Achievement Manager
     private final SlayerAchievementManager achievementManager;
 
+    // Ender Dragon protection tracking: dragon UUID -> home island ID (the island that "spawned" it)
+    // Allows the dragon to destroy blocks on its home island only (for fight mechanics), protects surrounding islands.
+    private final Map<UUID, String> dragonHomeIslands = new ConcurrentHashMap<>();
+
+    // Large scale compression/optim bounds for boss tracking maps (100s-1000+ islands/players).
+    // Prevents unbounded growth of killed history, active events, slayer progress etc.
+    // Per "review/bound all CHM (eviction + size caps)", "compression of ConcurrentHashMaps", "more CHM bounds in all managers".
+    private static final int MAX_KILLED_PER_ISLAND = 200; // cap history per island
+    private static final int MAX_ACTIVE_BOSSES = 500;
+    private static final int MAX_ISLAND_BOSS_EVENTS = 200;
+    private static final int MAX_SLAYERS = 5000;
+
     public BossManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.SLAYER_TOKEN_KEY = new NamespacedKey(plugin, "slayer_token_amount");
         this.rewardBalancer = new SlayerRewardBalancer(plugin);
         this.achievementManager = new SlayerAchievementManager(plugin);
         loadSlayerConfig();
+        // Periodic cleanup for large scale CHM compression (every 5min Folia main thread).
+        // Complements onWorldUnload hooks in protection listener; trims history/cooldowns etc.
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCaches, 20L * 60 * 5, 20L * 60 * 5);
     }
 
     private double bossHealthMultiplier = 1.5;
@@ -105,6 +120,14 @@ public class BossManager {
         entity.setHealth(boss.getHealth());
 
         activeBosses.put(entity.getUniqueId(), boss.getName());
+
+        // For Ender Dragon: register home island for protection (can destroy home island blocks, protects others)
+        if (entity.getType() == EntityType.ENDER_DRAGON) {
+            Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+            if (island != null) {
+                registerDragonHome(entity.getUniqueId(), island.getId());
+            }
+        }
 
         MessageUtil.sendMessage(player, "§c§l⚠ BOSS SPAWNED! ⚠");
         MessageUtil.sendMessage(player, "§e" + boss.getName() + " §7has appeared!");
@@ -170,6 +193,22 @@ public class BossManager {
 
     public void removeBoss(UUID entityId) {
         activeBosses.remove(entityId);
+        dragonHomeIslands.remove(entityId);
+    }
+
+    /**
+     * Registers the home island for a spawned Ender Dragon.
+     * Used by spawnBoss for player-summoned dragons and by protection listener for natural spawns.
+     * This enables island projection: dragon can grief its home island but not neighboring ones.
+     */
+    public void registerDragonHome(UUID dragonId, String islandId) {
+        if (dragonId != null && islandId != null) {
+            dragonHomeIslands.put(dragonId, islandId);
+        }
+    }
+
+    public String getDragonHomeIsland(UUID dragonId) {
+        return dragonHomeIslands.get(dragonId);
     }
 
     private String getIslandId(Player player) {
@@ -411,6 +450,15 @@ public class BossManager {
     }
 
     /**
+     * UUID overload for admin/inspect tools (no online player required).
+     * Supports large scale staff inspection of slayer progress without forcing player online.
+     */
+    public int getCurrentSlayerTier(UUID playerUuid, EntityType entityType) {
+        return slayerProgress.getOrDefault(playerUuid, Collections.emptyMap())
+                .getOrDefault(entityType, 0);
+    }
+
+    /**
      * Get active slayer quest for player
      */
     public SlayerQuest getActiveSlayerQuest(Player player) {
@@ -475,9 +523,15 @@ public class BossManager {
 
     public void awardSlayerTokens(Player player, int amount) {
         if (amount <= 0) return;
+        long start = 0;
+        if (plugin.getIslandWorthManager() != null && plugin.getIslandWorthManager().isProfileHotPaths()) start = System.nanoTime();
         ItemStack token = createSlayerToken(amount);
         player.getInventory().addItem(token);
         MessageUtil.sendMessage(player, "§6§l+" + amount + " Slayer Tokens");
+        if (start != 0) {
+            long ns = System.nanoTime() - start;
+            if (ns > 500_000L) plugin.getLogger().info("[BossManager] PROFILE: awardSlayerTokens took " + (ns / 1_000_000.0) + " ms (hot path for large slayer scale)");
+        }
 
         // Track for leaderboard (in-memory + DB)
         slayerTokenLeaderboard.merge(player.getUniqueId(), amount, Integer::sum);
@@ -908,5 +962,43 @@ public class BossManager {
         if (tier.name().contains("DRAGON")) return DimensionBoss.ENDER_DRAGON;
         if (tier.name().contains("WITHER")) return DimensionBoss.WITHER;
         return null;
+    }
+
+    /**
+     * Bounded eviction for boss tracking CHMs (large scale server compression).
+     * Trims killed history, active maps, slayer progress etc. to prevent mem bloat on 1000+ islands/players.
+     * Scheduled periodically + can be called from world unload / island reset.
+     * See IMPROVEMENTS "review/bound all CHM", "compression/optimization suggestions for large scale servers".
+     */
+    private void cleanupCaches() {
+        // killedBosses per-island history
+        if (killedBosses.size() > MAX_KILLED_PER_ISLAND * 2) { // rough global cap
+            java.util.Iterator<Map.Entry<String, Set<String>>> it = killedBosses.entrySet().iterator();
+            int toRemove = killedBosses.size() - MAX_KILLED_PER_ISLAND;
+            while (it.hasNext() && toRemove > 0) {
+                it.next(); it.remove(); toRemove--;
+            }
+        }
+        if (activeBosses.size() > MAX_ACTIVE_BOSSES) {
+            java.util.Iterator<UUID> it = activeBosses.keySet().iterator();
+            int toRemove = activeBosses.size() - (MAX_ACTIVE_BOSSES - 50);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
+        if (activeIslandBossEvents.size() > MAX_ISLAND_BOSS_EVENTS) {
+            java.util.Iterator<String> it = activeIslandBossEvents.keySet().iterator();
+            int toRemove = activeIslandBossEvents.size() - (MAX_ISLAND_BOSS_EVENTS - 20);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
+        if (slayerProgress.size() > MAX_SLAYERS) {
+            java.util.Iterator<UUID> it = slayerProgress.keySet().iterator();
+            int toRemove = slayerProgress.size() - (MAX_SLAYERS - 200);
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
+        if (dragonHomeIslands.size() > 1000) {
+            // dragon homes should be transient; trim old
+            java.util.Iterator<UUID> it = dragonHomeIslands.keySet().iterator();
+            int toRemove = dragonHomeIslands.size() - 800;
+            while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
+        }
     }
 }

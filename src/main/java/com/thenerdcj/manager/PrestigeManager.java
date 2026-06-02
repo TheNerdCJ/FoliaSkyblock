@@ -230,6 +230,234 @@ public class PrestigeManager {
             // You can expand this with specific rune rewards per level
         }
 
+        // Helmet Skins (new cosmetic system)
+        if (plugin.getHelmetSkinManager() != null && newLevel >= 5) {
+            // Example high-prestige reward
+            plugin.getHelmetSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.HelmetSkin.BLAZING_CRIMSON);
+        }
+
+        // Death Effects (new cosmetic system)
+        if (plugin.getDeathEffectManager() != null && newLevel >= 4) {
+            plugin.getDeathEffectManager().unlockEffect(performer.getUniqueId(), com.thenerdcj.cosmetic.DeathEffect.LIGHTNING);
+        }
+
+        // Death Messages cosmetic (new)
+        if (plugin.getDeathMessageManager() != null && newLevel >= 3) {
+            plugin.getDeathMessageManager().unlockMessage(performer.getUniqueId(), com.thenerdcj.cosmetic.DeathMessageCosmetic.CLASSIC);
+        }
+
+        // Backpack Skins (exploration)
+        if (plugin.getBackpackSkinManager() != null && newLevel >= 3) {
+            plugin.getBackpackSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.BackpackSkin.GARDEN_BUNNY);
+        }
+
+        // Power Orb Skins (new system) + sample orb item
+        if (plugin.getPowerOrbSkinManager() != null && newLevel >= 4) {
+            plugin.getPowerOrbSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.PowerOrbSkin.DISCO_BALL);
+            plugin.getPowerOrbSkinManager().giveOrb(performer, com.thenerdcj.cosmetic.PowerOrbSkin.DISCO_BALL);
+        }
+
+        // Minion Skins (new system)
+        if (plugin.getMinionSkinManager() != null && newLevel >= 3) {
+            plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.BUNNY);
+        }
+        if (plugin.getMinionSkinManager() != null && newLevel >= 5) {
+            plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.DRAGON);
+        }
+        // Refinements - more minion prestige
+        if (plugin.getMinionSkinManager() != null && newLevel >= 4) {
+            plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.PUMPKIN);
+        }
+        if (plugin.getMinionSkinManager() != null && newLevel >= 6) {
+            plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.ROBOT);
+        }
+        // Continued minion variety prestige grants
+        if (plugin.getMinionSkinManager() != null && newLevel >= 3) {
+            plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.GHOST);
+        }
+        if (plugin.getMinionSkinManager() != null && newLevel >= 5) {
+            plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.ANCIENT_GOLEM);
+        }
+
+        // Extra high-prestige orb + skin
+        if (plugin.getPowerOrbSkinManager() != null && newLevel >= 6) {
+            plugin.getPowerOrbSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.PowerOrbSkin.SUPREME);
+            plugin.getPowerOrbSkinManager().giveOrb(performer, com.thenerdcj.cosmetic.PowerOrbSkin.SUPREME);
+        }
+
+        // Island Furniture (foundation)
+        if (plugin.getIslandFurnitureManager() != null && newLevel >= 3) {
+            plugin.getIslandFurnitureManager().unlockFurniture(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandFurnitureType.WOODEN_CHAIR);
+        }
+        if (plugin.getIslandFurnitureManager() != null && newLevel >= 5) {
+            plugin.getIslandFurnitureManager().unlockFurniture(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandFurnitureType.FOUNTAIN);
+        }
+        // Housing variety polish prestige grants
+        if (plugin.getIslandFurnitureManager() != null && newLevel >= 4) {
+            plugin.getIslandFurnitureManager().unlockFurniture(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandFurnitureType.CELESTIAL_LAMP);
+        }
+        if (plugin.getIslandFurnitureManager() != null && newLevel >= 3) {
+            plugin.getIslandFurnitureManager().unlockFurniture(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandFurnitureType.DECORATIVE_GLOBE);
+        }
+
+        // Island Music (new)
+        if (plugin.getIslandMusicManager() != null && newLevel >= 2) {
+            plugin.getIslandMusicManager().unlockMusic(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandMusicType.CALM_OCEAN);
+        }
+        if (plugin.getIslandMusicManager() != null && newLevel >= 4) {
+            plugin.getIslandMusicManager().unlockMusic(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandMusicType.CELESTIAL_CHIMES);
+        }
+        // Island ambience extensions prestige grants
+        if (plugin.getIslandMusicManager() != null && newLevel >= 3) {
+            plugin.getIslandMusicManager().unlockMusic(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandMusicType.JUNGLE_RHYTHM);
+        }
+        if (plugin.getIslandMusicManager() != null && newLevel >= 5) {
+            plugin.getIslandMusicManager().unlockMusic(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandMusicType.ANCIENT_RUINS);
+        }
+
+        // Overhead Cosmetics (new system)
+        if (plugin.getOverheadCosmeticManager() != null && newLevel >= 3) {
+            plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.STAR_HALO);
+        }
+        if (plugin.getOverheadCosmeticManager() != null && newLevel >= 5) {
+            plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.CELESTIAL_AURA);
+        }
+        // Deeper titles prestige grants (autonomous)
+        if (plugin.getOverheadCosmeticManager() != null && newLevel >= 5) {
+            plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.RUNIC_TITLE);
+        }
+        if (plugin.getOverheadCosmeticManager() != null && newLevel >= 6) {
+            plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.VOID_CROWN);
+        }
+        // Continued deeper titles prestige grants
+        if (plugin.getOverheadCosmeticManager() != null && newLevel >= 5) {
+            plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.CELESTIAL_TITLE);
+        }
+        if (plugin.getOverheadCosmeticManager() != null && newLevel >= 6) {
+            plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.SLAYER_SIGIL);
+            plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.ETHEREAL_CROWN);
+        }
+
+        // Collections synergy: high island collection count grants extra cosmetic at prestige
+        if (plugin.getCollectionManager() != null && island != null) {
+            int collCount = plugin.getCollectionManager().getCollectionCount(island.getId());
+            if (collCount >= 50 && plugin.getAccessoryCosmeticManager() != null) {
+                try {
+                    plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_CRYSTAL);
+                    performer.sendMessage("§6§lPrestige Collection Bonus §7» High island collections unlocked extra accessory!");
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // Emote Cosmetics (new)
+        if (plugin.getEmoteCosmeticManager() != null && newLevel >= 2) {
+            plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.WAVE);
+        }
+        if (plugin.getEmoteCosmeticManager() != null && newLevel >= 4) {
+            plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.CHEER);
+        }
+        // Emote expansion grants
+        if (plugin.getEmoteCosmeticManager() != null && newLevel >= 3) {
+            plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.CLAP);
+        }
+        if (plugin.getEmoteCosmeticManager() != null && newLevel >= 5) {
+            plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.VICTORY);
+        }
+        // Emote polish prestige grants
+        if (plugin.getEmoteCosmeticManager() != null && newLevel >= 1) {
+            plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.NOD);
+        }
+        if (plugin.getEmoteCosmeticManager() != null && newLevel >= 2) {
+            plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.HIGH_FIVE);
+        }
+
+        // Custom Enchants expansion (prestige rewards for high level books)
+        if (plugin.getEnchantmentManager() != null && newLevel >= 4) {
+            // Give a high level custom enchant book as reward
+            org.bukkit.inventory.ItemStack book = plugin.getEnchantmentManager().createEnchantmentBook(com.thenerdcj.enchant.CustomEnchantment.OVERLOAD, 3);
+            performer.getInventory().addItem(book);
+            performer.sendMessage("§6§lPrestige Reward §7» Received Overload III enchantment book!");
+        }
+        if (plugin.getEnchantmentManager() != null && newLevel >= 6) {
+            org.bukkit.inventory.ItemStack book = plugin.getEnchantmentManager().createEnchantmentBook(com.thenerdcj.enchant.CustomEnchantment.DRAGON_HUNTER, 5);
+            performer.getInventory().addItem(book);
+            performer.sendMessage("§6§lPrestige Reward §7» Received Dragon Hunter V enchantment book!");
+        }
+
+        // Island Structures (new)
+        if (plugin.getIslandStructureManager() != null && newLevel >= 3) {
+            plugin.getIslandStructureManager().unlockStructure(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandStructureCosmetic.STONE_PILLAR);
+        }
+        if (plugin.getIslandStructureManager() != null && newLevel >= 5) {
+            plugin.getIslandStructureManager().unlockStructure(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandStructureCosmetic.CRYSTAL_CLUSTER);
+        }
+
+        // Chat Bubbles (new)
+        if (plugin.getChatBubbleCosmeticManager() != null && newLevel >= 2) {
+            plugin.getChatBubbleCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.ChatBubbleCosmetic.HEART_BUBBLE);
+        }
+        if (plugin.getChatBubbleCosmeticManager() != null && newLevel >= 4) {
+            plugin.getChatBubbleCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.ChatBubbleCosmetic.MAGIC_BUBBLE);
+        }
+        // Chat cosmetics depth prestige grants
+        if (plugin.getChatBubbleCosmeticManager() != null && newLevel >= 3) {
+            plugin.getChatBubbleCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.ChatBubbleCosmetic.SPARK_BUBBLE);
+        }
+        if (plugin.getChatBubbleCosmeticManager() != null && newLevel >= 5) {
+            plugin.getChatBubbleCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.ChatBubbleCosmetic.SKULL_BUBBLE);
+        }
+
+        // Island Weather (new)
+        if (plugin.getIslandWeatherCosmeticManager() != null && newLevel >= 3) {
+            plugin.getIslandWeatherCosmeticManager().unlockWeather(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandWeatherCosmetic.GENTLE_RAIN);
+        }
+        if (plugin.getIslandWeatherCosmeticManager() != null && newLevel >= 5) {
+            plugin.getIslandWeatherCosmeticManager().unlockWeather(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandWeatherCosmetic.AURORA);
+        }
+        // Refinements - more weather prestige grants
+        if (plugin.getIslandWeatherCosmeticManager() != null && newLevel >= 4) {
+            plugin.getIslandWeatherCosmeticManager().unlockWeather(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandWeatherCosmetic.SANDSTORM);
+        }
+        if (plugin.getIslandWeatherCosmeticManager() != null && newLevel >= 6) {
+            plugin.getIslandWeatherCosmeticManager().unlockWeather(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandWeatherCosmetic.FIREFLY_GLOW);
+        }
+
+        // Accessories (new)
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 2) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_STAR);
+        }
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 4) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_ORB);
+        }
+        // More accessory variety prestige grants
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 3) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_COMPASS);
+        }
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 5) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_CRYSTAL);
+        }
+        // Refinements - more accessory prestige
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 4) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_KEY);
+        }
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 6) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_GEM);
+        }
+        // Accessory expansions prestige
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 4) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_SWORD);
+        }
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 3) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.GLOWING_LANTERN);
+        }
+        // Accessory variety continuation prestige grants
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 4) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_BOOK);
+        }
+        if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 3) {
+            plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_RUNE);
+        }
+
         return true;
     }
 
