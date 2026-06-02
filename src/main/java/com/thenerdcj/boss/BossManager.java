@@ -2,6 +2,10 @@ package com.thenerdcj.boss;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.util.MessageUtil;
+import com.thenerdcj.util.SoundUtil;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -88,7 +92,7 @@ public class BossManager {
 
     public boolean spawnBoss(Player player, DimensionBoss boss) {
         if (!canSpawnBoss(player, boss)) {
-            player.sendMessage("§cYou have already defeated " + boss.getName() + "!");
+            MessageUtil.sendMessage(player, "§cYou have already defeated " + boss.getName() + "!");
             return false;
         }
 
@@ -102,8 +106,8 @@ public class BossManager {
 
         activeBosses.put(entity.getUniqueId(), boss.getName());
 
-        player.sendMessage("§c§l⚠ BOSS SPAWNED! ⚠");
-        player.sendMessage("§e" + boss.getName() + " §7has appeared!");
+        MessageUtil.sendMessage(player, "§c§l⚠ BOSS SPAWNED! ⚠");
+        MessageUtil.sendMessage(player, "§e" + boss.getName() + " §7has appeared!");
 
         return true;
     }
@@ -117,8 +121,8 @@ public class BossManager {
         if (event != null && event.bossName.contains(bossName)) {
             onIslandBossDefeated(event.bossEntityId, player);
         } else {
-            player.sendMessage("§a§l✓ " + bossName + " defeated!");
-            player.sendMessage("§7This boss will not respawn on your island.");
+            MessageUtil.sendMessage(player, "§a§l✓ " + bossName + " defeated!");
+            MessageUtil.sendMessage(player, "§7This boss will not respawn on your island.");
         }
     }
 
@@ -126,11 +130,11 @@ public class BossManager {
         int level = island.getLevel();
 
         if (level >= 50 && canSpawnBoss(player, DimensionBoss.ENDER_DRAGON)) {
-            player.sendMessage("§5§lThe End awaits! §7Defeat the Ender Dragon to unlock the End dimension!");
+            MessageUtil.sendMessage(player, "§5§lThe End awaits! §7Defeat the Ender Dragon to unlock the End dimension!");
         }
 
         if (level >= 75 && canSpawnBoss(player, DimensionBoss.WITHER)) {
-            player.sendMessage("§8§lThe Nether calls! §7Defeat the Wither to unlock advanced Nether features!");
+            MessageUtil.sendMessage(player, "§8§lThe Nether calls! §7Defeat the Wither to unlock advanced Nether features!");
         }
     }
 
@@ -154,6 +158,16 @@ public class BossManager {
         return activeBosses.containsKey(entityId);
     }
 
+    /**
+     * Checks for active (undefeated) island-wide boss event on a specific island.
+     * Supports safe per-dimension resets by preventing reset while boss is active.
+     */
+    public boolean hasActiveBossOnIsland(String islandId) {
+        if (islandId == null) return false;
+        IslandBossEvent event = activeIslandBossEvents.get(islandId);
+        return event != null && !event.defeated;
+    }
+
     public void removeBoss(UUID entityId) {
         activeBosses.remove(entityId);
     }
@@ -168,29 +182,35 @@ public class BossManager {
 
     public boolean startSlayerQuest(Player player, SlayerTier tier) {
         if (activeSlayerQuests.containsKey(player.getUniqueId())) {
-            player.sendMessage("§cYou already have an active slayer quest!");
+            MessageUtil.sendMessage(player, "§cYou already have an active slayer quest!");
             return false;
         }
 
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null || island.getLevel() < tier.getMinLevel()) {
-            player.sendMessage("§cYour island level is too low for " + tier.getDisplayName() + "!");
+            int current = island != null ? island.getLevel() : 0;
+            int needed = tier.getMinLevel() - current;
+            MessageUtil.sendMessage(player,
+                "§cYour island level is too low for " + tier.getDisplayName() + "!\n" +
+                "§7Required: §e" + tier.getMinLevel() +
+                " §7(You have §c" + current + "§7 — need §a+" + needed + "§7)");
+            SoundUtil.error(player);
             return false;
         }
 
         int currentTier = getCurrentSlayerTier(player, tier.getTargetEntity());
         if (tier.getTier() > currentTier + 1) {
-            player.sendMessage("§cYou must complete previous tiers first!");
+            MessageUtil.sendMessage(player, "§cYou must complete previous tiers first!");
             return false;
         }
 
         SlayerQuest quest = new SlayerQuest(player.getUniqueId(), tier);
         activeSlayerQuests.put(player.getUniqueId(), quest);
 
-        player.sendMessage("§6§l══════════════════════════════════════");
-        player.sendMessage("§a§lSLAYER QUEST STARTED!");
-        player.sendMessage("§e" + tier.getDisplayName());
-        player.sendMessage("§6§l══════════════════════════════════════");
+        MessageUtil.sendMessage(player, "§6§l══════════════════════════════════════");
+        MessageUtil.sendMessage(player, "§a§lSLAYER QUEST STARTED!");
+        MessageUtil.sendMessage(player, "§e" + tier.getDisplayName());
+        MessageUtil.sendMessage(player, "§6§l══════════════════════════════════════");
 
         return true;
     }
@@ -222,7 +242,7 @@ public class BossManager {
         } else {
             int remaining = quest.getKillsRequired() - quest.getKills();
             if (remaining % 10 == 0 && remaining > 0) {
-                player.sendMessage("§aSlayer Progress: §e" + quest.getKills() + "§7/§e" + quest.getKillsRequired() +
+                MessageUtil.sendMessage(player, "§aSlayer Progress: §e" + quest.getKills() + "§7/§e" + quest.getKillsRequired() +
                         " §7kills (§6" + (int)(quest.getProgress() * 100) + "%§7)");
             }
         }
@@ -265,10 +285,10 @@ public class BossManager {
     private void completeSlayerQuest(Player player, SlayerQuest quest) {
         SlayerTier tier = quest.getTier();
 
-        player.sendMessage("§6§l══════════════════════════════════════");
-        player.sendMessage("§a§lSLAYER QUEST COMPLETE!");
-        player.sendMessage("§e" + tier.getDisplayName());
-        player.sendMessage("§6§l══════════════════════════════════════");
+        MessageUtil.sendMessage(player, "§6§l══════════════════════════════════════");
+        MessageUtil.sendMessage(player, "§a§lSLAYER QUEST COMPLETE!");
+        MessageUtil.sendMessage(player, "§e" + tier.getDisplayName());
+        MessageUtil.sendMessage(player, "§6§l══════════════════════════════════════");
 
         int serverPopulation = Bukkit.getOnlinePlayers().size();
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
@@ -290,7 +310,7 @@ public class BossManager {
                     rewardBalancer.recordActualDrop(reward.getMaterial(), true, dynamicChance);
 
                     if (reward.isSpecial()) {
-                        player.sendMessage("§6§l★ SPECIAL DROP! ★ §e" + reward.getAmount() + "x " +
+                        MessageUtil.sendMessage(player, "§6§l★ SPECIAL DROP! ★ §e" + reward.getAmount() + "x " +
                                 reward.getMaterial().name() + " §7(" + reward.getRarityName() + ")");
                     }
                 }
@@ -304,7 +324,7 @@ public class BossManager {
         if (island != null) {
             int xpReward = tier.getXpRequired() / 2;
             island.addXp(xpReward);
-            player.sendMessage("§a+" + xpReward + " Island XP!");
+            MessageUtil.sendMessage(player, "§a+" + xpReward + " Island XP!");
         }
 
         updateSlayerProgress(player, tier);
@@ -315,18 +335,18 @@ public class BossManager {
         if (isBossSlayerTier(tier) && island != null) {
             DimensionBoss bossToSummon = mapSlayerTierToDimensionBoss(tier);
             if (bossToSummon != null) {
-                player.sendMessage("§6§lYour slayer mastery has summoned a powerful island boss!");
+                MessageUtil.sendMessage(player, "§6§lYour slayer mastery has summoned a powerful island boss!");
                 summonIslandBossEvent(island, bossToSummon);
             }
         }
 
         SlayerTier nextTier = tier.getNextTier();
         if (nextTier != null) {
-            player.sendMessage("§7Next tier available: §e" + nextTier.getDisplayName());
-            player.sendMessage("§7Use §a/slayer start " + nextTier.name().toLowerCase() + " §7to begin!");
+            MessageUtil.sendMessage(player, "§7Next tier available: §e" + nextTier.getDisplayName());
+            MessageUtil.sendMessage(player, "§7Use §a/slayer start " + nextTier.name().toLowerCase() + " §7to begin!");
         } else {
-            player.sendMessage("§6§l★ MAX TIER REACHED! ★");
-            player.sendMessage("§aYou have mastered this slayer!");
+            MessageUtil.sendMessage(player, "§6§l★ MAX TIER REACHED! ★");
+            MessageUtil.sendMessage(player, "§aYou have mastered this slayer!");
         }
     } // End of completeSlayerQuest
 
@@ -345,7 +365,7 @@ public class BossManager {
                     com.thenerdcj.crate.CrateType crateType = com.thenerdcj.crate.CrateType.valueOf(rewardId.replace("CRATE_", ""));
                     ItemStack key = plugin.getCrateManager().createKeyItem(crateType);
                     player.getInventory().addItem(key);
-                    player.sendMessage("§6§l★ SPECIAL! ★ §e" + crateType.getDisplayName() + " Key");
+                    MessageUtil.sendMessage(player, "§6§l★ SPECIAL! ★ §e" + crateType.getDisplayName() + " Key");
                 } catch (Exception ignored) {}
             }
         } else if (rewardId.startsWith("BOOSTER_")) {
@@ -358,7 +378,7 @@ public class BossManager {
                         int minutes = Integer.parseInt(parts[2]);
                         double mult = plugin.getConfig().getDouble("boosters.multipliers." + bType.name(), 2.0);
                         plugin.getBoosterManager().activateBooster(island, bType, mult, minutes * 60L * 1000);
-                        player.sendMessage("§6§l★ SPECIAL! ★ §e" + bType.getDisplayName() + " Booster (" + minutes + "m)");
+                        MessageUtil.sendMessage(player, "§6§l★ SPECIAL! ★ §e" + bType.getDisplayName() + " Booster (" + minutes + "m)");
                     } catch (Exception ignored) {}
                 }
             }
@@ -366,7 +386,7 @@ public class BossManager {
             if (island != null) {
                 int prestigeXp = Integer.parseInt(rewardId.replace("PRESTIGE_", ""));
                 island.addXp(prestigeXp);
-                player.sendMessage("§6§l★ SPECIAL! ★ §d+" + prestigeXp + " Island XP (Slayer Prestige)");
+                MessageUtil.sendMessage(player, "§6§l★ SPECIAL! ★ §d+" + prestigeXp + " Island XP (Slayer Prestige)");
             }
         }
     }
@@ -403,7 +423,7 @@ public class BossManager {
     public boolean abandonSlayerQuest(Player player) {
         SlayerQuest quest = activeSlayerQuests.remove(player.getUniqueId());
         if (quest != null) {
-            player.sendMessage("§cSlayer quest abandoned: " + quest.getTier().getDisplayName());
+            MessageUtil.sendMessage(player, "§cSlayer quest abandoned: " + quest.getTier().getDisplayName());
             return true;
         }
         return false;
@@ -457,7 +477,7 @@ public class BossManager {
         if (amount <= 0) return;
         ItemStack token = createSlayerToken(amount);
         player.getInventory().addItem(token);
-        player.sendMessage("§6§l+" + amount + " Slayer Tokens");
+        MessageUtil.sendMessage(player, "§6§l+" + amount + " Slayer Tokens");
 
         // Track for leaderboard (in-memory + DB)
         slayerTokenLeaderboard.merge(player.getUniqueId(), amount, Integer::sum);
@@ -641,6 +661,7 @@ public class BossManager {
 
         // Announce to all online island members (Folia-safe)
         for (Player member : island.getOnlineMembers()) {
+            SoundUtil.bossSummon(member);
             member.sendMessage("§c§l⚠ ISLAND BOSS EVENT STARTED! ⚠");
             member.sendMessage("§e" + bossType.getDisplayName() + " §7has been summoned on your island!");
             member.sendMessage("§7All participants will receive rewards based on contribution.");
@@ -712,7 +733,7 @@ public class BossManager {
                         // Visual flair - defeat fireworks
                         Location loc = p.getLocation();
                         loc.getWorld().spawnParticle(org.bukkit.Particle.FIREWORK, loc, 50, 2, 2, 2, 0.1);
-                        p.playSound(loc, org.bukkit.Sound.ENTITY_FIREWORK_ROCKET_BLAST, 1.5f, 1.0f);
+                        SoundUtil.bossDefeat(p);
                     }
                 }
             }
@@ -842,13 +863,43 @@ public class BossManager {
     }
 
     /** Basic weekly reset for token leaderboard (call periodically) */
-    public void checkAndResetTokenLeaderboard() {
+    public boolean checkAndResetTokenLeaderboard() {
         long week = 7L * 24 * 60 * 60 * 1000;
         if (System.currentTimeMillis() - lastTokenLeaderboardReset > week) {
             slayerTokenLeaderboard.clear();
             lastTokenLeaderboardReset = System.currentTimeMillis();
+
+            // Announce to the server
+            announceWeeklyTokenLeaderboardReset();
+
             plugin.getLogger().info("[Slayer] Weekly Slayer Token leaderboard has been reset.");
+            return true;
         }
+        return false;
+    }
+
+    private void announceWeeklyTokenLeaderboardReset() {
+        // Get fresh top earners from DB (List<Object[]>)
+        plugin.getDatabaseManager().getTopSlayerTokenEarners(5).thenAccept(dbResults -> {
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                Bukkit.broadcast(Component.text("§6§l[Slayer] §eWeekly Token Leaderboard has been reset!", NamedTextColor.GOLD));
+                Bukkit.broadcast(Component.text("§7Top earners this week:", NamedTextColor.GRAY));
+
+                if (dbResults == null || dbResults.isEmpty()) {
+                    Bukkit.broadcast(Component.text("§7No tokens earned this week.", NamedTextColor.GRAY));
+                } else {
+                    int rank = 1;
+                    for (Object[] row : dbResults) {
+                        UUID uuid = (UUID) row[0];
+                        int tokens = (Integer) row[1];
+                        String name = plugin.getNameCache().getName(uuid);
+                        Bukkit.broadcast(Component.text("§e#" + rank + " §f" + name + " §7- §6" + String.format("%,d", tokens) + " tokens"));
+                        rank++;
+                    }
+                }
+                Bukkit.broadcast(Component.text("§7New week started — climb the leaderboard!", NamedTextColor.GRAY));
+            });
+        });
     }
 
     private DimensionBoss mapSlayerTierToDimensionBoss(SlayerTier tier) {

@@ -35,6 +35,10 @@ public class Island {
     private String biomeName;
     private final World.Environment dimension;
 
+    // Generation personality/style seed (donor-only reroll on per-dimension reset).
+    // 0 = use pure position+dimension+biome derived seed (default / backward compat).
+    private long generationSeed = 0L;
+
     // Members
     private final Map<UUID, IslandRank> members = new ConcurrentHashMap<>();
 
@@ -104,6 +108,9 @@ public class Island {
     public double getXp() { return xp; }
 
     public void setBiome(String biomeName) { this.biomeName = biomeName; }
+
+    public long getGenerationSeed() { return generationSeed; }
+    public void setGenerationSeed(long generationSeed) { this.generationSeed = generationSeed; }
 
     public String getId() {
         return ownerUuid.toString() + "_" + dimension.name().toLowerCase();

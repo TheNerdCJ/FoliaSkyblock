@@ -1,5 +1,7 @@
 package com.thenerdcj.auction;
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.gui.GUIUtils;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -19,6 +21,8 @@ import java.util.*;
 /**
  * Enhanced AuctionGUI with pagination, custom InventoryHolder,
  * PersistentDataContainer for reliable clicks, and confirmation dialogs.
+ *
+ * Modernized with GUIUtils + MessageUtil.legacy for item creation and titles.
  */
 public class
 AuctionGUI implements Listener {
@@ -74,7 +78,7 @@ AuctionGUI implements Listener {
         Inventory gui = Bukkit.createInventory(
                 new AuctionGUIHolder(page, "browse", null),
                 54,
-                "§6§lAuction House §7(Page " + (page + 1) + "/" + Math.max(1, totalPages) + ")"
+                MessageUtil.legacy("§6§lAuction House §7(Page " + (page + 1) + "/" + Math.max(1, totalPages) + ")")
         );
 
         int start = page * itemsPerPage;
@@ -88,8 +92,8 @@ AuctionGUI implements Listener {
             gui.setItem(i, createGlassPane());
         }
 
-        if (page > 0) gui.setItem(45, createNavButton("§a§lPrevious", "prev", page));
-        if (page < totalPages - 1) gui.setItem(53, createNavButton("§a§lNext", "next", page));
+        if (page > 0) gui.setItem(45, createNavButton("§a§l« Previous", "prev", page));
+        if (page < totalPages - 1) gui.setItem(53, createNavButton("§a§lNext »", "next", page));
         gui.setItem(49, createCloseButton());
 
         player.openInventory(gui);
@@ -97,27 +101,40 @@ AuctionGUI implements Listener {
     }
 
     private void addAuctionItem(Inventory gui, int slot, Auction auction) {
-        ItemStack item = new ItemStack(Material.valueOf(auction.getItemMaterial()), auction.getItemAmount());
+        ItemStack item = GUIUtils.createItem(
+                Material.valueOf(auction.getItemMaterial()), 
+                "§e" + auction.getItemAmount() + "x " + auction.getItemMaterial()
+        );
+        item.setAmount(auction.getItemAmount());
+
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§e" + auction.getItemAmount() + "x " + auction.getItemMaterial());
+        if (meta != null) {
+            java.util.List<String> lore = new java.util.ArrayList<>();
+            lore.add("§7Current Bid: §a$" + String.format("%,.0f", auction.getCurrentBid()));
+            lore.add("§7Starting Price: §7$" + String.format("%,.0f", auction.getStartingPrice()));
+            if (auction.getCurrentBidder() != null) {
+                lore.add("§7Highest Bidder: §bSomeone");
+            }
+            lore.add("§7Time Left: §e" + formatTime(auction.getTimeRemaining()));
+            lore.add("");
+            lore.add("§aLeft-click to §bBID §aon this item");
+            meta.setLore(lore);
 
-        List<String> lore = new ArrayList<>();
-        lore.add("§7Current Bid: §a$" + String.format("%,.0f", auction.getCurrentBid()));
-        lore.add("§7Starting Price: §7$" + String.format("%,.0f", auction.getStartingPrice()));
-        if (auction.getCurrentBidder() != null) {
-            lore.add("§7Highest Bidder: §bSomeone");
+            // Use helper for common PDC attachment
+            attachAuctionPDC(meta, "bid", auction.getId());
+
+            item.setItemMeta(meta);
         }
-        lore.add("§7Time Left: §e" + formatTime(auction.getTimeRemaining()));
-        lore.add("");
-        lore.add("§aLeft-click to §bBID §aon this item");
-        meta.setLore(lore);
-
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, "bid");
-        pdc.set(AUCTION_ID_KEY, PersistentDataType.STRING, auction.getId());
-
-        item.setItemMeta(meta);
         gui.setItem(slot, item);
+    }
+
+    private void attachAuctionPDC(ItemMeta meta, String action, String auctionId) {
+        if (meta != null) {
+            GUIUtils.setPDCString(meta, ACTION_KEY, action);
+            if (auctionId != null) {
+                GUIUtils.setPDCString(meta, AUCTION_ID_KEY, auctionId);
+            }
+        }
     }
 
     private String formatTime(long millis) {
@@ -127,31 +144,42 @@ AuctionGUI implements Listener {
     }
 
     private ItemStack createNavButton(String name, String action, int currentPage) {
-        ItemStack item = new ItemStack(Material.ARROW);
+        ItemStack item = GUIUtils.createItem(Material.ARROW, name);
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, action);
-        pdc.set(PAGE_KEY, PersistentDataType.INTEGER, currentPage);
-        item.setItemMeta(meta);
+        if (meta != null) {
+            GUIUtils.setPDCString(meta, ACTION_KEY, action);
+            meta.getPersistentDataContainer().set(PAGE_KEY, PersistentDataType.INTEGER, currentPage);
+            item.setItemMeta(meta);
+        }
         return item;
     }
 
     private ItemStack createGlassPane() {
-        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(" ");
-        item.setItemMeta(meta);
-        return item;
+        return GUIUtils.createItem(Material.GRAY_STAINED_GLASS_PANE, " ");
     }
 
     private ItemStack createCloseButton() {
-        ItemStack item = new ItemStack(Material.BARRIER);
+        ItemStack item = GUIUtils.createItem(Material.BARRIER, "§c§lClose");
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§c§lClose");
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, "close");
-        item.setItemMeta(meta);
+        if (meta != null) {
+            GUIUtils.setPDCString(meta, ACTION_KEY, "close");
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    // ==================== Auction-specific helpers (for consistency with modernized GUIs) ====================
+
+    private ItemStack createAuctionActionButton(Material material, String name, String action, String auctionId) {
+        ItemStack item = GUIUtils.createItem(material, name);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            GUIUtils.setPDCString(meta, ACTION_KEY, action);
+            if (auctionId != null) {
+                GUIUtils.setPDCString(meta, AUCTION_ID_KEY, auctionId);
+            }
+            item.setItemMeta(meta);
+        }
         return item;
     }
 
@@ -163,38 +191,26 @@ AuctionGUI implements Listener {
         Inventory confirm = Bukkit.createInventory(
                 new AuctionGUIHolder(0, "confirm_bid", auctionId),
                 27,
-                "§6§lPlace Bid?"
+                MessageUtil.legacy("§6§lPlace Bid?")
         );
 
-        ItemStack info = new ItemStack(Material.valueOf(auction.getItemMaterial()), auction.getItemAmount());
+        ItemStack info = GUIUtils.createItem(Material.valueOf(auction.getItemMaterial()), "§eBid on " + auction.getItemMaterial());
+        info.setAmount(auction.getItemAmount());
         ItemMeta infoMeta = info.getItemMeta();
-        infoMeta.setDisplayName("§eBid on " + auction.getItemMaterial());
-        List<String> lore = new ArrayList<>();
-        lore.add("§7Current Bid: §a$" + String.format("%,.0f", auction.getCurrentBid()));
-        lore.add("§7Your bid must be higher!");
-        infoMeta.setLore(lore);
-        info.setItemMeta(infoMeta);
+        if (infoMeta != null) {
+            infoMeta.setLore(java.util.Arrays.asList(
+                "§7Current Bid: §a$" + String.format("%,.0f", auction.getCurrentBid()),
+                "§7Your bid must be higher!"
+            ));
+            attachAuctionPDC(infoMeta, "info", auctionId);
+            info.setItemMeta(infoMeta);
+        }
         confirm.setItem(13, info);
 
-        // For simplicity, assume next bid = current + 10% or fixed increment. In real use, prompt for amount.
         double suggestedBid = auction.getCurrentBid() + Math.max(10, auction.getCurrentBid() * 0.1);
 
-        ItemStack bidBtn = new ItemStack(Material.GREEN_WOOL);
-        ItemMeta bMeta = bidBtn.getItemMeta();
-        bMeta.setDisplayName("§a§lBID §e$" + String.format("%,.0f", suggestedBid));
-        PersistentDataContainer bPdc = bMeta.getPersistentDataContainer();
-        bPdc.set(ACTION_KEY, PersistentDataType.STRING, "confirm_bid");
-        bPdc.set(AUCTION_ID_KEY, PersistentDataType.STRING, auctionId);
-        bidBtn.setItemMeta(bMeta);
-        confirm.setItem(11, bidBtn);
-
-        ItemStack cancel = new ItemStack(Material.RED_WOOL);
-        ItemMeta cMeta = cancel.getItemMeta();
-        cMeta.setDisplayName("§c§lCANCEL");
-        PersistentDataContainer cPdc = cMeta.getPersistentDataContainer();
-        cPdc.set(ACTION_KEY, PersistentDataType.STRING, "cancel");
-        cancel.setItemMeta(cMeta);
-        confirm.setItem(15, cancel);
+        confirm.setItem(11, createAuctionActionButton(Material.GREEN_WOOL, "§a§lBID §e$" + String.format("%,.0f", suggestedBid), "confirm_bid", auctionId));
+        confirm.setItem(15, createAuctionActionButton(Material.RED_WOOL, "§c§lCANCEL", "cancel", null));
 
         player.openInventory(confirm);
         openGUIs.put(player.getUniqueId(), (AuctionGUIHolder) confirm.getHolder());

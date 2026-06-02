@@ -2,6 +2,7 @@ package com.thenerdcj.gui;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.quest.Quest;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -15,8 +16,17 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.Arrays;
-
+/**
+ * Quest Log GUI for daily/weekly quests.
+ * Supports async loading, progress, rewards, claiming, and regeneration.
+ *
+ * Deep modernization pass:
+ * - All manual ItemStack helpers (createQuestItem with PDC, createItem, createGlassPane) converted to GUIUtils.createItem + attach helper.
+ * - Title now uses MessageUtil.legacy.
+ * - Click handler title check made resilient (startsWith).
+ * - Modern filler glass.
+ * - Preserved async quests, metadata for islandId, claim/generate flows, PDC questIdKey, sounds.
+ */
 public class QuestLogGUI implements Listener {
 
     private final FoliaSkyblock plugin;
@@ -45,7 +55,7 @@ public class QuestLogGUI implements Listener {
 
         plugin.getQuestManager().getQuestsForIsland(islandId).thenAccept(quests -> {
             plugin.getThreadSafety().runOnMainThread(() -> {
-                Inventory gui = Bukkit.createInventory(null, 54, "§6§lQuest Log");
+                Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lQuest Log"));
 
                 gui.setItem(4, createItem(Material.BOOK, "§6§lQuest Log",
                         "§7Daily & Weekly Missions", "§7Complete for rewards!"));
@@ -66,8 +76,10 @@ public class QuestLogGUI implements Listener {
                 gui.setItem(49, createItem(Material.EMERALD, "§a§lGenerate New Quests",
                         "§7Click to get new daily/weekly quests"));
 
+                // Modernized filler
+                ItemStack glass = GUIUtils.createItem(Material.GRAY_STAINED_GLASS_PANE, " ");
                 for (int i = 0; i < 54; i++) {
-                    if (gui.getItem(i) == null) gui.setItem(i, createGlassPane());
+                    if (gui.getItem(i) == null) gui.setItem(i, glass);
                 }
 
                 player.openInventory(gui);
@@ -88,28 +100,32 @@ public class QuestLogGUI implements Listener {
     }
 
     private ItemStack createQuestItem(Material material, Quest quest, String status) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-
-        meta.setDisplayName("§e" + quest.getTitle());
-
         String progressBar = createProgressBar(quest.getProgress(), quest.getTarget());
 
-        meta.setLore(Arrays.asList(
-                "§7" + quest.getDescription(),
-                "",
-                "§7Progress: " + progressBar + " §f" + quest.getProgress() + "/" + quest.getTarget(),
-                "§7Reward: §a" + quest.getRewardXp() + " XP §7+ §e$" + quest.getRewardMoney(),
-                "",
-                status,
-                quest.isCompleted() && !quest.isClaimed() ? "§aClick to claim reward!" : "§7Complete to claim reward"
-        ));
+        java.util.List<String> lore = new java.util.ArrayList<>();
+        lore.add("§7" + quest.getDescription());
+        lore.add("");
+        lore.add("§7Progress: " + progressBar + " §f" + quest.getProgress() + "/" + quest.getTarget());
+        lore.add("§7Reward: §a" + quest.getRewardXp() + " XP §7+ §e$" + quest.getRewardMoney());
+        lore.add("");
+        lore.add(status);
+        lore.add(quest.isCompleted() && !quest.isClaimed() ? "§aClick to claim reward!" : "§7Complete to claim reward");
 
-        // Store quest ID for reliable identification
-        meta.getPersistentDataContainer().set(questIdKey, PersistentDataType.STRING, quest.getId());
+        // Base via GUIUtils (modernized)
+        ItemStack item = GUIUtils.createItem(material, "§e" + quest.getTitle(), lore.toArray(new String[0]));
 
-        item.setItemMeta(meta);
+        // Attach PDC for reliable quest identification (preserved)
+        attachQuestPDC(item, quest.getId());
         return item;
+    }
+
+    private void attachQuestPDC(ItemStack item, String questId) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.getPersistentDataContainer().set(questIdKey, PersistentDataType.STRING, questId);
+            item.setItemMeta(meta);
+        }
     }
 
     private String createProgressBar(int current, int max) {
@@ -123,25 +139,13 @@ public class QuestLogGUI implements Listener {
     }
 
     private ItemStack createItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        meta.setLore(Arrays.asList(lore));
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    private ItemStack createGlassPane() {
-        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(" ");
-        item.setItemMeta(meta);
-        return item;
+        return GUIUtils.createItem(material, name, lore);
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!event.getView().getTitle().equals("§6§lQuest Log")) return;
+        // Resilient title check (modernized)
+        if (!event.getView().getTitle().startsWith("§6§lQuest Log")) return;
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();

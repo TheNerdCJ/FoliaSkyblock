@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.challenge.Challenge;
 import com.thenerdcj.challenge.ChallengeManager;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -17,8 +18,14 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.List;
 
 /**
- * GUI for Daily and Weekly Challenges
- * Fully implemented with reward claiming
+ * GUI for Daily and Weekly Challenges.
+ * Supports claiming completed challenges for Island XP rewards.
+ *
+ * Deep modernization pass:
+ * - All manual ItemStack + ItemMeta helpers (createTitleItem, createChallengeItem, createInfoItem) converted to GUIUtils.createItem.
+ * - Title now uses MessageUtil.legacy.
+ * - Click handler title check made more resilient (startsWith).
+ * - Preserved challenge filtering by type, claim logic, async refresh, and reward awarding.
  */
 public class ChallengeGUI implements Listener {
 
@@ -38,7 +45,7 @@ public class ChallengeGUI implements Listener {
     }
 
     public void open(Player player) {
-        Inventory gui = Bukkit.createInventory(null, 54, "§6§lDaily & Weekly Challenges");
+        Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lDaily & Weekly Challenges"));
 
         // Title
         gui.setItem(4, createTitleItem());
@@ -68,16 +75,10 @@ public class ChallengeGUI implements Listener {
     }
 
     private ItemStack createTitleItem() {
-        ItemStack item = new ItemStack(Material.NETHER_STAR);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§6§l★ CHALLENGES ★");
-        meta.setLore(java.util.Arrays.asList(
+        return GUIUtils.createItem(Material.NETHER_STAR, "§6§l★ CHALLENGES ★",
                 "§7Complete challenges for bonus XP!",
                 "§7Daily challenges reset every day",
-                "§7Weekly challenges reset every Sunday"
-        ));
-        item.setItemMeta(meta);
-        return item;
+                "§7Weekly challenges reset every Sunday");
     }
 
     private ItemStack createChallengeItem(Challenge challenge, boolean isDaily) {
@@ -90,14 +91,9 @@ public class ChallengeGUI implements Listener {
             default -> Material.PAPER;
         };
 
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-
         String status = challenge.isCompleted()
                 ? "§a§lCOMPLETED"
                 : "§e§lIN PROGRESS";
-
-        meta.setDisplayName("§f" + challenge.getDescription() + " " + status);
 
         java.util.List<String> lore = new java.util.ArrayList<>();
         lore.add("§7Progress: §e" + challenge.getProgress() + "§7/§e" + challenge.getTarget());
@@ -110,29 +106,22 @@ public class ChallengeGUI implements Listener {
             lore.add("§7" + String.format("%.1f", challenge.getProgressPercent()) + "% complete");
         }
 
-        meta.setLore(lore);
-        item.setItemMeta(meta);
-        return item;
+        return GUIUtils.createItem(material, "§f" + challenge.getDescription() + " " + status, lore.toArray(new String[0]));
     }
 
     private ItemStack createInfoItem() {
-        ItemStack item = new ItemStack(Material.BOOK);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§6§lHow Challenges Work");
-        meta.setLore(java.util.Arrays.asList(
+        return GUIUtils.createItem(Material.BOOK, "§6§lHow Challenges Work",
                 "§7• Complete tasks to earn bonus XP",
                 "§7• Challenges scale with your island level",
                 "§7• Daily = Easy, Weekly = Hard",
-                "§7• Complete all for special rewards!"
-        ));
-        item.setItemMeta(meta);
-        return item;
+                "§7• Complete all for special rewards!");
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
-        if (!event.getView().getTitle().contains("Challenges")) return;
+        // Resilient title check (modernized)
+        if (!event.getView().getTitle().startsWith("§6§lDaily & Weekly Challenges")) return;
 
         event.setCancelled(true);
 

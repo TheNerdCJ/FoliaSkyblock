@@ -1,6 +1,7 @@
 package com.thenerdcj.crate;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.SoundUtil;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -54,6 +55,7 @@ public class CrateManager {
         // Grant reward
         reward.grant(player, plugin);
 
+        SoundUtil.crateOpen(player);
         player.sendMessage("§aYou opened a " + type.getDisplayName() + " and received: §e" + reward.getName());
     }
 

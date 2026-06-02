@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
@@ -33,7 +34,7 @@ public abstract class AbstractGUI implements InventoryHolder {
     public AbstractGUI(FoliaSkyblock plugin, Player player, String title, int size) {
         this.plugin = plugin;
         this.player = player;
-        this.inventory = Bukkit.createInventory(this, size, ChatColor.translateAlternateColorCodes('&', title));
+        this.inventory = Bukkit.createInventory(this, size, MessageUtil.legacy(title));
     }
 
     /**

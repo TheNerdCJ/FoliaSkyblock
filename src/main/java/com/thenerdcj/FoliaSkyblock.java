@@ -20,6 +20,9 @@ import com.thenerdcj.listener.*;
 import com.thenerdcj.manager.*;
 import com.thenerdcj.rank.RankManager;
 import com.thenerdcj.shop.ChestShopManager;
+import com.thenerdcj.util.MessageUtil;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -56,36 +59,52 @@ public class FoliaSkyblock extends JavaPlugin {
     private com.thenerdcj.util.ThreadSafety threadSafety;
     private com.thenerdcj.util.NameCache nameCache;
 
-    // Island Worth / Level System (new)
+    // Island Worth / Level System
     private IslandWorthManager islandWorthManager;
     private com.thenerdcj.mission.MissionManager missionManager;
     private com.thenerdcj.booster.BoosterManager boosterManager;
     private com.thenerdcj.gui.BoosterGUI boosterGUI;
 
-    // Island Shop (deepened economy sink)
+    // Island Shop
     private com.thenerdcj.manager.IslandShopManager islandShopManager;
     private com.thenerdcj.gui.IslandShopGUI islandShopGUI;
 
-    // Prestige System (high-endgame reset for power)
+    // Prestige System
     private com.thenerdcj.manager.PrestigeManager prestigeManager;
     private com.thenerdcj.gui.PrestigeGUI prestigeGUI;
 
     // Border / Size Upgrades + Visuals
     private com.thenerdcj.manager.BorderVisualManager borderVisualManager;
 
-    // New systems (Visitor foundation + Crates + Minion expansion already wired in previous work)
+    // Crates + Cosmetics + Wardrobe
     private com.thenerdcj.crate.CrateManager crateManager;
     private com.thenerdcj.gui.CrateGUI crateGUI;
-
-    // Personal Particle Trails / Auras (new cosmetic system)
     private com.thenerdcj.cosmetic.ParticleTrailManager particleTrailManager;
     private com.thenerdcj.gui.ParticleTrailGUI particleTrailGUI;
     private com.thenerdcj.gui.GeneratorGUI generatorGUI;
 
-    // Wardrobe system (added based on community research)
     private com.thenerdcj.wardrobe.WardrobeManager wardrobeManager;
     private com.thenerdcj.wardrobe.WardrobeGUI wardrobeGUI;
     private com.thenerdcj.wardrobe.WardrobeSlotOptionsGUI wardrobeSlotOptionsGUI;
+
+    // Pet System (cosmetic followers, integrated with Wardrobe)
+    private com.thenerdcj.pets.PetManager petManager;
+    private com.thenerdcj.pets.PetGUI petGUI;
+
+    // Player Tag System (cosmetic chat/tab tags - prestige/slayer/collection gated)
+    private com.thenerdcj.tags.PlayerTagManager playerTagManager;
+    private com.thenerdcj.tags.TagGUI tagGUI;
+
+    // Overhead Nametags (cosmetic tags above player heads via scoreboard teams)
+    private com.thenerdcj.tags.PlayerNametagManager playerNametagManager;
+
+    // Elytra Wing Cosmetics (advanced gliding visual effects)
+    private com.thenerdcj.wings.ElytraWingManager elytraWingManager;
+    private com.thenerdcj.wings.WingGUI wingGUI;
+
+    // Cosmetic Runes
+    private com.thenerdcj.runes.RuneManager runeManager;
+    private com.thenerdcj.runes.RuneGUI runeGUI;
 
     // ==================== GUI INSTANCES ====================
     private TradeGUI tradeGUI;
@@ -103,11 +122,12 @@ public class FoliaSkyblock extends JavaPlugin {
     private AuctionGUI auctionGUI;
     private com.thenerdcj.bazaar.BazaarGUI bazaarGUI;
 
+    // NEW: Per-dimension island reset system
+    private DimensionResetGUI dimensionResetGUI;
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
-
-        // Step 8: Configuration validation + helpful errors
         validateConfiguration();
 
         // === Core Managers ===
@@ -124,7 +144,6 @@ public class FoliaSkyblock extends JavaPlugin {
         this.bossManager = new BossManager(this);
         this.antiCheatManager = new AntiCheatManager(this);
 
-        // Create ThreadSafety and NameCache VERY early so other managers can safely use them
         this.threadSafety = new com.thenerdcj.util.ThreadSafety(this);
         this.nameCache = new com.thenerdcj.util.NameCache(this);
 
@@ -143,33 +162,25 @@ public class FoliaSkyblock extends JavaPlugin {
         this.punishmentManager = new PunishmentManager(this);
         this.autoSellerManager = new AutoSellerManager(this);
 
-        // Island Worth / Level System (classic Skyblock worth + leaderboards)
+        // Island Worth / Level + Economy sinks
         this.islandWorthManager = new IslandWorthManager(this);
         this.missionManager = new com.thenerdcj.mission.MissionManager(this);
         this.boosterManager = new com.thenerdcj.booster.BoosterManager(this);
         this.boosterGUI = new com.thenerdcj.gui.BoosterGUI(this);
-
-        // Island Shop (deepened)
         this.islandShopManager = new com.thenerdcj.manager.IslandShopManager(this);
         this.islandShopGUI = new com.thenerdcj.gui.IslandShopGUI(this);
 
-        // Prestige System
+        // Prestige + Border + Crates + Cosmetics
         this.prestigeManager = new com.thenerdcj.manager.PrestigeManager(this);
         this.prestigeGUI = new com.thenerdcj.gui.PrestigeGUI(this);
-
-        // Border Size + Visual Expansion
         this.borderVisualManager = new com.thenerdcj.manager.BorderVisualManager(this);
-
-        // Crate / Loot system
         this.crateManager = new com.thenerdcj.crate.CrateManager(this);
         this.crateGUI = new com.thenerdcj.gui.CrateGUI(this);
-
-        // Personal Particle Trails (cosmetic auras)
         this.particleTrailManager = new com.thenerdcj.cosmetic.ParticleTrailManager(this);
         this.particleTrailGUI = new com.thenerdcj.gui.ParticleTrailGUI(this);
         this.generatorGUI = new com.thenerdcj.gui.GeneratorGUI(this);
 
-        // === Scheduled background worth recalculation (every 20 minutes) ===
+        // Scheduled tasks
         threadSafety.runRepeatingOnMainThread(() -> {
             if (islandWorthManager != null && islandManager != null) {
                 for (Island island : islandManager.getAllLoadedIslands().values()) {
@@ -178,31 +189,53 @@ public class FoliaSkyblock extends JavaPlugin {
                         islandWorthManager.recalculateAndUpdate(island);
                     }
                 }
-                getLogger().fine("[IslandWorth] Background recalculation triggered for loaded islands.");
             }
         }, 20 * 60 * 15L, 20 * 60 * 20L);
 
-        // === Light tab list worth display updates (every 30 seconds) ===
         threadSafety.runRepeatingOnMainThread(() -> {
             if (islandWorthManager != null) {
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     islandWorthManager.updatePlayerTabList(p);
                 }
             }
-        }, 20 * 30L, 20 * 30L); // every 30 seconds
+        }, 20 * 30L, 20 * 30L);
 
-        // === Wardrobe System (Armor + Equipment presets) ===
+        // Weekly Slayer Token leaderboard reset check (lightweight)
+        threadSafety.runRepeatingOnMainThread(() -> {
+            if (bossManager != null) {
+                bossManager.checkAndResetTokenLeaderboard();
+            }
+        }, 20 * 60 * 5L, 20 * 60 * 5L);
+
+        // Wardrobe
         this.wardrobeManager = new com.thenerdcj.wardrobe.WardrobeManager(this);
         this.wardrobeGUI = new com.thenerdcj.wardrobe.WardrobeGUI(this);
         this.wardrobeSlotOptionsGUI = new com.thenerdcj.wardrobe.WardrobeSlotOptionsGUI(this);
 
-        // === WorldManager (Custom Void Worlds) ===
+        // Pet System (cosmetic)
+        this.petManager = new com.thenerdcj.pets.PetManager(this);
+        this.petGUI = new com.thenerdcj.pets.PetGUI(this);
+
+        // Player Tag System
+        this.playerTagManager = new com.thenerdcj.tags.PlayerTagManager(this);
+        this.tagGUI = new com.thenerdcj.tags.TagGUI(this);
+
+        // Overhead Nametag System (scoreboard teams)
+        this.playerNametagManager = new com.thenerdcj.tags.PlayerNametagManager(this);
+
+        // Elytra Wing Cosmetics System
+        this.elytraWingManager = new com.thenerdcj.wings.ElytraWingManager(this);
+        this.wingGUI = new com.thenerdcj.wings.WingGUI(this);
+
+        // Cosmetic Runes System
+        this.runeManager = new com.thenerdcj.runes.RuneManager(this);
+        this.runeGUI = new com.thenerdcj.runes.RuneGUI(this);
+
+        // World + Holograms
         this.worldManager = new WorldManager(this);
         this.worldManager.initializeWorlds();
+        MessageUtil.info(getLogger(), "§e[WorldManager] Creating custom void worlds for Skyblock...");
 
-        getLogger().info("§e[WorldManager] Creating custom void worlds for Skyblock...");
-
-        // === Hologram Manager ===
         this.hologramManager = new HologramManager(this);
         hologramManager.loadAndSpawnAll();
 
@@ -221,37 +254,40 @@ public class FoliaSkyblock extends JavaPlugin {
         this.auctionGUI = new AuctionGUI(this, auctionManager);
         this.bazaarGUI = new com.thenerdcj.bazaar.BazaarGUI(this, bazaarManager);
 
-        // === Register Commands & Listeners ===
+        // NEW: Per-dimension island reset GUI
+        this.dimensionResetGUI = new DimensionResetGUI(this);
+
+        // Register commands & listeners
         registerCommands();
         registerListeners();
 
         // Load islands for online players
         Bukkit.getOnlinePlayers().forEach(player -> islandManager.loadPlayerIslands(player));
 
-        getLogger().info("§a[FoliaSkyblock] Plugin enabled successfully on Folia! (v1.0.2)");
+        // Improved tab list header/footer (polish)
+        setServerTabHeaderFooter();
+
+        MessageUtil.info(getLogger(), "§a[FoliaSkyblock] Plugin enabled successfully on Folia! (v1.0.2)");
     }
 
     @Override
     public void onDisable() {
         if (hologramManager != null) hologramManager.cleanup();
         if (databaseManager != null) databaseManager.close();
-        getLogger().info("§e[FoliaSkyblock] Plugin disabled.");
+        MessageUtil.info(getLogger(), "§e[FoliaSkyblock] Plugin disabled.");
     }
 
     // ==================== COMMAND REGISTRATION ====================
     private void registerCommands() {
         safeRegisterCommand("island", new IslandCommand(this));
         safeRegisterCommand("is", new IslandCommand(this));
-
         safeRegisterCommand("bal", new BalanceCommand(this));
         safeRegisterCommand("balance", new BalanceCommand(this));
-
         safeRegisterCommand("rank", new RankCommand(this));
-
         safeRegisterCommand("spawn", new PlayerCommand(this));
-        safeRegisterCommand("home", new PlayerCommand(this)); // or IslandCommand if preferred
+        safeRegisterCommand("home", new PlayerCommand(this));
 
-        // Expanded TPA
+        // TPA
         safeRegisterCommand("tpa", new PlayerCommand(this));
         safeRegisterCommand("tpaccept", new PlayerCommand(this));
         safeRegisterCommand("tpdeny", new PlayerCommand(this));
@@ -259,21 +295,18 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("tplist", new PlayerCommand(this));
         safeRegisterCommand("pending", new PlayerCommand(this));
 
-        // Private Messaging
+        // Messaging & Utility
         safeRegisterCommand("msg", new PlayerCommand(this));
         safeRegisterCommand("r", new PlayerCommand(this));
-
-        // List & Help
         safeRegisterCommand("list", new PlayerCommand(this));
         safeRegisterCommand("online", new PlayerCommand(this));
         safeRegisterCommand("help", new PlayerCommand(this));
-
         safeRegisterCommand("rules", new PlayerCommand(this));
 
+        // Gameplay
         safeRegisterCommand("challenge", new ChallengeCommand(this));
         safeRegisterCommand("challenges", new ChallengeCommand(this));
         safeRegisterCommand("daily", new ChallengeCommand(this));
-
         safeRegisterCommand("slayer", new SlayerCommand(this));
         safeRegisterCommand("enchant", new EnchantCommand(this));
         safeRegisterCommand("trail", new com.thenerdcj.command.ParticleCommand(this));
@@ -285,7 +318,22 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("wardrobe", new com.thenerdcj.command.WardrobeCommand(this));
         safeRegisterCommand("wd", new com.thenerdcj.command.WardrobeCommand(this));
 
-        // Staff Commands
+        // Pet command (temporary - will be merged into Wardrobe later)
+        safeRegisterCommand("pets", new com.thenerdcj.command.PetCommand(this));
+
+        // Tags command (new cosmetic tag system)
+        safeRegisterCommand("tags", new com.thenerdcj.command.TagCommand(this));
+
+        // Elytra Wings command (new dedicated GUI)
+        safeRegisterCommand("wings", new com.thenerdcj.command.WingsCommand(this));
+
+        // Runes command
+        safeRegisterCommand("runes", new com.thenerdcj.command.RunesCommand(this));
+
+        // Nametag visibility toggle
+        safeRegisterCommand("nametag", new com.thenerdcj.command.NametagCommand(this));
+
+        // Staff
         StaffCommand staffCmd = new StaffCommand(this);
         safeRegisterCommand("staff", staffCmd);
         safeRegisterCommand("vanish", staffCmd);
@@ -316,13 +364,13 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("setspawn", staffCmd);
         safeRegisterCommand("isadmin", new AdminCommand(this));
 
-        // Trade GUI
+        // Trade
         safeRegisterCommand("trade", (sender, cmd, label, args) -> {
             if (sender instanceof Player player) {
                 tradeGUI.openTradeGUI(player);
                 return true;
             }
-            sender.sendMessage("§cThis command can only be used by players.");
+            sender.sendMessage(MessageUtil.legacy("§cThis command can only be used by players."));
             return false;
         });
 
@@ -338,7 +386,7 @@ public class FoliaSkyblock extends JavaPlugin {
                 cmd.setTabCompleter(tabCompleter);
             }
         } else {
-            getLogger().warning("§e[FoliaSkyblock] Command '" + name + "' not found in plugin.yml.");
+            MessageUtil.warning(getLogger(), "§e[FoliaSkyblock] Command '" + name + "' not found in plugin.yml.");
         }
     }
 
@@ -358,22 +406,15 @@ public class FoliaSkyblock extends JavaPlugin {
         pm.registerEvents(new AnvilListener(this), this);
         pm.registerEvents(new DimensionIslandListener(this), this);
         pm.registerEvents(new TPAListener(this, tpaListGUI), this);
-        // Register the single canonical AuctionGUI instance (prevents double-listener bug)
         pm.registerEvents(auctionGUI, this);
-
-        // Wardrobe persistence
         pm.registerEvents(new com.thenerdcj.listener.WardrobeListener(this), this);
-
-        // Island Shop token redemption
         pm.registerEvents(new com.thenerdcj.listener.ShopTokenListener(this), this);
-
-        // Slayer gear abilities
         pm.registerEvents(new com.thenerdcj.listener.SlayerGearListener(this), this);
+        pm.registerEvents(new PlayerQuitListener(this), this);
+        pm.registerEvents(new com.thenerdcj.listener.ElytraWingListener(this), this);
+        pm.registerEvents(new com.thenerdcj.listener.RuneEffectListener(this), this);
 
-        // Player Quit Listener for ChatManager & TPA
-        pm.registerEvents(new PlayerQuitListener(this), this); // Make sure this exists or add it
-
-        getLogger().info("§a[FoliaSkyblock] All listeners registered.");
+        MessageUtil.info(getLogger(), "§a[FoliaSkyblock] All listeners registered.");
     }
 
     // ==================== GETTERS ====================
@@ -392,31 +433,18 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandUpgradeManager getIslandUpgradeManager() { return islandUpgradeManager; }
 
     public IslandWorthManager getIslandWorthManager() { return islandWorthManager; }
-
     public com.thenerdcj.mission.MissionManager getMissionManager() { return missionManager; }
-
     public com.thenerdcj.booster.BoosterManager getBoosterManager() { return boosterManager; }
-
     public com.thenerdcj.gui.IslandShopGUI getIslandShopGUI() { return islandShopGUI; }
-
     public com.thenerdcj.manager.IslandShopManager getIslandShopManager() { return islandShopManager; }
-
     public com.thenerdcj.manager.PrestigeManager getPrestigeManager() { return prestigeManager; }
-
     public com.thenerdcj.gui.PrestigeGUI getPrestigeGUI() { return prestigeGUI; }
-
     public com.thenerdcj.manager.BorderVisualManager getBorderVisualManager() { return borderVisualManager; }
-
     public com.thenerdcj.crate.CrateManager getCrateManager() { return crateManager; }
-
     public com.thenerdcj.gui.CrateGUI getCrateGUI() { return crateGUI; }
-
     public com.thenerdcj.cosmetic.ParticleTrailManager getParticleTrailManager() { return particleTrailManager; }
-
     public com.thenerdcj.gui.ParticleTrailGUI getParticleTrailGUI() { return particleTrailGUI; }
-
     public com.thenerdcj.gui.GeneratorGUI getGeneratorGUI() { return generatorGUI; }
-
     public com.thenerdcj.gui.BoosterGUI getBoosterGUI() { return boosterGUI; }
     public AuctionManager getAuctionManager() { return auctionManager; }
     public BazaarManager getBazaarManager() { return bazaarManager; }
@@ -433,15 +461,16 @@ public class FoliaSkyblock extends JavaPlugin {
     public SlayerGUI getSlayerGUI() { return slayerGUI; }
     public SlayerLeaderboardGUI getSlayerLeaderboardGUI() { return slayerLeaderboardGUI; }
     public SlayerAchievementGUI getSlayerAchievementGUI() { return slayerAchievementGUI; }
-
     public com.thenerdcj.gui.SlayerShopGUI getSlayerShopGUI() { return slayerShopGUI; }
-
     public com.thenerdcj.gui.SlayerTokenLeaderboardGUI getSlayerTokenLeaderboardGUI() { return slayerTokenLeaderboardGUI; }
     public EnchantingTableGUI getEnchantingTableGUI() { return enchantingTableGUI; }
     public ResetConfirmationGUI getResetConfirmationGUI() { return resetConfirmationGUI; }
     public BiomeSelectionGUI getBiomeSelectionGUI() { return biomeSelectionGUI; }
     public IslandUpgradeGUI getIslandUpgradeGUI() { return islandUpgradeGUI; }
     public TradeGUI getTradeGUI() { return tradeGUI; }
+
+    // NEW: Per-dimension island reset
+    public DimensionResetGUI getDimensionResetGUI() { return dimensionResetGUI; }
 
     // ==================== HELPERS ====================
     public World getSkyblockWorld(World.Environment environment) {
@@ -463,55 +492,76 @@ public class FoliaSkyblock extends JavaPlugin {
         }
     }
 
-    public PunishmentManager getPunishmentManager() {
-        return punishmentManager;
-    }
-
-    public AutoSellerManager getAutoSellerManager() {
-        return autoSellerManager;
-    }
-
-    public com.thenerdcj.util.ThreadSafety getThreadSafety() {
-        return threadSafety;
-    }
-
-    public com.thenerdcj.util.NameCache getNameCache() {
-        return nameCache;
-    }
-
+    public PunishmentManager getPunishmentManager() { return punishmentManager; }
+    public AutoSellerManager getAutoSellerManager() { return autoSellerManager; }
+    public com.thenerdcj.util.ThreadSafety getThreadSafety() { return threadSafety; }
+    public com.thenerdcj.util.NameCache getNameCache() { return nameCache; }
     public AuctionGUI getAuctionGUI() { return auctionGUI; }
-
     public com.thenerdcj.bazaar.BazaarGUI getBazaarGUI() { return bazaarGUI; }
 
-    // Wardrobe getters
+    // Wardrobe
     public com.thenerdcj.wardrobe.WardrobeManager getWardrobeManager() { return wardrobeManager; }
     public com.thenerdcj.wardrobe.WardrobeGUI getWardrobeGUI() { return wardrobeGUI; }
     public com.thenerdcj.wardrobe.WardrobeSlotOptionsGUI getWardrobeSlotOptionsGUI() { return wardrobeSlotOptionsGUI; }
 
-    // ==================== CONFIG VALIDATION (Step 8) ====================
+    public com.thenerdcj.pets.PetManager getPetManager() { return petManager; }
+    public com.thenerdcj.pets.PetGUI getPetGUI() { return petGUI; }
+
+    public com.thenerdcj.tags.PlayerTagManager getPlayerTagManager() { return playerTagManager; }
+    public com.thenerdcj.tags.TagGUI getTagGUI() { return tagGUI; }
+
+    public com.thenerdcj.tags.PlayerNametagManager getPlayerNametagManager() { return playerNametagManager; }
+
+    public com.thenerdcj.wings.ElytraWingManager getElytraWingManager() { return elytraWingManager; }
+
+    public com.thenerdcj.wings.WingGUI getWingGUI() { return wingGUI; }
+
+    public com.thenerdcj.runes.RuneManager getRuneManager() { return runeManager; }
+    public com.thenerdcj.runes.RuneGUI getRuneGUI() { return runeGUI; }
+
+    // ==================== CONFIG VALIDATION ====================
     private void validateConfiguration() {
         boolean hasIssues = false;
 
         String[] requiredWorlds = {"worlds.overworld", "worlds.nether", "worlds.end"};
         for (String key : requiredWorlds) {
             if (!getConfig().contains(key)) {
-                getLogger().warning("§e[Config] Missing key '" + key + "' in config.yml. Using safe default.");
+                MessageUtil.warning(getLogger(), "§e[Config] Missing key '" + key + "' in config.yml. Using safe default.");
             }
         }
 
         if (getConfig().getDouble("economy.starting-balance", 0) < 0) {
-            getLogger().severe("§c[Config] economy.starting-balance cannot be negative!");
+            MessageUtil.severe(getLogger(), "§c[Config] economy.starting-balance cannot be negative!");
             hasIssues = true;
         }
 
         if (!isFolia()) {
-            getLogger().warning("§e[Config] Running on non-Folia server. Many Folia-specific optimizations are disabled.");
+            MessageUtil.warning(getLogger(), "§e[Config] Running on non-Folia server. Many Folia-specific optimizations are disabled.");
         }
 
         if (hasIssues) {
-            getLogger().severe("§c[Config] Critical configuration issues detected.");
+            MessageUtil.severe(getLogger(), "§c[Config] Critical configuration issues detected.");
         } else {
-            getLogger().info("§a[Config] Configuration validated.");
+            MessageUtil.info(getLogger(), "§a[Config] Configuration validated.");
+        }
+    }
+
+    /**
+     * Sets a clean, informative server header and footer on the tab list.
+     * Called on enable and can be called again on reload if needed.
+     */
+    public void setServerTabHeaderFooter() {
+        Component header = Component.text("FoliaSkyblock", NamedTextColor.GOLD)
+                .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
+                .append(Component.text("Skyblock", NamedTextColor.YELLOW));
+
+        Component footer = Component.text("Play to Win", NamedTextColor.GRAY)
+                .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
+                .append(Component.text("No Pay-to-Win", NamedTextColor.GREEN));
+
+        for (org.bukkit.entity.Player p : Bukkit.getOnlinePlayers()) {
+            p.sendPlayerListHeader(header);
+            p.sendPlayerListFooter(footer);
         }
     }
 }

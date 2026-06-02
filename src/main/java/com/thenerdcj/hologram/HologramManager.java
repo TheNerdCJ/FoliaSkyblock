@@ -9,6 +9,7 @@ import org.bukkit.World;
 import org.bukkit.entity.TextDisplay;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import com.thenerdcj.util.MessageUtil;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.bukkit.util.Transformation;
@@ -26,7 +27,7 @@ public class HologramManager {
     private final DatabaseManager databaseManager;
     private final Map<Integer, Hologram> activeHolograms = new HashMap<>();
     private final Map<Integer, ScheduledTask> dynamicTasks = new ConcurrentHashMap<>();
-    private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.legacyAmpersand();
+    private final LegacyComponentSerializer legacySerializer = MessageUtil.getLegacySerializer();
 
     public HologramManager(FoliaSkyblock plugin) {
         this.plugin = plugin;

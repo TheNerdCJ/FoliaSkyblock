@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -35,7 +36,7 @@ public class IslandUpgradeGUI implements Listener {
 
     public void open(Player player, Island island) {
         Inventory gui = Bukkit.createInventory(null, 54,
-                Component.text("§6§lIsland Upgrades §7(Lv." + island.getLevel() + ")"));
+                MessageUtil.legacy("§6§lIsland Upgrades §7(Lv." + island.getLevel() + ")"));
 
         GridPosition pos = island.getGridPosition();
 

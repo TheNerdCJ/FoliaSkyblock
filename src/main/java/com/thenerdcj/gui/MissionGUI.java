@@ -2,27 +2,34 @@ package com.thenerdcj.gui;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.mission.Mission;
+import com.thenerdcj.util.MessageUtil;
+import com.thenerdcj.util.SoundUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.List;
 
 /**
  * Paginated Mission GUI for the expanded island mission system.
+ * Shows daily/weekly/etc. missions with progress, rewards (money, XP, boosters), and claim support.
+ *
+ * Deep modernization pass:
+ * - Manual ItemStack creation in createMissionItem (rich lore + PDC) and createButton converted to GUIUtils.createItem + attach helper.
+ * - Dynamic title now uses MessageUtil.legacy.
+ * - Preserved async mission loading, pagination, PDC-based claim routing (MISSION_ID_KEY), SoundUtil feedback, and all claim logic.
  */
 public class MissionGUI implements Listener {
 
@@ -56,7 +63,8 @@ public class MissionGUI implements Listener {
                 int totalPages = Math.max(1, (int) Math.ceil(missions.size() / (double) ITEMS_PER_PAGE));
                 int validPage = Math.max(0, Math.min(page, totalPages - 1));
 
-                Inventory gui = Bukkit.createInventory(null, 54, "§6§lIsland Missions §7(Page " + (validPage + 1) + "/" + totalPages + ")");
+                String title = "§6§lIsland Missions §7(Page " + (validPage + 1) + "/" + totalPages + ")";
+                Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy(title));
 
                 int start = validPage * ITEMS_PER_PAGE;
                 int end = Math.min(start + ITEMS_PER_PAGE, missions.size());
@@ -89,38 +97,37 @@ public class MissionGUI implements Listener {
             default -> Material.PAPER;
         };
 
-        ItemStack item = new ItemStack(icon);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName("§e" + m.getTitle());
-            String status = m.isClaimed() ? "§aClaimed" : (m.isCompleted() ? "§6Click to Claim" : "§fIn Progress");
-            java.util.List<String> lore = new java.util.ArrayList<>(Arrays.asList(
-                "§7" + m.getDescription(),
-                "§7Progress: §b" + m.getProgress() + "§7/§b" + m.getTarget(),
-                "§7Reward: §6$" + m.getRewardMoney() + " §7+ §a" + m.getRewardIslandXp() + " XP"
-            ));
-            if (m.getRewardBoosterType() != null && m.getRewardBoosterDurationMinutes() > 0) {
-                lore.add("§dBooster: §e" + m.getRewardBoosterType().getDisplayName() + " §7for §b" + m.getRewardBoosterDurationMinutes() + "m");
-            }
-            lore.add("");
-            lore.add(status);
-            meta.setLore(lore);
+        String status = m.isClaimed() ? "§aClaimed" : (m.isCompleted() ? "§6Click to Claim" : "§fIn Progress");
 
-            PersistentDataContainer pdc = meta.getPersistentDataContainer();
-            pdc.set(MISSION_ID_KEY, PersistentDataType.STRING, m.getId());
-            item.setItemMeta(meta);
+        java.util.List<String> lore = new java.util.ArrayList<>();
+        lore.add("§7" + m.getDescription());
+        lore.add("§7Progress: §b" + m.getProgress() + "§7/§b" + m.getTarget());
+        lore.add("§7Reward: §6$" + m.getRewardMoney() + " §7+ §a" + m.getRewardIslandXp() + " XP");
+        if (m.getRewardBoosterType() != null && m.getRewardBoosterDurationMinutes() > 0) {
+            lore.add("§dBooster: §e" + m.getRewardBoosterType().getDisplayName() + " §7for §b" + m.getRewardBoosterDurationMinutes() + "m");
         }
+        lore.add("");
+        lore.add(status);
+
+        // Base item via GUIUtils (modernized)
+        ItemStack item = GUIUtils.createItem(icon, "§e" + m.getTitle(), lore.toArray(new String[0]));
+
+        // Attach PDC for claim routing (preserved)
+        attachMissionPDC(item, m.getId());
         return item;
     }
 
-    private ItemStack createButton(String name, Material mat) {
-        ItemStack item = new ItemStack(mat);
+    private void attachMissionPDC(ItemStack item, String missionId) {
+        if (item == null) return;
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(name);
+            meta.getPersistentDataContainer().set(MISSION_ID_KEY, PersistentDataType.STRING, missionId);
             item.setItemMeta(meta);
         }
-        return item;
+    }
+
+    private ItemStack createButton(String name, Material mat) {
+        return GUIUtils.createItem(mat, name);
     }
 
     @EventHandler
@@ -162,6 +169,7 @@ public class MissionGUI implements Listener {
                     boolean success = plugin.getMissionManager().claimMission(getIslandKey(player), missionId, player);
 
                     if (success) {
+                        SoundUtil.reward(player);
                         player.sendMessage("§aMission claimed! Rewards granted.");
                         // Refresh GUI
                         open(player, 0);

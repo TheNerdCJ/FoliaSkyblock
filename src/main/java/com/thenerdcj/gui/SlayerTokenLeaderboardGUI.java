@@ -1,6 +1,7 @@
 package com.thenerdcj.gui;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -15,8 +16,13 @@ import org.bukkit.inventory.meta.SkullMeta;
 import java.util.*;
 
 /**
- * Slayer Token Leaderboard GUI
- * Pilot: structure ready for BaseGUI (minimal extension for now to keep compile clean).
+ * Slayer Token Leaderboard GUI.
+ *
+ * Deep modernization pass:
+ * - Manual skull (PLAYER_HEAD + SkullMeta) and createItem patterns converted to GUIUtils + createSkullItem helper.
+ * - Titles now use MessageUtil.legacy.
+ * - Title checks made more resilient.
+ * - Preserved pagination and click logic.
  */
 public class SlayerTokenLeaderboardGUI implements Listener {
 
@@ -41,7 +47,8 @@ public class SlayerTokenLeaderboardGUI implements Listener {
     private void openPage(Player player, int page) {
         playerPages.put(player.getUniqueId(), page);
 
-        Inventory gui = Bukkit.createInventory(null, 54, "§6§lSlayer Token Leaderboards §7(Page " + (page + 1) + ")");
+        String title = "§6§lSlayer Token Leaderboards §7(Page " + (page + 1) + ")";
+        Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy(title));
 
         gui.setItem(4, createItem(Material.NETHER_STAR, "§6§lSLAYER TOKEN LEADERBOARDS",
                 "§7Top earners of Slayer Tokens!",
@@ -67,20 +74,13 @@ public class SlayerTokenLeaderboardGUI implements Listener {
             UUID uuid = entry.getKey();
             int tokens = entry.getValue();
 
-            ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
-            SkullMeta meta = (SkullMeta) skull.getItemMeta();
-            if (meta != null) {
-                meta.setOwningPlayer(Bukkit.getOfflinePlayer(uuid));
-                String playerName = Bukkit.getOfflinePlayer(uuid).getName();
-                if (playerName == null) playerName = "Unknown";
+            String playerName = Bukkit.getOfflinePlayer(uuid).getName();
+            if (playerName == null) playerName = "Unknown";
 
-                meta.setDisplayName("§6#" + rank + " §e" + playerName);
+            List<String> lore = new ArrayList<>();
+            lore.add("§7Total Slayer Tokens Earned: §6" + tokens);
 
-                List<String> lore = new ArrayList<>();
-                lore.add("§7Total Slayer Tokens Earned: §6" + tokens);
-                meta.setLore(lore);
-                skull.setItemMeta(meta);
-            }
+            ItemStack skull = createSkullItem(uuid, "§6#" + rank + " §e" + playerName, lore);
             gui.setItem(slot, skull);
             slot++;
             rank++;
@@ -98,20 +98,24 @@ public class SlayerTokenLeaderboardGUI implements Listener {
     }
 
     private ItemStack createItem(Material mat, String name, String... lore) {
-        ItemStack item = new ItemStack(mat);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            meta.setLore(Arrays.asList(lore));
-            item.setItemMeta(meta);
+        return GUIUtils.createItem(mat, name, lore);
+    }
+
+    private ItemStack createSkullItem(UUID uuid, String displayName, List<String> lore) {
+        ItemStack skull = GUIUtils.createItem(Material.PLAYER_HEAD, displayName, lore.toArray(new String[0]));
+        ItemMeta meta = skull.getItemMeta();
+        if (meta instanceof SkullMeta skullMeta) {
+            skullMeta.setOwningPlayer(Bukkit.getOfflinePlayer(uuid));
+            skull.setItemMeta(skullMeta);
         }
-        return item;
+        return skull;
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
-        if (!event.getView().getTitle().contains("Slayer Token Leaderboards")) return;
+        // Resilient title check (modernized)
+        if (!event.getView().getTitle().startsWith("§6§lSlayer Token Leaderboards")) return;
 
         event.setCancelled(true);
 

@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandSettings;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -14,8 +15,16 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
-import java.util.Arrays;
-
+/**
+ * GUI for configuring per-island settings (PvP, visitors, explosions, etc.).
+ * Uses async loading from IslandSettingsManager and supports live toggles + border color cycling.
+ *
+ * Deep modernization pass:
+ * - All manual ItemStack helpers (createToggleItem, createItem, createGlassPane) replaced with GUIUtils.createItem.
+ * - Title routed through MessageUtil.legacy.
+ * - Click handler title check made resilient (startsWith).
+ * - Preserved full async settings load, toggle logic, border color cycle, and metadata-based position tracking.
+ */
 public class IslandSettingsGUI implements Listener {
 
     private final FoliaSkyblock plugin;
@@ -36,7 +45,7 @@ public class IslandSettingsGUI implements Listener {
 
         plugin.getIslandSettingsManager().getSettings(pos).thenAccept(settings -> {
             plugin.getThreadSafety().runOnMainThread(() -> {
-                Inventory gui = Bukkit.createInventory(null, 54, "§6§lIsland Settings");
+                Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lIsland Settings"));
 
                 gui.setItem(4, createItem(Material.NETHER_STAR, "§6§lIsland Settings",
                         "§7Configure your island's behavior"));
@@ -71,8 +80,10 @@ public class IslandSettingsGUI implements Listener {
                 gui.setItem(49, createItem(Material.BOOK, "§eHow Settings Work",
                         "§7• Green = Setting is enabled", "§7• Red = Setting is disabled"));
 
+                // Modernized filler glass
+                ItemStack glass = GUIUtils.createItem(Material.GRAY_STAINED_GLASS_PANE, " ");
                 for (int i = 0; i < 54; i++) {
-                    if (gui.getItem(i) == null) gui.setItem(i, createGlassPane());
+                    if (gui.getItem(i) == null) gui.setItem(i, glass);
                 }
 
                 player.openInventory(gui);
@@ -82,35 +93,22 @@ public class IslandSettingsGUI implements Listener {
     }
 
     private ItemStack createToggleItem(Material material, String name, String lore, boolean enabled) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
         String status = enabled ? "§a§lENABLED" : "§c§lDISABLED";
-        meta.setLore(Arrays.asList(lore, "", "§7Status: " + status, "§7Click to toggle"));
-        item.setItemMeta(meta);
-        return item;
+        return GUIUtils.createItem(material, name,
+                lore,
+                "",
+                "§7Status: " + status,
+                "§7Click to toggle");
     }
 
     private ItemStack createItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        meta.setLore(Arrays.asList(lore));
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    private ItemStack createGlassPane() {
-        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(" ");
-        item.setItemMeta(meta);
-        return item;
+        return GUIUtils.createItem(material, name, lore);
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!event.getView().getTitle().equals("§6§lIsland Settings")) return;
+        // Resilient title check (modernized pattern)
+        if (!event.getView().getTitle().startsWith("§6§lIsland Settings")) return;
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();

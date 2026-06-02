@@ -4,6 +4,8 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.crate.CrateManager;
 import com.thenerdcj.crate.CrateType;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.util.MessageUtil;
+import com.thenerdcj.util.SoundUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -11,17 +13,19 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.Arrays;
-
 /**
  * CrateGUI - Opening interface for the new crate/key system.
- * Follows exact PDC + autoRegister pattern from IslandShopGUI / PrestigeGUI.
+ *
+ * Deep modernization (final pass):
+ * - Last manual ItemStack + meta block in createCrateItem converted to GUIUtils.createItem + attachCratePDC helper.
+ * - Title and other buttons already using MessageUtil.legacy + GUIUtils (preserved).
+ * - Click handler already using resilient startsWith + PDC routing.
+ * - Full consistency with the broader GUI migration effort.
  */
 public class CrateGUI implements Listener {
 
@@ -41,20 +45,14 @@ public class CrateGUI implements Listener {
     }
 
     public void open(Player player, Island island) {
-        Inventory gui = Bukkit.createInventory(null, 27, "§6§lCrate Opening");
+        // Use MessageUtil.legacy for modern title handling (consistent with recent migrations)
+        org.bukkit.inventory.Inventory gui = Bukkit.createInventory(null, 27, 
+            MessageUtil.legacy("§6§lCrate Opening"));
 
-        // Header
-        ItemStack header = new ItemStack(Material.NETHER_STAR);
-        ItemMeta hMeta = header.getItemMeta();
-        if (hMeta != null) {
-            hMeta.setDisplayName("§e§lCrate Rewards");
-            hMeta.setLore(Arrays.asList(
+        // Header using GUIUtils (same package)
+        gui.setItem(4, GUIUtils.createItem(Material.NETHER_STAR, "§e§lCrate Rewards",
                 "§7Use keys from the shop or rewards",
-                "§7to open crates for big prizes!"
-            ));
-            header.setItemMeta(hMeta);
-        }
-        gui.setItem(4, header);
+                "§7to open crates for big prizes!"));
 
         int slot = 10;
         for (CrateType type : CrateType.values()) {
@@ -63,40 +61,37 @@ public class CrateGUI implements Listener {
             slot += 2;
         }
 
-        // Close
-        ItemStack close = new ItemStack(Material.BARRIER);
-        ItemMeta cMeta = close.getItemMeta();
-        if (cMeta != null) {
-            cMeta.setDisplayName("§c§lClose");
-            close.setItemMeta(cMeta);
-        }
-        gui.setItem(26, close);
+        // Close button using GUIUtils
+        gui.setItem(26, GUIUtils.createItem(Material.BARRIER, "§c§lClose", "§7Click to close"));
 
         player.openInventory(gui);
     }
 
     private ItemStack createCrateItem(CrateType type) {
-        ItemStack item = new ItemStack(type.getIcon());
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName("§e§l" + type.getDisplayName());
-            meta.setLore(Arrays.asList(
+        // Modernized base creation
+        ItemStack item = GUIUtils.createItem(type.getIcon(), "§e§l" + type.getDisplayName(),
                 "§7Click to open if you have a key",
                 "§7Rarity: §b" + type.name(),
                 "",
-                "§aLeft-click to open"
-            ));
+                "§aLeft-click to open");
 
-            PersistentDataContainer pdc = meta.getPersistentDataContainer();
-            pdc.set(CRATE_TYPE_KEY, PersistentDataType.STRING, type.name());
+        attachCratePDC(item, type);
+        return item;
+    }
+
+    private void attachCratePDC(ItemStack item, CrateType type) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.getPersistentDataContainer().set(CRATE_TYPE_KEY, PersistentDataType.STRING, type.name());
             item.setItemMeta(meta);
         }
-        return item;
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!event.getView().getTitle().equals("§6§lCrate Opening")) return;
+        // Use startsWith for slightly more robust title matching (modern pattern)
+        if (!event.getView().getTitle().startsWith("§6§lCrate")) return;
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();
@@ -114,12 +109,12 @@ public class CrateGUI implements Listener {
             Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
             if (island == null) return;
 
-            // Check for key using CrateManager
             if (plugin.getCrateManager().hasKey(player, type)) {
                 plugin.getCrateManager().consumeKey(player, type);
                 plugin.getCrateManager().openCrate(player, type);
                 player.closeInventory();
             } else {
+                SoundUtil.error(player);
                 player.sendMessage("§cYou need a " + type.getDisplayName() + " Key!");
                 player.closeInventory();
             }

@@ -6,6 +6,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.UUID;
 
 /**
  * Simple versioned database migration system.
@@ -17,7 +18,7 @@ public class DatabaseMigration {
     private final DatabaseManager dbManager; // legacy path (current)
     private final DBOperations dbOps;        // future modular path
 
-    private static final int CURRENT_SCHEMA_VERSION = 4; // bumped for worth + economy tables
+    private static final int CURRENT_SCHEMA_VERSION = 6; // bumped for generation_seed (donor personality reroll on dimension reset)
 
     public DatabaseMigration(FoliaSkyblock plugin, DatabaseManager dbManager) {
         this.plugin = plugin;
@@ -84,11 +85,31 @@ public class DatabaseMigration {
                 break;
             case 3:
                 executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS island_worth_history (id INTEGER PRIMARY KEY, island_key TEXT, worth DOUBLE, recorded_at INTEGER)");
+                executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS player_dimension_resets (player_uuid TEXT, dimension TEXT, last_reset INTEGER, PRIMARY KEY (player_uuid, dimension))");
                 break;
             case 4:
                 // Prepared for dual-economy + level tables in next modularization pass
                 executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS player_economy (uuid TEXT PRIMARY KEY, balance DOUBLE)");
                 executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS island_economy (island_key TEXT PRIMARY KEY, balance DOUBLE)");
+                break;
+            case 5:
+                // CRITICAL: Fix islands table to support multiple dimensions per owner (owner_uuid + dimension composite unique).
+                // Previous schema had UNIQUE(owner_uuid) which corrupted multi-dim data on INSERT OR REPLACE.
+                // We create a unique index (safer than full table recreate for live servers) and drop old conflicting index if present.
+                // If old single-dim data exists it will continue to work; new dim islands now safe.
+                try {
+                    conn.createStatement().executeUpdate("DROP INDEX IF EXISTS idx_islands_owner_unique");
+                    conn.createStatement().executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_islands_owner_dim ON islands(owner_uuid, dimension)");
+                    plugin.getLogger().info("§a[DB Migration v5] Ensured composite unique index on islands(owner_uuid, dimension) for multi-dimension support.");
+                } catch (SQLException ex) {
+                    plugin.getLogger().warning("[DB Migration v5] Could not fully apply islands unique constraint fix (may require manual DB maintenance if old data conflicts): " + ex.getMessage());
+                }
+                break;
+            case 6:
+                // Add generation_seed column for donor "reroll personality/style" feature on per-dimension resets.
+                // Default 0 means "use pure position-derived seed" (backward compatible for existing islands).
+                executeIfNotExists(conn, "ALTER TABLE islands ADD COLUMN generation_seed BIGINT DEFAULT 0");
+                plugin.getLogger().info("§a[DB Migration v6] Added generation_seed column for donor island personality rerolls.");
                 break;
             default:
                 plugin.getLogger().warning("[DB] Unknown migration version: " + version);
@@ -111,4 +132,7 @@ public class DatabaseMigration {
             ps.executeUpdate();
         }
     }
+    // Per-dimension reset time tracking and boss-per-island logic have been fully implemented
+    // in the production classes (DatabaseManager, IslandManager, BossManager).
+    // The schema support (player_dimension_resets table) is included in migration v3 and createTables().
 }

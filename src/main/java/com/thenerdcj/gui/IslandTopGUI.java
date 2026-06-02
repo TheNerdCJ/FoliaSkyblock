@@ -2,6 +2,7 @@ package com.thenerdcj.gui;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.manager.IslandWorthManager;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -14,10 +15,17 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Paginated Island Top / Leaderboard GUI
  * Categories: Worth, Worth Level, Members
+ *
+ * Deep modernization pass:
+ * - Manual skull (PLAYER_HEAD + SkullMeta) creation in the leaderboard loop converted to GUIUtils + helper.
+ * - createNavItem refactored to GUIUtils.createItem.
+ * - All titles now use MessageUtil.legacy.
+ * - Preserved async worth loading, category switching, pagination, and click logic.
  */
 public class IslandTopGUI implements Listener {
 
@@ -41,7 +49,8 @@ public class IslandTopGUI implements Listener {
         // Fetch real leaderboard data asynchronously
         plugin.getIslandWorthManager().getTopIslandsByWorth(45).thenAccept(topList -> {
             plugin.getThreadSafety().runOnMainThread(() -> {
-                Inventory gui = Bukkit.createInventory(null, 54, "§6§lIsland Top - " + category.display + " §7(Page " + (finalPage + 1) + ")");
+                String title = "§6§lIsland Top - " + category.display + " §7(Page " + (finalPage + 1) + ")";
+                Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy(title));
 
                 int start = finalPage * ITEMS_PER_PAGE;
                 int end = Math.min(start + ITEMS_PER_PAGE, topList.size());
@@ -50,28 +59,15 @@ public class IslandTopGUI implements Listener {
                 for (int i = start; i < end; i++) {
                     IslandWorthManager.IslandTopEntry entry = topList.get(i);
 
-                    ItemStack item = new ItemStack(Material.PLAYER_HEAD);
-                    ItemMeta meta = item.getItemMeta();
+                    List<String> lore = Arrays.asList(
+                        "§7Worth: §6" + String.format("%,.0f", entry.worth),
+                        "§7Worth Level: §b" + entry.level,
+                        "§7Members: §a" + entry.memberCount,
+                        "",
+                        "§8Click for more info (future)"
+                    );
 
-                    if (meta instanceof SkullMeta skullMeta) {
-                        // Try to set real player head using NameCache name
-                        try {
-                            org.bukkit.OfflinePlayer offline = Bukkit.getOfflinePlayer(entry.owner);
-                            skullMeta.setOwningPlayer(offline);
-                        } catch (Exception ignored) {}
-                    }
-
-                    if (meta != null) {
-                        meta.setDisplayName("§e#" + (i + 1) + " §f" + entry.displayName);
-                        meta.setLore(Arrays.asList(
-                            "§7Worth: §6" + String.format("%,.0f", entry.worth),
-                            "§7Worth Level: §b" + entry.level,
-                            "§7Members: §a" + entry.memberCount,
-                            "",
-                            "§8Click for more info (future)"
-                        ));
-                        item.setItemMeta(meta);
-                    }
+                    ItemStack item = createTopIslandSkull(entry.owner, "§e#" + (i + 1) + " §f" + entry.displayName, lore);
                     gui.setItem(slot, item);
                     slot++;
                     if ((slot - 9) % 9 == 0) slot += 2;
@@ -90,13 +86,20 @@ public class IslandTopGUI implements Listener {
     }
 
     private ItemStack createNavItem(String name, Material material) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            item.setItemMeta(meta);
+        return GUIUtils.createItem(material, name);
+    }
+
+    private ItemStack createTopIslandSkull(java.util.UUID ownerUuid, String displayName, List<String> lore) {
+        ItemStack skull = GUIUtils.createItem(Material.PLAYER_HEAD, displayName, lore.toArray(new String[0]));
+        ItemMeta meta = skull.getItemMeta();
+        if (meta instanceof SkullMeta skullMeta) {
+            try {
+                org.bukkit.OfflinePlayer offline = Bukkit.getOfflinePlayer(ownerUuid);
+                skullMeta.setOwningPlayer(offline);
+                skull.setItemMeta(skullMeta);
+            } catch (Exception ignored) {}
         }
-        return item;
+        return skull;
     }
 
     @EventHandler

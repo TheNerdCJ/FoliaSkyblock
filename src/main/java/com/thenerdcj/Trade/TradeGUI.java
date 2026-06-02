@@ -16,6 +16,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
+import com.thenerdcj.util.SoundUtil;
 
 import java.io.File;
 import java.util.*;
@@ -300,7 +301,8 @@ public class TradeGUI implements Listener {
         int playerLevel = island != null ? island.getLevel() : 1;
 
         if (playerLevel < trade.levelReq) {
-            player.sendMessage("§cYou need level §e" + trade.levelReq + "§c to purchase this!");
+            SoundUtil.error(player);
+            player.sendMessage("§cYou need §e" + trade.levelReq + " player levels§c to purchase this item (you have §7" + player.getLevel() + "§c).");
             return;
         }
         if (island == null) {

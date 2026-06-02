@@ -3,6 +3,7 @@ package com.thenerdcj.gui;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -13,10 +14,15 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
-import java.util.Arrays;
-
 /**
- * Island Bank GUI - Deposit/Withdraw interface
+ * Island Bank GUI - Deposit/Withdraw interface for island economy.
+ *
+ * Deep modernization pass:
+ * - Manual createItem + createGlassPane converted to GUIUtils.createItem.
+ * - Title now uses MessageUtil.legacy.
+ * - Click handler title check made resilient (startsWith).
+ * - Filler modernized to respect dynamic vault size.
+ * - Preserved all async bank loading, economy flows, metadata position tracking, and reopen logic.
  */
 public class IslandBankGUI implements Listener {
 
@@ -43,7 +49,7 @@ public class IslandBankGUI implements Listener {
                 if (plugin.getIslandUpgradeManager() != null) {
                     size = plugin.getIslandUpgradeManager().getVaultInventorySize(island);
                 }
-                Inventory gui = Bukkit.createInventory(null, size, "§6§lIsland Bank");
+                Inventory gui = Bukkit.createInventory(null, size, MessageUtil.legacy("§6§lIsland Bank"));
 
                 double balance = bank.getBalance();
 
@@ -71,9 +77,10 @@ public class IslandBankGUI implements Listener {
                         "§7• Use for island upgrades",
                         "§7• Larger vault with Vault Slots upgrade"));
 
-                // Fill empty slots
-                for (int i = 0; i < 27; i++) {
-                    if (gui.getItem(i) == null) gui.setItem(i, createGlassPane());
+                // Modernized dynamic filler (respects vault size)
+                ItemStack glass = GUIUtils.createItem(Material.GRAY_STAINED_GLASS_PANE, " ");
+                for (int i = 0; i < size; i++) {
+                    if (gui.getItem(i) == null) gui.setItem(i, glass);
                 }
 
                 player.openInventory(gui);
@@ -83,25 +90,13 @@ public class IslandBankGUI implements Listener {
     }
 
     private ItemStack createItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        meta.setLore(Arrays.asList(lore));
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    private ItemStack createGlassPane() {
-        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(" ");
-        item.setItemMeta(meta);
-        return item;
+        return GUIUtils.createItem(material, name, lore);
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!event.getView().getTitle().equals("§6§lIsland Bank")) return;
+        // Resilient title check (modernized)
+        if (!event.getView().getTitle().startsWith("§6§lIsland Bank")) return;
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();

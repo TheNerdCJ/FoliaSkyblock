@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.booster.BoosterType;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -17,10 +18,15 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.Arrays;
-
 /**
- * Simple Booster GUI for purchasing and viewing active boosters.
+ * Booster GUI for purchasing and viewing active island boosters (temporary multipliers).
+ * Integrates with IslandBank for purchases and BoosterManager for activation.
+ *
+ * Deep modernization pass:
+ * - All manual ItemStack + ItemMeta boilerplate replaced with GUIUtils.createItem.
+ * - Title routed through MessageUtil.legacy.
+ * - Complex createBoosterItem refactored with helper for PDC attachment (preserving rich dynamic lore).
+ * - Preserved 100% of Folia-safe async bank loading, purchase flow, and GUI refresh on buy.
  */
 public class BoosterGUI implements Listener {
 
@@ -44,35 +50,21 @@ public class BoosterGUI implements Listener {
 
         plugin.getIslandBankManager().getBank(pos).thenAccept(bank -> {
             plugin.getThreadSafety().runOnMainThread(() -> {
-                Inventory gui = Bukkit.createInventory(null, 54, "§6§lIsland Boosters §7(Shop)");
+                Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lIsland Boosters §7(Shop)"));
 
                 double balance = bank.getBalance();
 
-                // Balance header
-                ItemStack balanceItem = new ItemStack(Material.GOLD_INGOT);
-                ItemMeta bMeta = balanceItem.getItemMeta();
-                if (bMeta != null) {
-                    bMeta.setDisplayName("§e§lIsland Balance");
-                    bMeta.setLore(Arrays.asList(
+                // Balance header - modernized
+                ItemStack balanceItem = GUIUtils.createItem(Material.GOLD_INGOT, "§e§lIsland Balance",
                         "§6$" + String.format("%,.0f", balance),
-                        "§7Click boosters below to purchase"
-                    ));
-                    balanceItem.setItemMeta(bMeta);
-                }
+                        "§7Click boosters below to purchase");
                 gui.setItem(4, balanceItem);
 
-                // Info book
-                ItemStack info = new ItemStack(Material.BOOK);
-                ItemMeta iMeta = info.getItemMeta();
-                if (iMeta != null) {
-                    iMeta.setDisplayName("§a§lBooster Info");
-                    iMeta.setLore(Arrays.asList(
+                // Info book - modernized
+                ItemStack info = GUIUtils.createItem(Material.BOOK, "§a§lBooster Info",
                         "§7Boosters provide temporary multipliers",
                         "§7that stack on top of island upgrades.",
-                        "§7Active boosters apply automatically."
-                    ));
-                    info.setItemMeta(iMeta);
-                }
+                        "§7Active boosters apply automatically.");
                 gui.setItem(0, info);
 
                 // Booster shop items (PDC-driven)
@@ -85,13 +77,8 @@ public class BoosterGUI implements Listener {
                     idx++;
                 }
 
-                // Close button
-                ItemStack close = new ItemStack(Material.BARRIER);
-                ItemMeta cMeta = close.getItemMeta();
-                if (cMeta != null) {
-                    cMeta.setDisplayName("§c§lClose");
-                    close.setItemMeta(cMeta);
-                }
+                // Close button - modernized
+                ItemStack close = GUIUtils.createItem(Material.BARRIER, "§c§lClose");
                 gui.setItem(49, close);
 
                 player.openInventory(gui);
@@ -108,26 +95,23 @@ public class BoosterGUI implements Listener {
             case MONEY_EARN -> Material.GOLD_INGOT;
             case MINION_SPEED -> Material.IRON_PICKAXE;
         };
-        ItemStack item = new ItemStack(icon);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName("§e§l" + type.getDisplayName());
 
-            double multiplier = plugin.getConfig().getDouble("boosters.multipliers." + type.name(), 2.0);
-            long shortDur = plugin.getConfig().getLong("boosters.durations.short", 30);
-            long medDur = plugin.getConfig().getLong("boosters.durations.medium", 60);
-            long longDur = plugin.getConfig().getLong("boosters.durations.long", 120);
+        double multiplier = plugin.getConfig().getDouble("boosters.multipliers." + type.name(), 2.0);
+        long shortDur = plugin.getConfig().getLong("boosters.durations.short", 30);
+        long medDur = plugin.getConfig().getLong("boosters.durations.medium", 60);
+        long longDur = plugin.getConfig().getLong("boosters.durations.long", 120);
 
-            int shortPrice = plugin.getConfig().getInt("boosters.prices." + type.name() + ".short", 5000);
-            int medPrice = plugin.getConfig().getInt("boosters.prices." + type.name() + ".medium", 9000);
-            int longPrice = plugin.getConfig().getInt("boosters.prices." + type.name() + ".long", 16000);
+        int shortPrice = plugin.getConfig().getInt("boosters.prices." + type.name() + ".short", 5000);
+        int medPrice = plugin.getConfig().getInt("boosters.prices." + type.name() + ".medium", 9000);
+        int longPrice = plugin.getConfig().getInt("boosters.prices." + type.name() + ".long", 16000);
 
-            // Check if currently active for this island
-            double currentMult = (island != null && plugin.getBoosterManager() != null)
-                    ? plugin.getBoosterManager().getBoosterMultiplier(island, type) : 1.0;
-            String activeLine = (currentMult > 1.0) ? "§a✓ ACTIVE (" + String.format("%.1f", currentMult) + "x)" : "§7Inactive";
+        // Check if currently active for this island
+        double currentMult = (island != null && plugin.getBoosterManager() != null)
+                ? plugin.getBoosterManager().getBoosterMultiplier(island, type) : 1.0;
+        String activeLine = (currentMult > 1.0) ? "§a✓ ACTIVE (" + String.format("%.1f", currentMult) + "x)" : "§7Inactive";
 
-            meta.setLore(Arrays.asList(
+        // Base item via GUIUtils (modernized)
+        ItemStack item = GUIUtils.createItem(icon, "§e§l" + type.getDisplayName(),
                 "§7" + type.getDescription(),
                 "",
                 activeLine,
@@ -137,15 +121,20 @@ public class BoosterGUI implements Listener {
                 "§aLong (" + longDur + "m): §e$" + longPrice,
                 "",
                 "§7Multiplier: §b" + String.format("%.1f", multiplier) + "x",
-                "§7Click to buy §aShort §7duration"
-            ));
+                "§7Click to buy §aShort §7duration");
 
-            // PDC for robust click handling
-            PersistentDataContainer pdc = meta.getPersistentDataContainer();
-            pdc.set(BOOSTER_TYPE_KEY, PersistentDataType.STRING, type.name());
+        // Attach PDC for robust click handling (consistent helper pattern)
+        attachBoosterPDC(item, type);
+        return item;
+    }
+
+    private void attachBoosterPDC(ItemStack item, BoosterType type) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.getPersistentDataContainer().set(BOOSTER_TYPE_KEY, PersistentDataType.STRING, type.name());
             item.setItemMeta(meta);
         }
-        return item;
     }
 
     @EventHandler

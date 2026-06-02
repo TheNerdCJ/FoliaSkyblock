@@ -4,6 +4,8 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandUpgrade;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -271,18 +273,28 @@ public class IslandWorthManager {
         plugin.getThreadSafety().runOnMainThread(() -> {
             Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
             if (island == null) {
-                player.playerListName(net.kyori.adventure.text.Component.text(player.getName()));
+                player.playerListName(Component.text(player.getName(), NamedTextColor.WHITE));
                 return;
             }
 
             double worth = getCachedWorth(island);
             int level = getCachedWorthLevel(island);
+            int prestige = (plugin.getPrestigeManager() != null) 
+                    ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
 
-            int prestige = (plugin.getPrestigeManager() != null) ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
-            String prefix = prestige > 0 ? "§6[P" + prestige + "] " : "";
+            Component name = Component.text(player.getName(), NamedTextColor.WHITE);
 
-            String suffix = String.format(" §7[W:§6%,.0f§7 L:§b%d§7]", worth, level);
-            player.playerListName(net.kyori.adventure.text.Component.text(prefix + player.getName() + suffix));
+            Component prestigeComp = prestige > 0 
+                    ? Component.text("[" + prestige + "] ", NamedTextColor.GOLD)
+                    : Component.empty();
+
+            Component worthComp = Component.text(" [W:", NamedTextColor.GRAY)
+                    .append(Component.text(String.format("%,.0f", worth), NamedTextColor.GOLD))
+                    .append(Component.text(" L:", NamedTextColor.GRAY))
+                    .append(Component.text(level, NamedTextColor.AQUA))
+                    .append(Component.text("]", NamedTextColor.GRAY));
+
+            player.playerListName(prestigeComp.append(name).append(worthComp));
         });
     }
 

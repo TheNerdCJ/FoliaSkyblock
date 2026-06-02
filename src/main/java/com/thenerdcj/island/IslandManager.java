@@ -3,19 +3,17 @@ package com.thenerdcj.island;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.GridPosition;
+import com.thenerdcj.util.MessageUtil;
 import com.thenerdcj.manager.GridManager;
 import org.bukkit.*;
 import org.bukkit.block.Biome;
 import org.bukkit.entity.Player;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.*;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class IslandManager {
 
@@ -24,21 +22,16 @@ public class IslandManager {
     private final GridManager gridManager;
 
     private final Map<UUID, Map<World.Environment, Island>> playerIslands = new ConcurrentHashMap<>();
-    private final Map<UUID, UUID> pendingInvites = new ConcurrentHashMap<>(); // inviter -> target
+    private final Map<UUID, UUID> pendingInvites = new ConcurrentHashMap<>();
 
-    /**
-     * Smart reverse cache: GridPosition → Island for O(1) lookups in hot paths.
-     * This is the primary optimization for protection, ore gen, crop growth, etc.
-     * Kept in sync on load/create/reset.
-     */
     private final Map<GridPosition, Island> positionToIslandCache = new ConcurrentHashMap<>();
-
-    // Short-lived per-tick cache for extremely hot repeated lookups in the same tick (protection/ore gen spam)
     private final Map<GridPosition, Island> shortLivedTickCache = new ConcurrentHashMap<>();
     private long lastTickCacheClear = 0;
 
-    // Lightweight in-memory hopper counter for HOPPER_LIMIT upgrade enforcement (Tier A)
     private final Map<String, Integer> islandHopperCounts = new ConcurrentHashMap<>();
+
+    // Combat tracking for reset safety
+    private final Map<UUID, Long> lastCombatTime = new ConcurrentHashMap<>();
 
     public IslandManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -46,29 +39,49 @@ public class IslandManager {
         this.gridManager = plugin.getGridManager();
     }
 
+    // ==================== ISLAND CREATION ====================
     public CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension) {
+        return createIsland(player, biomeName, dimension, false);
+    }
+
+    /**
+     * Creates (or recreates on reset) an island.
+     * If donorRerollPersonality is true, a fresh random generation seed is assigned so the island
+     * receives a new "personality" (different archetype, terrain shape, tree styles, landmarks).
+     * Only honored for actual donors. Purely cosmetic.
+     */
+    public CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension, boolean donorRerollPersonality) {
         return gridManager.createPlayerIsland(player.getUniqueId(), dimension)
                 .thenCompose(pos -> {
                     if (pos == null) {
-                        player.sendMessage("§cNo available plots in this dimension!");
+                        MessageUtil.sendMessage(player, "§cNo available plots in this dimension!");
                         return CompletableFuture.completedFuture(false);
                     }
 
                     String finalBiome = (biomeName != null && !biomeName.isEmpty()) ? biomeName : "PLAINS";
                     Island island = new Island(pos, player.getUniqueId(), finalBiome, dimension);
 
-                    return databaseManager.saveIsland(pos.x(), pos.z(), player.getUniqueId(), dimension.name(), finalBiome)
+                    // Determine generation seed for personality
+                    long genSeed = 0L;
+                    boolean isDonor = player.hasPermission("foliasb.donor") || player.hasPermission("foliasb.donor.biome");
+                    if (donorRerollPersonality && isDonor) {
+                        genSeed = ThreadLocalRandom.current().nextLong();
+                        // Ensure non-zero so it is treated as intentional
+                        if (genSeed == 0) genSeed = 0x123456789ABCDEFL;
+                        island.setGenerationSeed(genSeed);
+                    }
+
+                    final long finalGenSeed = genSeed;
+
+                    return databaseManager.saveIsland(pos.x(), pos.z(), player.getUniqueId(), dimension.name(), finalBiome, finalGenSeed)
                             .thenApply(saved -> {
                                 if (!saved) {
-                                    player.sendMessage("§cFailed to save island data.");
+                                    MessageUtil.sendMessage(player, "§cFailed to save island data.");
                                     return false;
                                 }
 
                                 cacheIsland(player.getUniqueId(), island);
 
-                                boolean isDonor = player.hasPermission("foliasb.donor");
-
-                                // Modern way (no deprecation warning)
                                 Biome biome;
                                 try {
                                     biome = Registry.BIOME.get(NamespacedKey.minecraft(finalBiome.toLowerCase(Locale.ROOT)));
@@ -77,9 +90,10 @@ public class IslandManager {
                                     biome = Biome.PLAINS;
                                 }
 
-                                plugin.getIslandGenerator().generateIsland(island, player, biome, isDonor);
+                                // Use RegionScheduler for generation when possible
+                                runGenerationOnRegionScheduler(player, island, biome, isDonor);
 
-                                player.sendMessage("§a§lIsland created in " + dimension.name() + "!");
+                                MessageUtil.sendMessage(player, "§a§lIsland created in " + dimension.name() + "!");
                                 return true;
                             });
                 });
@@ -89,59 +103,16 @@ public class IslandManager {
     public void loadPlayerIslands(Player player) {
         for (World.Environment dim : World.Environment.values()) {
             try {
-                // Now returns full Island object (we fixed getIslandByOwner earlier)
                 Island island = databaseManager.getIslandByOwner(player.getUniqueId(), dim);
-
                 if (island != null) {
-                    // Load upgrades from database
                     String islandKey = island.getId();
-                    plugin.getDatabaseManager().loadIslandUpgrades(islandKey).thenAccept(loadedUpgrades -> {
-                        island.loadUpgrades(loadedUpgrades);
-                    });
+                    plugin.getDatabaseManager().loadIslandUpgrades(islandKey).thenAccept(island::loadUpgrades);
                     cacheIsland(player.getUniqueId(), island);
 
-                    // Load minion data and respawn entities (nice-to-have)
                     plugin.getMinionManager().loadMinionDataForIsland(islandKey);
-                    plugin.getThreadSafety().runOnMainThread(() -> {
-                        plugin.getMinionManager().respawnMinionsForIsland(island);
-                    });
-
-                    // Trigger worth recalculation on island load (background)
-                    if (plugin.getIslandWorthManager() != null) {
-                        plugin.getIslandWorthManager().recalculateAndUpdate(island);
-                    }
-
-                    // Load missions for this island (new expanded system)
-                    if (plugin.getMissionManager() != null) {
-                        plugin.getDatabaseManager().loadMissionsForIsland(islandKey).thenAccept(loadedMissions -> {
-                            plugin.getMissionManager().loadMissionsForIsland(islandKey, loadedMissions);
-                            // Ensure we have a full set (generate missing dailies/weeklies if needed)
-                            plugin.getMissionManager().refreshMissionsForIsland(islandKey, island.getLevel());
-                        });
-                    }
-
-                    // Load active boosters for the island
-                    if (plugin.getBoosterManager() != null) {
-                        plugin.getThreadSafety().runOnMainThread(() -> {
-                            plugin.getBoosterManager().loadBoostersForIsland(island);
-                        });
-                    }
-
-                    // Load one-time shop purchases for the island
-                    if (plugin.getIslandShopManager() != null) {
-                        plugin.getDatabaseManager().loadShopPurchasesForIsland(islandKey).thenAccept(purchased -> {
-                            plugin.getIslandShopManager().loadOneTimePurchasesForIsland(islandKey, purchased);
-                        });
-                    }
-
-                    // Load prestige level for the island
-                    if (plugin.getPrestigeManager() != null) {
-                        plugin.getDatabaseManager().loadIslandPrestige(islandKey).thenAccept(prestigeLevel -> {
-                            plugin.getPrestigeManager().loadPrestigeForIsland(islandKey, prestigeLevel);
-                        });
-                    }
+                    plugin.getThreadSafety().runOnMainThread(() ->
+                            plugin.getMinionManager().respawnMinionsForIsland(island));
                 }
-
             } catch (Exception e) {
                 plugin.getLogger().warning("Failed to load island for " + player.getName() + " in " + dim);
             }
@@ -151,8 +122,6 @@ public class IslandManager {
     private void cacheIsland(UUID owner, Island island) {
         playerIslands.computeIfAbsent(owner, k -> new EnumMap<>(World.Environment.class))
                 .put(island.getDimension(), island);
-
-        // Populate the smart position cache for fast lookups
         positionToIslandCache.put(island.getGridPosition(), island);
     }
 
@@ -162,31 +131,17 @@ public class IslandManager {
         return (map != null) ? map.get(dimension) : null;
     }
 
-    /**
-     * Checks if a location is within an island's effective (upgraded) build/protection radius.
-     * Used for size upgrade effects.
-     */
     public boolean isWithinUpgradedIslandArea(Location location) {
         Island island = getIslandAt(location);
         if (island == null) return false;
 
         Location center = island.getCenter(location.getWorld());
-        if (center == null) return false;
-
-        int radius = island.getEffectiveIslandRadius();
-        double distance = center.distance(location);
-        return distance <= radius;
+        return center != null && center.distance(location) <= island.getEffectiveIslandRadius();
     }
 
-    /**
-     * Returns a snapshot of all currently loaded islands.
-     * Used by IslandUpgradeManager for fast non-blocking upgrade lookups.
-     */
     public Map<UUID, Island> getAllLoadedIslands() {
-        Map<UUID, Island> snapshot = new java.util.HashMap<>();
-        playerIslands.forEach((owner, dimMap) -> {
-            dimMap.values().forEach(island -> snapshot.put(owner, island));
-        });
+        Map<UUID, Island> snapshot = new HashMap<>();
+        playerIslands.forEach((owner, dimMap) -> dimMap.values().forEach(island -> snapshot.put(owner, island)));
         return snapshot;
     }
 
@@ -199,22 +154,17 @@ public class IslandManager {
         if (position == null) return null;
 
         long currentTick = plugin.getServer().getCurrentTick();
-
-        // Clear short-lived cache once per tick
         if (currentTick != lastTickCacheClear) {
             shortLivedTickCache.clear();
             lastTickCacheClear = currentTick;
         }
 
-        // Check short-lived tick cache first (very cheap for repeated lookups in same tick)
         Island cached = shortLivedTickCache.get(position);
         if (cached != null) return cached;
 
-        // Fall back to main smart cache
         Island island = positionToIslandCache.get(position);
-        if (island != null) {
-            shortLivedTickCache.put(position, island); // populate short cache
-        }
+        if (island != null) shortLivedTickCache.put(position, island);
+
         return island;
     }
 
@@ -230,13 +180,13 @@ public class IslandManager {
         }
     }
 
-    // ==================== TELEPORT & HOME ====================
+    // ==================== TELEPORT ====================
     public void teleportToIsland(Player player, UUID owner) {
         Island island = getIsland(owner, player.getWorld().getEnvironment());
         if (island != null && island.getSpawnLocation() != null) {
             player.teleport(island.getSpawnLocation());
         } else {
-            player.sendMessage("§cNo island found in this dimension.");
+            MessageUtil.sendMessage(player, "§cNo island found in this dimension.");
         }
     }
 
@@ -245,220 +195,316 @@ public class IslandManager {
         return (island != null) ? island.getSpawnLocation() : player.getWorld().getSpawnLocation();
     }
 
-    // ==================== PARTY SYSTEM (Fully Implemented) ====================
+    // ==================== PARTY SYSTEM ====================
     public void inviteToParty(Player inviter, Player target) {
         if (target.getUniqueId().equals(inviter.getUniqueId())) {
-            inviter.sendMessage("§cYou can't invite yourself.");
+            MessageUtil.sendMessage(inviter, "§cYou can't invite yourself.");
             return;
         }
 
         Island island = getIsland(inviter.getUniqueId(), inviter.getWorld().getEnvironment());
         if (island != null) {
-            int maxMembers = 3 + plugin.getIslandUpgradeManager().getUpgradeLevel(island.getId(), com.thenerdcj.island.IslandUpgrade.MEMBER_LIMIT);
+            int maxMembers = 3 + plugin.getIslandUpgradeManager().getUpgradeLevel(island.getId(), IslandUpgrade.MEMBER_LIMIT);
             if (island.getMemberCount() >= maxMembers) {
-                inviter.sendMessage("§cYou have reached your member limit (" + maxMembers + "). Purchase Member Limit upgrades to invite more.");
+                MessageUtil.sendMessage(inviter, "§cYou have reached your member limit (" + maxMembers + ").");
                 return;
             }
         }
 
         pendingInvites.put(target.getUniqueId(), inviter.getUniqueId());
-        target.sendMessage("§a" + inviter.getName() + " invited you to their island party!");
-        target.sendMessage("§eType §b/is accept §eto join or §b/is deny §eto decline.");
+        MessageUtil.sendMessage(target, "§a" + inviter.getName() + " invited you to their island party!");
+        MessageUtil.sendMessage(target, "§eType §b/is accept §eto join.");
     }
 
     public void acceptPartyInvite(Player player) {
         UUID inviterUuid = pendingInvites.remove(player.getUniqueId());
         if (inviterUuid == null) {
-            player.sendMessage("§cYou have no pending invite.");
+            MessageUtil.sendMessage(player, "§cYou have no pending invite.");
             return;
         }
+
         Player inviter = Bukkit.getPlayer(inviterUuid);
         if (inviter == null || !inviter.isOnline()) {
-            player.sendMessage("§cInviter is no longer online.");
+            MessageUtil.sendMessage(player, "§cInviter is no longer online.");
             return;
         }
 
         Island island = getIsland(inviterUuid, player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cInviter no longer has an island.");
+            MessageUtil.sendMessage(player, "§cInviter no longer has an island.");
             return;
         }
 
-        int maxMembers = 3 + plugin.getIslandUpgradeManager().getUpgradeLevel(island.getId(), com.thenerdcj.island.IslandUpgrade.MEMBER_LIMIT);
+        int maxMembers = 3 + plugin.getIslandUpgradeManager().getUpgradeLevel(island.getId(), IslandUpgrade.MEMBER_LIMIT);
         if (island.getMemberCount() >= maxMembers) {
-            player.sendMessage("§cThis island has reached its member limit.");
+            MessageUtil.sendMessage(player, "§cThis island has reached its member limit.");
             return;
         }
 
         island.addMember(player.getUniqueId(), IslandRank.GUEST);
-        player.sendMessage("§aYou joined " + inviter.getName() + "'s island party!");
-        inviter.sendMessage("§a" + player.getName() + " joined your island!");
+        MessageUtil.sendMessage(player, "§aYou joined " + inviter.getName() + "'s island party!");
+        MessageUtil.sendMessage(inviter, "§a" + player.getName() + " joined your island!");
     }
 
     public void denyPartyInvite(Player player) {
         pendingInvites.remove(player.getUniqueId());
-        player.sendMessage("§7Invite declined.");
+        MessageUtil.sendMessage(player, "§7Invite declined.");
     }
 
     public void kickMemberFromParty(Player kicker, UUID target) {
         Island island = getIsland(kicker.getUniqueId(), kicker.getWorld().getEnvironment());
         if (island == null || !island.isOwner(kicker.getUniqueId())) {
-            kicker.sendMessage("§cOnly the owner can kick members.");
+            MessageUtil.sendMessage(kicker, "§cOnly the owner can kick members.");
             return;
         }
         if (target.equals(kicker.getUniqueId())) {
-            kicker.sendMessage("§cYou can't kick yourself.");
+            MessageUtil.sendMessage(kicker, "§cYou can't kick yourself.");
             return;
         }
         island.removeMember(target);
-        kicker.sendMessage("§aPlayer kicked from the party.");
+        MessageUtil.sendMessage(kicker, "§aPlayer kicked from the party.");
     }
 
     public void leaveParty(Player player) {
         Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-        if (island == null) return;
-        if (island.isOwner(player.getUniqueId())) {
-            player.sendMessage("§cOwners cannot leave. Use /is disband instead.");
+        if (island == null || island.isOwner(player.getUniqueId())) {
+            MessageUtil.sendMessage(player, "§cOwners cannot leave. Use /is disband instead.");
             return;
         }
         island.removeMember(player.getUniqueId());
-        player.sendMessage("§aYou left the island party.");
+        MessageUtil.sendMessage(player, "§aYou left the island party.");
     }
 
     public void disbandParty(Player player) {
         Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null || !island.isOwner(player.getUniqueId())) {
-            player.sendMessage("§cOnly the owner can disband the party.");
+            MessageUtil.sendMessage(player, "§cOnly the owner can disband the party.");
             return;
         }
-        // Remove all members except owner
         for (UUID member : new ArrayList<>(island.getMembers().keySet())) {
             if (!member.equals(player.getUniqueId())) {
                 island.removeMember(member);
             }
         }
-        player.sendMessage("§aIsland party disbanded.");
+        MessageUtil.sendMessage(player, "§aIsland party disbanded.");
     }
 
-    // ==================== RESET & COOLDOWN ====================
+    // ==================== PER-DIMENSION RESET WITH SAFETY CHECKS ====================
+
+    /**
+     * Resets only the specified dimension with strong safety checks.
+     * This is the main method called from BiomeSelectionGUI after confirmation.
+     */
     public void resetIslandWithBiome(Player player, String biomeName, World.Environment dimension) {
-        Island oldIsland = getIsland(player.getUniqueId(), dimension);
-        if (oldIsland != null) {
-            positionToIslandCache.remove(oldIsland.getGridPosition());
+        resetIslandWithBiome(player, biomeName, dimension, false);
+    }
+
+    /**
+     * Resets a dimension island. If rerollPersonality is true (donor only), a fresh random
+     * generation seed is generated so the new island gets a completely different "personality"
+     * (archetype, terrain shape, tree style, landmarks) while keeping the chosen biome.
+     * This is a pure cosmetic donor perk — no mechanical or resource advantage (Play-to-Win safe).
+     */
+    public void resetIslandWithBiome(Player player, String biomeName, World.Environment dimension, boolean rerollPersonality) {
+        // === SAFETY CHECKS ===
+
+        if (!canReset(player)) {
+            int hours = getResetCooldownRemainingHours(player);
+            MessageUtil.sendMessage(player, "§cYou must wait §e" + hours + " more hours§c before resetting again.");
+            return;
         }
 
+        Island island = getIsland(player.getUniqueId(), dimension);
+        if (island == null) {
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension to reset.");
+            return;
+        }
+
+        // Combat protection
+        if (isPlayerInCombat(player)) {
+            MessageUtil.sendMessage(player, "§cYou cannot reset while in combat! Please wait a few seconds.");
+            return;
+        }
+
+        // Boss protection
+        if (hasActiveBossOnDimension(player.getUniqueId(), dimension)) {
+            MessageUtil.sendMessage(player, "§c§lYou cannot reset this dimension while a boss is active!");
+            MessageUtil.sendMessage(player, "§7Please defeat the boss or wait for it to despawn.");
+            return;
+        }
+
+        // Party warning
+        if (island.getMemberCount() > 1) {
+            MessageUtil.sendMessage(player, "§c§lWARNING: §e" + (island.getMemberCount() - 1) +
+                    " party member(s) will lose access to this dimension!");
+            MessageUtil.sendMessage(player, "§7They will need to be re-invited after the reset.");
+        }
+
+        // === EXECUTE RESET ===
+
+        // Clean up caches
+        if (island.getGridPosition() != null) {
+            positionToIslandCache.remove(island.getGridPosition());
+        }
+        playerIslands.getOrDefault(player.getUniqueId(), Collections.emptyMap()).remove(dimension);
+
+        final boolean finalReroll = rerollPersonality && player.hasPermission("foliasb.donor");
+
+        // Delete old dimension data
         databaseManager.deleteIsland(player.getUniqueId(), dimension).thenAccept(deleted -> {
             if (deleted) {
                 gridManager.deletePlayerIsland(player.getUniqueId(), dimension);
-                createIsland(player, biomeName, dimension);
+
+                // Create new island, optionally with a fresh personality seed for donors
+                createIsland(player, biomeName, dimension, finalReroll).thenAccept(success -> {
+                    if (success) {
+                        databaseManager.recordIslandReset(player.getUniqueId(), dimension);
+
+                        String msg = finalReroll
+                                ? "§a§lYour " + dimension.name() + " island has been reset with a new personality!"
+                                : "§a§lYour " + dimension.name() + " island has been successfully reset!";
+                        plugin.getThreadSafety().sendMessageSafely(player, msg);
+                    }
+                });
+            } else {
+                plugin.getThreadSafety().sendMessageSafely(player,
+                        "§cFailed to reset island. Please try again or contact staff.");
             }
         });
     }
 
-    // Check if player can reset (must wait 12 hours)
-    public boolean canReset(Player player) {
-        long lastReset = getLastResetTime(player.getUniqueId());
-        long cooldownMillis = 12 * 60 * 60 * 1000L; // 12 hours
+    // ==================== SAFETY HELPER METHODS ====================
 
-        return (System.currentTimeMillis() - lastReset) >= cooldownMillis;
+    public boolean isPlayerInCombat(Player player) {
+        Long lastHit = lastCombatTime.get(player.getUniqueId());
+        if (lastHit == null) return false;
+        return (System.currentTimeMillis() - lastHit) < 15000; // 15-second combat tag
     }
 
-    // Returns how many hours are left until player can reset again
-    public int getResetCooldownRemainingHours(Player player) {
+    /** Call this from your CombatListener when a player takes or deals damage */
+    public void markPlayerInCombat(UUID uuid) {
+        lastCombatTime.put(uuid, System.currentTimeMillis());
+    }
+
+    /**
+     * Returns whether the player currently has an active (undefeated) boss event
+     * in the specified dimension. Used as a safety gate before allowing dimension reset.
+     */
+    public boolean hasActiveBossOnDimension(UUID owner, World.Environment dimension) {
+        if (plugin.getBossManager() == null) return false;
+
+        Island island = getIsland(owner, dimension);
+        if (island == null) return false;
+
+        return plugin.getBossManager().hasActiveBossOnIsland(island.getId());
+    }
+    /**
+     * Returns remaining cooldown time in minutes.
+     * More precise for short cooldowns.
+     */
+    public int getResetCooldownRemainingMinutes(Player player) {
         long lastReset = getLastResetTime(player.getUniqueId());
         long cooldownMillis = 12 * 60 * 60 * 1000L; // 12 hours
-
-        long timePassed = System.currentTimeMillis() - lastReset;
-        long timeLeft = cooldownMillis - timePassed;
+        long timeLeft = cooldownMillis - (System.currentTimeMillis() - lastReset);
 
         if (timeLeft <= 0) return 0;
 
-        return (int) Math.ceil(timeLeft / (60.0 * 60 * 1000));
+        return (int) Math.ceil(timeLeft / (60.0 * 1000));
     }
 
-    // Internal helper to get last reset time from DB
+    // ==================== RESET COOLDOWN ====================
+    public boolean canReset(Player player) {
+        long lastReset = getLastResetTime(player.getUniqueId());
+        long cooldownMillis = 12 * 60 * 60 * 1000L;
+        return (System.currentTimeMillis() - lastReset) >= cooldownMillis;
+    }
+
+    // Per-dimension version for safety in reset flow
+    public boolean canReset(Player player, World.Environment dimension) {
+        long lastReset = databaseManager.getLastDimensionReset(player.getUniqueId(), dimension);
+        if (lastReset == 0) {
+            lastReset = getLastResetTime(player.getUniqueId());
+        }
+        long cooldownMillis = 12 * 60 * 60 * 1000L;
+        return (System.currentTimeMillis() - lastReset) >= cooldownMillis;
+    }
+
+    public int getResetCooldownRemainingHours(Player player) {
+        long lastReset = getLastResetTime(player.getUniqueId());
+        long cooldownMillis = 12 * 60 * 60 * 1000L;
+        long timeLeft = cooldownMillis - (System.currentTimeMillis() - lastReset);
+        return timeLeft <= 0 ? 0 : (int) Math.ceil(timeLeft / (60.0 * 60 * 1000));
+    }
+
+    // Per-dimension version for reset GUI and safety
+    public int getResetCooldownRemainingHours(Player player, World.Environment dimension) {
+        long lastReset = databaseManager.getLastDimensionReset(player.getUniqueId(), dimension);
+        if (lastReset == 0) {
+            lastReset = getLastResetTime(player.getUniqueId()); // fallback to global
+        }
+        long cooldownMillis = 12 * 60 * 60 * 1000L;
+        long timeLeft = cooldownMillis - (System.currentTimeMillis() - lastReset);
+        return timeLeft <= 0 ? 0 : (int) Math.ceil(timeLeft / (60.0 * 60 * 1000));
+    }
+
+    /**
+     * Returns the remaining cooldown (in hours) for resetting the specific dimension.
+     * Uses the dedicated per-dimension tracking table when available.
+     */
+    public int getDimensionResetCooldownRemainingHours(Player player, World.Environment dimension) {
+        long lastReset = databaseManager.getLastDimensionReset(player.getUniqueId(), dimension);
+        if (lastReset == 0) {
+            lastReset = getLastResetTime(player.getUniqueId()); // fallback
+        }
+        long cooldownMillis = 12 * 60 * 60 * 1000L;
+        long timeLeft = cooldownMillis - (System.currentTimeMillis() - lastReset);
+        return timeLeft <= 0 ? 0 : (int) Math.ceil(timeLeft / (60.0 * 60 * 1000));
+    }
+
     private long getLastResetTime(UUID playerUuid) {
-        // For now we use a simple in-memory map + DB fallback
-        // You can expand this later with a dedicated table
         return databaseManager.getLastResetTime(playerUuid);
     }
-    // ==================== EXTRA UTILITY ====================
+
+    // ==================== GENERATION SCHEDULER ====================
+    private void runGenerationOnRegionScheduler(Player player, Island island, Biome biome, boolean isDonor) {
+        World world = plugin.getSkyblockWorld(island.getDimension());
+        if (world == null) {
+            plugin.getIslandGenerator().generateIsland(island, player, biome, isDonor);
+            return;
+        }
+
+        plugin.getServer().getRegionScheduler().execute(plugin, world,
+                island.getGridPosition().getX(), island.getGridPosition().getZ(), () -> {
+                    plugin.getIslandGenerator().generateIsland(island, player, biome, isDonor);
+                });
+    }
+
+    // ==================== UTILITY ====================
     public Island getIslandByOwner(UUID uuid, World.Environment dimension) {
         return getIsland(uuid, dimension);
-    }
-    // Helper: Load real GridPosition from database
-    private GridPosition loadGridPositionFromDatabase(UUID owner, World.Environment dimension) {
-        try (Connection conn = databaseManager.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "SELECT grid_x, grid_z FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-
-            ps.setString(1, owner.toString());
-            ps.setString(2, dimension.name());
-            ResultSet rs = ps.executeQuery();
-
-            if (rs.next()) {
-                int x = rs.getInt("grid_x");
-                int z = rs.getInt("grid_z");
-                return new GridPosition(x, z, dimension);
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Error loading grid position: " + e.getMessage());
-        }
-        return null;
-    }
-
-    // Helper: Load biome from database
-    private String loadBiomeFromDatabase(UUID owner, World.Environment dimension) {
-        try (Connection conn = databaseManager.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "SELECT biome FROM islands WHERE owner_uuid = ? AND dimension = ?")) {
-
-            ps.setString(1, owner.toString());
-            ps.setString(2, dimension.name());
-            ResultSet rs = ps.executeQuery();
-
-            if (rs.next()) {
-                return rs.getString("biome");
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Error loading biome: " + e.getMessage());
-        }
-        return "PLAINS";
     }
 
     public GridPosition getGridPosition(UUID ownerUuid, World.Environment dimension) {
         Island island = getIsland(ownerUuid, dimension);
-        if (island == null) {
-            return null;
-        }
-        return island.getGridPosition();
+        return island != null ? island.getGridPosition() : null;
     }
 
-    /**
-     * Overloaded version that accepts dimension as String (for convenience).
-     */
     public GridPosition getGridPosition(UUID ownerUuid, String dimensionName) {
         try {
-            World.Environment env = World.Environment.valueOf(dimensionName.toUpperCase());
-            return getGridPosition(ownerUuid, env);
+            return getGridPosition(ownerUuid, World.Environment.valueOf(dimensionName.toUpperCase()));
         } catch (IllegalArgumentException e) {
             return null;
         }
     }
 
-    /**
-     * Test helper - creates a minimal island for unit testing without full generation.
-     * Only for use in tests.
-     */
-    public Island createIslandForTesting(org.bukkit.entity.Player player, World.Environment dimension, String biome) {
+    public Island createIslandForTesting(Player player, World.Environment dimension, String biome) {
         GridPosition pos = new GridPosition(0, 0, dimension);
         Island island = new Island(pos, player.getUniqueId(), biome, dimension);
         cacheIsland(player.getUniqueId(), island);
         return island;
     }
 
-    // ==================== HOPPER LIMIT HELPERS (Tier A) ====================
-
+    // ==================== HOPPER LIMIT HELPERS ====================
     public String getIslandIdForHopperCount(Island island) {
         if (island == null) return null;
         return island.getGridPosition().getX() + "," + island.getGridPosition().getZ();
@@ -469,19 +515,14 @@ public class IslandManager {
     }
 
     public void incrementHopperCount(String islandId) {
-        if (islandId == null) return;
-        islandHopperCounts.merge(islandId, 1, Integer::sum);
+        if (islandId != null) islandHopperCounts.merge(islandId, 1, Integer::sum);
     }
 
     public void decrementHopperCount(String islandId) {
-        if (islandId == null) return;
-        islandHopperCounts.computeIfPresent(islandId, (k, v) -> Math.max(0, v - 1));
+        if (islandId != null) islandHopperCounts.computeIfPresent(islandId, (k, v) -> Math.max(0, v - 1));
     }
 
-    /** Call when an island is deleted/reset to clean up counters */
     public void clearHopperCount(String islandId) {
-        if (islandId != null) {
-            islandHopperCounts.remove(islandId);
-        }
+        if (islandId != null) islandHopperCounts.remove(islandId);
     }
 }

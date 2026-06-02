@@ -2,6 +2,7 @@ package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.Punishment;
+import com.thenerdcj.util.MessageUtil;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
@@ -30,12 +31,12 @@ public class StaffCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("§cOnly players can use staff commands.");
+            MessageUtil.sendMessage(sender, "§cOnly players can use staff commands.");
             return true;
         }
 
         if (!player.hasPermission("foliasb.staff")) {
-            player.sendMessage("§cYou don't have permission to use this command.");
+            MessageUtil.sendMessage(player, "§cYou don't have permission to use this command.");
             return true;
         }
 
@@ -49,13 +50,13 @@ public class StaffCommand implements CommandExecutor {
 
             case "fly":
                 player.setAllowFlight(!player.getAllowFlight());
-                player.sendMessage("§aFlight " + (player.getAllowFlight() ? "§2enabled" : "§cdisabled") + "§a.");
+                MessageUtil.sendMessage(player, "§aFlight " + (player.getAllowFlight() ? "§2enabled" : "§cdisabled") + "§a.");
                 break;
 
             case "god":
                 boolean god = !player.isInvulnerable();
                 player.setInvulnerable(god);
-                player.sendMessage("§aGod mode " + (god ? "§2enabled" : "§cdisabled") + "§a.");
+                MessageUtil.sendMessage(player, "§aGod mode " + (god ? "§2enabled" : "§cdisabled") + "§a.");
                 break;
 
             case "heal":
@@ -70,22 +71,22 @@ public class StaffCommand implements CommandExecutor {
 
             case "speed":
                 if (args.length == 0) {
-                    player.sendMessage("§cUsage: /speed <1-10>");
+                    MessageUtil.sendMessage(player, "§cUsage: /speed <1-10>");
                     return true;
                 }
                 try {
                     float speed = Math.max(0.1f, Math.min(1f, Float.parseFloat(args[0]) / 10f));
                     player.setFlySpeed(speed);
                     player.setWalkSpeed(speed);
-                    player.sendMessage("§aSpeed set to §e" + (int)(speed * 10));
+                    MessageUtil.sendMessage(player, "§aSpeed set to §e" + (int)(speed * 10));
                 } catch (NumberFormatException e) {
-                    player.sendMessage("§cInvalid speed value.");
+                    MessageUtil.sendMessage(player, "§cInvalid speed value.");
                 }
                 break;
 
             case "gm", "gamemode":
                 if (args.length == 0) {
-                    player.sendMessage("§cUsage: /gm <0|1|2|3>");
+                    MessageUtil.sendMessage(player, "§cUsage: /gm <0|1|2|3>");
                     return true;
                 }
                 GameMode mode = switch (args[0].toLowerCase()) {
@@ -310,7 +311,7 @@ public class StaffCommand implements CommandExecutor {
 
         // Kick with modern API
         String kickMsg = "§cYou have been " + (isTemp ? "temporarily " : "") + "banned.\n§eReason: §f" + reason;
-        target.kick(Component.text(kickMsg));
+        target.kick(MessageUtil.legacy(kickMsg));
 
         staff.sendMessage("§c" + (isTemp ? "Tempbanned" : "Banned") + " §e" + target.getName());
     }
@@ -326,7 +327,7 @@ public class StaffCommand implements CommandExecutor {
             return;
         }
         String reason = args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : "Kicked by staff";
-        target.kick(Component.text("§c" + reason));
+        target.kick(MessageUtil.legacy("§c" + reason));
         staff.sendMessage("§aKicked §e" + target.getName());
     }
 

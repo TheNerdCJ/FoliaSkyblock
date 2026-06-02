@@ -6,6 +6,7 @@ import com.thenerdcj.gui.IslandBankGUI;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.island.IslandRank;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.command.Command;
@@ -51,7 +52,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("§cThis command can only be used by players.");
+            MessageUtil.sendMessage((Player) sender, "§cThis command can only be used by players.");
             return true;
         }
 
@@ -190,7 +191,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                 break;
 
             default:
-                player.sendMessage("§cUnknown subcommand §f" + sub + "§c. Use §b/" + label + " help");
+                MessageUtil.sendMessage(player, "§cUnknown subcommand §f" + sub + "§c. Use §b/" + label + " help");
                 break;
         }
 
@@ -198,33 +199,33 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     }
 
     private void sendHelp(Player player) {
-        player.sendMessage("§6§l=== FoliaSkyblock Island Commands ===");
-        player.sendMessage("§e/is create [dimension] [biome] §7- Create island (normal/nether/end). Donors get interactive biome GUI.");
-        player.sendMessage("§e/is home [player] §7- Teleport to your (or visit) island home in current dimension.");
-        player.sendMessage("§e/is sethome §7- Set your island's home location to current position.");
-        player.sendMessage("§e/is setspawn §7- Set island spawn point (owner only).");
-        player.sendMessage("§e/is info [player] §7- View island info, level, members.");
-        player.sendMessage("§e/is members §7- List all island members and their ranks.");
-        player.sendMessage("§e/is invite <player> §7- Invite player to your island party.");
-        player.sendMessage("§e/is accept §7- Accept pending island invite.");
-        player.sendMessage("§e/is deny §7- Deny pending island invite.");
-        player.sendMessage("§e/is kick <player> §7- Kick member from island (owner only).");
-        player.sendMessage("§e/is promote <player> <rank> §7- Promote member (OWNER/MODERATOR/GUEST).");
-        player.sendMessage("§e/is demote <player> <rank> §7- Demote member.");
-        player.sendMessage("§e/is transfer <player> §7- Transfer island ownership (owner only).");
-        player.sendMessage("§e/is leave §7- Leave the island party.");
-        player.sendMessage("§e/is disband §7- Disband island party (removes all members, owner only).");
-        player.sendMessage("§e/is reset §7- Reset current dimension island (donors get confirmation + biome choice GUI).");
-        player.sendMessage("§e/is bank §7- Open Island Bank GUI.");
-        player.sendMessage("§e/is settings §7- Open Island Settings GUI.");
-        player.sendMessage("§e/is upgrade §7- Open Island Upgrades GUI.");
-        player.sendMessage("§e/is border §7- View border size / prestige info.");
-        player.sendMessage("§e/is border markers [on|off|toggle] §7- Toggle persistent corner hologram markers.");
-        player.sendMessage("§e/is visit <player> §7- Visit another player's island (if they allow visitors).");
-        player.sendMessage("§e/is browse | top §7- Browse top islands or visit menu.");
-        player.sendMessage("§e/is tp <player> §7- Teleport to another player's island.");
-        player.sendMessage("§7Aliases: /is , /island");
-        player.sendMessage("§7Tip: Most actions are dimension-specific (you have separate islands per world).");
+        MessageUtil.sendMessage(player, "§6§l=== FoliaSkyblock Island Commands ===");
+        MessageUtil.sendMessage(player, "§e/is create [dimension] [biome] §7- Create island (normal/nether/end). Donors get interactive biome GUI.");
+        MessageUtil.sendMessage(player, "§e/is home [player] §7- Teleport to your (or visit) island home in current dimension.");
+        MessageUtil.sendMessage(player, "§e/is sethome §7- Set your island's home location to current position.");
+        MessageUtil.sendMessage(player, "§e/is setspawn §7- Set island spawn point (owner only).");
+        MessageUtil.sendMessage(player, "§e/is info [player] §7- View island info, level, members.");
+        MessageUtil.sendMessage(player, "§e/is members §7- List all island members and their ranks.");
+        MessageUtil.sendMessage(player, "§e/is invite <player> §7- Invite player to your island party.");
+        MessageUtil.sendMessage(player, "§e/is accept §7- Accept pending island invite.");
+        MessageUtil.sendMessage(player, "§e/is deny §7- Deny pending island invite.");
+        MessageUtil.sendMessage(player, "§e/is kick <player> §7- Kick member from island (owner only).");
+        MessageUtil.sendMessage(player, "§e/is promote <player> <rank> §7- Promote member (OWNER/MODERATOR/GUEST).");
+        MessageUtil.sendMessage(player, "§e/is demote <player> <rank> §7- Demote member.");
+        MessageUtil.sendMessage(player, "§e/is transfer <player> §7- Transfer island ownership (owner only).");
+        MessageUtil.sendMessage(player, "§e/is leave §7- Leave the island party.");
+        MessageUtil.sendMessage(player, "§e/is disband §7- Disband island party (removes all members, owner only).");
+        MessageUtil.sendMessage(player, "§e/is reset §7- Reset current dimension island (donors get confirmation + biome choice GUI).");
+        MessageUtil.sendMessage(player, "§e/is bank §7- Open Island Bank GUI.");
+        MessageUtil.sendMessage(player, "§e/is settings §7- Open Island Settings GUI.");
+        MessageUtil.sendMessage(player, "§e/is upgrade §7- Open Island Upgrades GUI.");
+        MessageUtil.sendMessage(player, "§e/is border §7- View border size / prestige info.");
+        MessageUtil.sendMessage(player, "§e/is border markers [on|off|toggle] §7- Toggle persistent corner hologram markers.");
+        MessageUtil.sendMessage(player, "§e/is visit <player> §7- Visit another player's island (if they allow visitors).");
+        MessageUtil.sendMessage(player, "§e/is browse | top §7- Browse top islands or visit menu.");
+        MessageUtil.sendMessage(player, "§e/is tp <player> §7- Teleport to another player's island.");
+        MessageUtil.sendMessage(player, "§7Aliases: /is , /island");
+        MessageUtil.sendMessage(player, "§7Tip: Most actions are dimension-specific (you have separate islands per world).");
     }
 
     private void handleCreate(Player player, String[] args) {
@@ -246,20 +247,20 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         }
 
         if (plugin.getIslandManager().hasIsland(player.getUniqueId(), dimension)) {
-            player.sendMessage("§cYou already have an island in §e" + dimension.name() + "§c! Use §b/is reset §cto start over.");
+            MessageUtil.sendMessage(player, "§cYou already have an island in §e" + dimension.name() + "§c! Use §b/is reset §cto start over.");
             return;
         }
 
         boolean isDonor = player.hasPermission("foliasb.donor");
         if (biomeName != null && !isDonor) {
-            player.sendMessage("§eOnly donors can choose a custom biome. Using random biome instead.");
+            MessageUtil.sendMessage(player, "§eOnly donors can choose a custom biome. Using random biome instead.");
             biomeName = null;
         }
 
         if (biomeName == null) {
             if (isDonor) {
                 // Donor: open interactive biome selection GUI for the target dimension (not reset)
-                player.sendMessage("§aOpening donor biome selection GUI for §e" + dimension.name() + "§a island...");
+                MessageUtil.sendMessage(player, "§aOpening donor biome selection GUI for §e" + dimension.name() + "§a island...");
                 plugin.getBiomeSelectionGUI().open(player, false, dimension);
                 return;
             } else {
@@ -268,7 +269,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         }
 
         // Non-donor or donor with explicit biome arg -> direct create
-        player.sendMessage("§aCreating your §e" + dimension.name() + " §aisland... This may take a moment.");
+        MessageUtil.sendMessage(player, "§aCreating your §e" + dimension.name() + " §aisland... This may take a moment.");
 
         plugin.getIslandManager().createIsland(player, biomeName, dimension)
             .thenAccept(success -> {
@@ -276,7 +277,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                     // Success message already sent inside IslandManager
                 } else {
                     plugin.getThreadSafety().runOnMainThread(() -> 
-                        player.sendMessage("§cIsland creation failed. Please try again or contact staff."));
+                        MessageUtil.sendMessage(player, "§cIsland creation failed. Please try again or contact staff."));
                 }
             });
     }
@@ -286,7 +287,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         if (args.length > 1) {
             Player target = Bukkit.getPlayer(args[1]);
             if (target == null || !target.isOnline()) {
-                player.sendMessage("§cPlayer §e" + args[1] + " §cis not online.");
+                MessageUtil.sendMessage(player, "§cPlayer §e" + args[1] + " §cis not online.");
                 return;
             }
             targetUuid = target.getUniqueId();
@@ -308,15 +309,15 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private void handleSetHome(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension yet. Use §b/is create");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension yet. Use §b/is create");
             return;
         }
         if (!island.isMember(player.getUniqueId())) {
-            player.sendMessage("§cYou are not a member of this island.");
+            MessageUtil.sendMessage(player, "§cYou are not a member of this island.");
             return;
         }
         island.setSpawnLocation(player.getLocation());
-        player.sendMessage("§aIsland home location set to your current position!");
+        MessageUtil.sendMessage(player, "§aIsland home location set to your current position!");
         // Optional: persist spawn location if Island/Manager supports it (currently in-memory)
     }
 
@@ -331,7 +332,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         if (args.length > 1) {
             Player target = Bukkit.getPlayer(args[1]);
             if (target == null) {
-                player.sendMessage("§cPlayer not found.");
+                MessageUtil.sendMessage(player, "§cPlayer not found.");
                 return;
             }
             targetUuid = target.getUniqueId();
@@ -340,35 +341,35 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
         Island island = plugin.getIslandManager().getIsland(targetUuid, player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§c" + (args.length > 1 ? targetName : "You") + " don't have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§c" + (args.length > 1 ? targetName : "You") + " don't have an island in this dimension.");
             return;
         }
 
-        player.sendMessage("§6§l=== " + targetName + " Island Info ===");
-        player.sendMessage("§7Owner: §e" + plugin.getNameCache().getName(island.getOwnerUuid()));
-        player.sendMessage("§7Dimension: §e" + island.getDimension().name());
-        player.sendMessage("§7Biome: §e" + island.getBiomeName());
-        player.sendMessage("§7Level: §a" + island.getLevel() + " §7(§f" + String.format("%.1f", island.getProgressToNextLevel() * 100) + "%§7 to next)");
+        MessageUtil.sendMessage(player, "§6§l=== " + targetName + " Island Info ===");
+        MessageUtil.sendMessage(player, "§7Owner: §e" + plugin.getNameCache().getName(island.getOwnerUuid()));
+        MessageUtil.sendMessage(player, "§7Dimension: §e" + island.getDimension().name());
+        MessageUtil.sendMessage(player, "§7Biome: §e" + island.getBiomeName());
+        MessageUtil.sendMessage(player, "§7Level: §a" + island.getLevel() + " §7(§f" + String.format("%.1f", island.getProgressToNextLevel() * 100) + "%§7 to next)");
 
         // New Worth System info
         if (plugin.getIslandWorthManager() != null) {
             double worth = plugin.getIslandWorthManager().getCachedWorth(island);
             int worthLevel = plugin.getIslandWorthManager().getCachedWorthLevel(island);
-            player.sendMessage("§7Worth: §6" + String.format("%,.0f", worth) + " §7(Level §b" + worthLevel + "§7)");
+            MessageUtil.sendMessage(player, "§7Worth: §6" + String.format("%,.0f", worth) + " §7(Level §b" + worthLevel + "§7)");
         }
 
-        player.sendMessage("§7Members: §a" + island.getMemberCount());
-        player.sendMessage("§7Use §b/is members §7for full list.");
+        MessageUtil.sendMessage(player, "§7Members: §a" + island.getMemberCount());
+        MessageUtil.sendMessage(player, "§7Use §b/is members §7for full list.");
     }
 
     private void handleMembers(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island here. Use §b/is create");
+            MessageUtil.sendMessage(player, "§cYou don't have an island here. Use §b/is create");
             return;
         }
 
-        player.sendMessage("§6§l=== Island Members ===");
+        MessageUtil.sendMessage(player, "§6§l=== Island Members ===");
         island.getMembers().forEach((uuid, rank) -> {
             String name = plugin.getNameCache().getName(uuid);
             String rankColor = rank == IslandRank.OWNER ? "§6" : (rank == IslandRank.MODERATOR ? "§b" : "§7");
@@ -378,16 +379,16 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void handleInvite(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage("§cUsage: §b/is invite <player>");
+            MessageUtil.sendMessage(player, "§cUsage: §b/is invite <player>");
             return;
         }
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            player.sendMessage("§cPlayer §e" + args[1] + " §cis not online.");
+            MessageUtil.sendMessage(player, "§cPlayer §e" + args[1] + " §cis not online.");
             return;
         }
         if (target.getUniqueId().equals(player.getUniqueId())) {
-            player.sendMessage("§cYou can't invite yourself.");
+            MessageUtil.sendMessage(player, "§cYou can't invite yourself.");
             return;
         }
         plugin.getIslandManager().inviteToParty(player, target);
@@ -403,7 +404,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void handleKick(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage("§cUsage: §b/is kick <player>");
+            MessageUtil.sendMessage(player, "§cUsage: §b/is kick <player>");
             return;
         }
         Player target = Bukkit.getPlayer(args[1]);
@@ -417,29 +418,29 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void handlePromote(Player player, String[] args) {
         if (args.length < 3) {
-            player.sendMessage("§cUsage: §b/is promote <player> <OWNER|MODERATOR|GUEST>");
+            MessageUtil.sendMessage(player, "§cUsage: §b/is promote <player> <OWNER|MODERATOR|GUEST>");
             return;
         }
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            player.sendMessage("§cPlayer not online.");
+            MessageUtil.sendMessage(player, "§cPlayer not online.");
             return;
         }
         IslandRank newRank;
         try {
             newRank = IslandRank.valueOf(args[2].toUpperCase(Locale.ROOT));
         } catch (Exception e) {
-            player.sendMessage("§cInvalid rank. Valid: OWNER, MODERATOR, GUEST");
+            MessageUtil.sendMessage(player, "§cInvalid rank. Valid: OWNER, MODERATOR, GUEST");
             return;
         }
 
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null || !island.isOwner(player.getUniqueId())) {
-            player.sendMessage("§cOnly the island owner can promote members.");
+            MessageUtil.sendMessage(player, "§cOnly the island owner can promote members.");
             return;
         }
         if (!island.isMember(target.getUniqueId())) {
-            player.sendMessage("§cThat player is not a member of your island.");
+            MessageUtil.sendMessage(player, "§cThat player is not a member of your island.");
             return;
         }
 
@@ -451,7 +452,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
             target.getUniqueId(), newRank.name()
         );
 
-        player.sendMessage("§aPromoted §e" + target.getName() + " §ato §b" + newRank.name());
+        MessageUtil.sendMessage(player, "§aPromoted §e" + target.getName() + " §ato §b" + newRank.name());
         if (target.isOnline()) {
             target.sendMessage("§aYou were promoted to §b" + newRank.name() + " §aon the island!");
         }
@@ -460,7 +461,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private void handleDemote(Player player, String[] args) {
         // Similar to promote, but perhaps force to GUEST or specific lower rank. For simplicity reuse promote logic with lower rank suggestion.
         if (args.length < 3) {
-            player.sendMessage("§cUsage: §b/is demote <player> <MODERATOR|GUEST>");
+            MessageUtil.sendMessage(player, "§cUsage: §b/is demote <player> <MODERATOR|GUEST>");
             return;
         }
         // Reuse promote handler (it accepts any rank)
@@ -469,28 +470,28 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void handleTransfer(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage("§cUsage: §b/is transfer <player>");
+            MessageUtil.sendMessage(player, "§cUsage: §b/is transfer <player>");
             return;
         }
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            player.sendMessage("§cPlayer must be online to transfer ownership.");
+            MessageUtil.sendMessage(player, "§cPlayer must be online to transfer ownership.");
             return;
         }
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null || !island.isOwner(player.getUniqueId())) {
-            player.sendMessage("§cOnly the current owner can transfer ownership.");
+            MessageUtil.sendMessage(player, "§cOnly the current owner can transfer ownership.");
             return;
         }
         if (!island.isMember(target.getUniqueId())) {
-            player.sendMessage("§cYou can only transfer to an existing island member.");
+            MessageUtil.sendMessage(player, "§cYou can only transfer to an existing island member.");
             return;
         }
 
         island.transferOwnership(target.getUniqueId());
         // Note: For full persistence, IslandManager should also update the islands table owner_uuid.
         // Current implementation updates memory + members table. Add DB owner update here if needed.
-        player.sendMessage("§aOwnership transferred to §e" + target.getName() + "§a!");
+        MessageUtil.sendMessage(player, "§aOwnership transferred to §e" + target.getName() + "§a!");
         if (target.isOnline()) {
             target.sendMessage("§aYou are now the owner of this island!");
         }
@@ -509,7 +510,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), dim);
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension to reset.");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension to reset.");
             return;
         }
 
@@ -517,7 +518,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
         if (isDonor) {
             // Donors get the nice confirmation GUI which then leads to biome selection
-            player.sendMessage("§aOpening reset confirmation for §e" + dim.name() + "§a island (donor perks enabled)...");
+            MessageUtil.sendMessage(player, "§aOpening reset confirmation for §e" + dim.name() + "§a island (donor perks enabled)...");
             plugin.getResetConfirmationGUI().open(player, dim);
             return;
         }
@@ -525,44 +526,44 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         // Non-donors: require explicit "confirm" arg and always reset to PLAINS
         boolean confirmed = args.length > 1 && args[1].equalsIgnoreCase("confirm");
         if (!confirmed) {
-            player.sendMessage("§c§lWARNING: §cResetting will delete all progress and members in this dimension!");
-            player.sendMessage("§eType §b/is reset confirm §eto proceed.");
+            MessageUtil.sendMessage(player, "§c§lWARNING: §cResetting will delete all progress and members in this dimension!");
+            MessageUtil.sendMessage(player, "§eType §b/is reset confirm §eto proceed.");
             return;
         }
 
-        player.sendMessage("§aResetting your §e" + dim.name() + " §aisland to default biome...");
+        MessageUtil.sendMessage(player, "§aResetting your §e" + dim.name() + " §aisland to default biome...");
         plugin.getIslandManager().resetIslandWithBiome(player, "PLAINS", dim);
     }
 
     private void handleBank(Player player) {
-        player.sendMessage("§aOpening Island Bank GUI...");
+        MessageUtil.sendMessage(player, "§aOpening Island Bank GUI...");
         new IslandBankGUI(plugin).open(player, new IslandManager(plugin).getIsland(player.getUniqueId(), player.getWorld().getEnvironment()));
-        player.sendMessage("§7(If GUI does not appear, check IslandBankGUI implementation)");
+        MessageUtil.sendMessage(player, "§7(If GUI does not appear, check IslandBankGUI implementation)");
     }
 
     private void handleSettings(Player player) {
-        player.sendMessage("§aOpening Island Settings GUI...");
+        MessageUtil.sendMessage(player, "§aOpening Island Settings GUI...");
         // Similar to bank
     }
 
     private void handleUpgrade(Player player) {
-        player.sendMessage("§aOpening Island Upgrades GUI...");
+        MessageUtil.sendMessage(player, "§aOpening Island Upgrades GUI...");
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island != null) {
             plugin.getIslandUpgradeGUI().open(player, island);
         } else {
-            player.sendMessage("§cYou don't have an island here!");
+            MessageUtil.sendMessage(player, "§cYou don't have an island here!");
         }
     }
 
     private void handleBrowse(Player player, String[] args) {
-        player.sendMessage("§aOpening Island Browse / Top list GUI...");
+        MessageUtil.sendMessage(player, "§aOpening Island Browse / Top list GUI...");
         // Links to IslandBrowseGUI
     }
 
     private void handleTp(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage("§cUsage: §b/is tp <player>");
+            MessageUtil.sendMessage(player, "§cUsage: §b/is tp <player>");
             return;
         }
         handleHome(player, args); // reuse home logic which supports target
@@ -570,15 +571,15 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void handleVisit(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage("§cUsage: §b/is visit <player>");
-            player.sendMessage("§7Visits the target's island in your current dimension if they allow visitors.");
+            MessageUtil.sendMessage(player, "§cUsage: §b/is visit <player>");
+            MessageUtil.sendMessage(player, "§7Visits the target's island in your current dimension if they allow visitors.");
             return;
         }
 
         String targetName = args[1];
         Player target = Bukkit.getPlayer(targetName);
         if (target == null || !target.isOnline()) {
-            player.sendMessage("§cPlayer §e" + targetName + " §cis not online.");
+            MessageUtil.sendMessage(player, "§cPlayer §e" + targetName + " §cis not online.");
             return;
         }
 
@@ -586,7 +587,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         Island targetIsland = plugin.getIslandManager().getIsland(targetUuid, player.getWorld().getEnvironment());
 
         if (targetIsland == null) {
-            player.sendMessage("§cThat player does not have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§cThat player does not have an island in this dimension.");
             return;
         }
 
@@ -594,7 +595,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         GridPosition pos = targetIsland.getGridPosition();
         plugin.getIslandSettingsManager().getSettings(pos).thenAccept(settings -> {
             if (!settings.isVisitorsAllowed()) {
-                player.sendMessage("§cThat island is currently closed to visitors.");
+                MessageUtil.sendMessage(player, "§cThat island is currently closed to visitors.");
                 return;
             }
 
@@ -614,8 +615,8 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                 // Record in visitor log
                 targetIsland.recordVisitor(player.getUniqueId());
 
-                player.sendMessage("§aYou are now visiting §e" + target.getName() + "'s §aisland.");
-                player.sendMessage("§7You have guest permissions (build/interact may be restricted by owner).");
+                MessageUtil.sendMessage(player, "§aYou are now visiting §e" + target.getName() + "'s §aisland.");
+                MessageUtil.sendMessage(player, "§7You have guest permissions (build/interact may be restricted by owner).");
             });
         });
     }
@@ -660,12 +661,12 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     // ==================== Island Top / Leaderboards (Worth System) ====================
     private void handleIslandTop(Player player, String[] args) {
-        player.sendMessage("§6§l=== Island Leaderboards ===");
-        player.sendMessage("§e/is top value §7- Top by island worth");
-        player.sendMessage("§e/is top level §7- Top by worth level");
-        player.sendMessage("§e/is top members §7- Top by member count");
-        player.sendMessage("§e/is worth recalculate §7- Force recalc your island worth");
-        player.sendMessage("§7Full GUI coming soon...");
+        MessageUtil.sendMessage(player, "§6§l=== Island Leaderboards ===");
+        MessageUtil.sendMessage(player, "§e/is top value §7- Top by island worth");
+        MessageUtil.sendMessage(player, "§e/is top level §7- Top by worth level");
+        MessageUtil.sendMessage(player, "§e/is top members §7- Top by member count");
+        MessageUtil.sendMessage(player, "§e/is worth recalculate §7- Force recalc your island worth");
+        MessageUtil.sendMessage(player, "§7Full GUI coming soon...");
 
         if (args.length > 1) {
             String type = args[1].toLowerCase();
@@ -673,8 +674,8 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
             if (type.equals("value") || type.equals("worth")) {
                 plugin.getIslandWorthManager().getTopIslandsByWorth(10).thenAccept(list -> {
                     plugin.getThreadSafety().runOnMainThread(() -> {
-                        player.sendMessage("§aTop Islands by Worth (async cached):");
-                        player.sendMessage("§7(Real data populates as islands are scanned)");
+                        MessageUtil.sendMessage(player, "§aTop Islands by Worth (async cached):");
+                        MessageUtil.sendMessage(player, "§7(Real data populates as islands are scanned)");
                     });
                 });
             } else if (type.equals("recalculate") || type.equals("recalc")) {
@@ -686,18 +687,18 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private void handleWorthRecalculate(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension.");
             return;
         }
 
-        player.sendMessage("§aRecalculating your island's worth... this may take a moment.");
+        MessageUtil.sendMessage(player, "§aRecalculating your island's worth... this may take a moment.");
 
         plugin.getIslandWorthManager().invalidateCache(island);
         plugin.getIslandWorthManager().calculateIslandWorthAsync(island).thenAccept(worth -> {
             int level = plugin.getIslandWorthManager().calculateWorthLevel(worth);
             plugin.getThreadSafety().runOnMainThread(() -> {
-                player.sendMessage("§aRecalculation complete!");
-                player.sendMessage("§7Worth: §6" + String.format("%,.0f", worth) + " §7→ Worth Level §b" + level);
+                MessageUtil.sendMessage(player, "§aRecalculation complete!");
+                MessageUtil.sendMessage(player, "§7Worth: §6" + String.format("%,.0f", worth) + " §7→ Worth Level §b" + level);
             });
         });
     }
@@ -705,7 +706,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private void handleBooster(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension.");
             return;
         }
         plugin.getBoosterGUI().open(player, island);
@@ -714,33 +715,33 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private void handleShop(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension.");
             return;
         }
         if (plugin.getIslandShopGUI() != null) {
             plugin.getIslandShopGUI().open(player, island);
         } else {
-            player.sendMessage("§cIsland Shop temporarily unavailable.");
+            MessageUtil.sendMessage(player, "§cIsland Shop temporarily unavailable.");
         }
     }
 
     private void handlePrestige(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension.");
             return;
         }
         if (plugin.getPrestigeGUI() != null) {
             plugin.getPrestigeGUI().open(player, island);
         } else {
-            player.sendMessage("§cPrestige system temporarily unavailable.");
+            MessageUtil.sendMessage(player, "§cPrestige system temporarily unavailable.");
         }
     }
 
     private void handleBorder(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension.");
             return;
         }
 
@@ -748,24 +749,24 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         int sizeLevel = island.getUpgradeLevel(com.thenerdcj.island.IslandUpgrade.ISLAND_SIZE);
         int prestige = (plugin.getPrestigeManager() != null) ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
 
-        player.sendMessage("§6§l=== Island Border ===");
-        player.sendMessage("§7Current Radius: §a" + radius + " blocks");
-        player.sendMessage("§7Size Upgrade Level: §b" + sizeLevel);
+        MessageUtil.sendMessage(player, "§6§l=== Island Border ===");
+        MessageUtil.sendMessage(player, "§7Current Radius: §a" + radius + " blocks");
+        MessageUtil.sendMessage(player, "§7Size Upgrade Level: §b" + sizeLevel);
         if (prestige > 0) {
-            player.sendMessage("§7Prestige Bonus: §d+" + (prestige * plugin.getConfig().getInt("upgrades.island-size.prestige-bonus.extra-per-prestige", 16)) + " radius");
+            MessageUtil.sendMessage(player, "§7Prestige Bonus: §d+" + (prestige * plugin.getConfig().getInt("upgrades.island-size.prestige-bonus.extra-per-prestige", 16)) + " radius");
         }
         // Folia-safe: use cached value (non-blocking). Background refresh if needed.
         boolean markers = plugin.getIslandSettingsManager()
             .getCachedSettings(island.getGridPosition())
             .isBorderMarkersEnabled();
-        player.sendMessage("§7Hologram Markers: " + (markers ? "§aEnabled" : "§7Disabled") + " §8(/is border markers toggle)");
-        player.sendMessage("§7Upgrade size with §b/is upgrade §7(ISLAND_SIZE)");
+        MessageUtil.sendMessage(player, "§7Hologram Markers: " + (markers ? "§aEnabled" : "§7Disabled") + " §8(/is border markers toggle)");
+        MessageUtil.sendMessage(player, "§7Upgrade size with §b/is upgrade §7(ISLAND_SIZE)");
     }
 
     private void handleBorderMarkers(Player player, String[] args) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension.");
             return;
         }
 
@@ -782,13 +783,13 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                 case "off", "disable" -> newValue = false;
                 case "toggle", "" -> newValue = !current;
                 default -> {
-                    player.sendMessage("§cUsage: /is border markers [toggle|on|off]");
+                    MessageUtil.sendMessage(player, "§cUsage: /is border markers [toggle|on|off]");
                     return;
                 }
             }
 
             if (newValue == current) {
-                player.sendMessage("§eHologram markers are already " + (current ? "§aenabled" : "§7disabled") + "§e.");
+                MessageUtil.sendMessage(player, "§eHologram markers are already " + (current ? "§aenabled" : "§7disabled") + "§e.");
                 return;
             }
 
@@ -801,10 +802,10 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                     if (plugin.getBorderVisualManager() != null) {
                         plugin.getBorderVisualManager().spawnBorderHologramMarkers(island, player);
                     }
-                    player.sendMessage("§aPersistent border hologram markers §aenabled§a! Corners now have markers.");
+                    MessageUtil.sendMessage(player, "§aPersistent border hologram markers §aenabled§a! Corners now have markers.");
                 } else {
-                    player.sendMessage("§7Persistent border hologram markers §cdisabled§7.");
-                    player.sendMessage("§8Existing markers will remain until manually removed or server restart (full auto-clean coming soon).");
+                    MessageUtil.sendMessage(player, "§7Persistent border hologram markers §cdisabled§7.");
+                    MessageUtil.sendMessage(player, "§8Existing markers will remain until manually removed or server restart (full auto-clean coming soon).");
                 }
             });
         });
@@ -813,13 +814,13 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private void handleCrate(Player player) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension.");
             return;
         }
         if (plugin.getCrateGUI() != null) {
             plugin.getCrateGUI().open(player, island);
         } else {
-            player.sendMessage("§cCrate system temporarily unavailable.");
+            MessageUtil.sendMessage(player, "§cCrate system temporarily unavailable.");
         }
     }
 
@@ -827,12 +828,12 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private void handleBossCommand(Player player, String[] args) {
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
         if (island == null) {
-            player.sendMessage("§cYou don't have an island in this dimension.");
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension.");
             return;
         }
 
         if (args.length < 2 || !args[1].equalsIgnoreCase("summon")) {
-            player.sendMessage("§cUsage: /is boss summon <tier>");
+            MessageUtil.sendMessage(player, "§cUsage: /is boss summon <tier>");
             return;
         }
 
@@ -842,15 +843,15 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
             if (remaining > 0) {
                 long hours = remaining / (1000 * 60 * 60);
                 long minutes = (remaining % (1000 * 60 * 60)) / (1000 * 60);
-                player.sendMessage("§cBoss summon on cooldown for " + hours + "h " + minutes + "m.");
+                MessageUtil.sendMessage(player, "§cBoss summon on cooldown for " + hours + "h " + minutes + "m.");
                 return;
             }
 
             boolean success = plugin.getBossManager().summonIslandBossEvent(island, com.thenerdcj.boss.DimensionBoss.REVENANT_HORROR_T5);
             if (success) {
-                player.sendMessage("§c§lIsland Boss Event has begun!");
+                MessageUtil.sendMessage(player, "§c§lIsland Boss Event has begun!");
             } else {
-                player.sendMessage("§cCould not summon boss (maybe one is already active or on cooldown).");
+                MessageUtil.sendMessage(player, "§cCould not summon boss (maybe one is already active or on cooldown).");
             }
         }
     }

@@ -41,6 +41,7 @@ public class ChatManager {
 
     /**
      * Broadcast a message to all online players (global chat)
+     * Now includes full cosmetic tag support (rank + active PlayerTag).
      */
     public void broadcastMessage(Player sender, String message) {
         if (isMuted(sender.getUniqueId())) {
@@ -48,11 +49,28 @@ public class ChatManager {
             return;
         }
 
-        String formattedMessage = "§7[Global] §e" + sender.getName() + "§7: §f" + message;
+        String display = getRichDisplayName(sender);
+
+        String formattedMessage = "§7[Global] " + display + "§7: §f" + message;
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.sendMessage(formattedMessage);
         }
+    }
+
+    /**
+     * Returns a rich display name including rank prefix + active cosmetic tag.
+     */
+    private String getRichDisplayName(Player player) {
+        if (plugin.getPlayerTagManager() != null) {
+            return plugin.getPlayerTagManager().getComposedDisplayName(
+                    player.getUniqueId(), player.getName());
+        }
+        // Fallback to rank only
+        if (plugin.getRankManager() != null) {
+            return plugin.getRankManager().getPlayerDisplayName(player.getUniqueId(), player.getName());
+        }
+        return player.getName();
     }
 
     /**
@@ -89,7 +107,8 @@ public class ChatManager {
             return;
         }
 
-        String formattedMessage = "§b[Island] §e" + sender.getName() + "§7: §f" + message;
+        String display = getRichDisplayName(sender);
+        String formattedMessage = "§b[Island] " + display + "§7: §f" + message;
 
         // Send to all online island members
         for (UUID memberId : island.getMembers().keySet()) {
@@ -130,9 +149,11 @@ public class ChatManager {
             return;
         }
 
-        // Format messages
-        String senderMsg = "§7[§eTo §f" + target.getName() + "§7] §f" + message;
-        String targetMsg = "§7[§eFrom §f" + sender.getName() + "§7] §f" + message;
+        // Format messages with rich display (rank + tag)
+        String senderDisplay = getRichDisplayName(sender);
+        String targetDisplay = getRichDisplayName(target);
+        String senderMsg = "§7[§eTo " + targetDisplay + "§7] §f" + message;
+        String targetMsg = "§7[§eFrom " + senderDisplay + "§7] §f" + message;
 
         sender.sendMessage(senderMsg);
         target.sendMessage(targetMsg);
@@ -148,7 +169,7 @@ public class ChatManager {
                     && !staff.getUniqueId().equals(sender.getUniqueId())
                     && !staff.getUniqueId().equals(target.getUniqueId())) {
 
-                String spyMsg = "§8[§7Spy§8] §e" + sender.getName() + " §7→ §f" + target.getName() + "§7: §f" + message;
+                String spyMsg = "§8[§7Spy§8] " + getRichDisplayName(sender) + " §7→ " + getRichDisplayName(target) + "§7: §f" + message;
                 staff.sendMessage(spyMsg);
             }
         }
