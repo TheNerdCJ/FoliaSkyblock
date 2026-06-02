@@ -9,6 +9,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import com.thenerdcj.util.MessageUtil;
 
 import java.util.UUID;
 
@@ -27,19 +28,22 @@ public class AdminCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!sender.hasPermission("foliasb.admin")) {
-            sender.sendMessage("§cYou do not have permission to use this command.");
+            MessageUtil.sendMessage(sender, "§cYou do not have permission to use this command.");
             return true;
         }
 
         if (args.length == 0) {
-            sender.sendMessage("§eAdmin Commands:");
-            sender.sendMessage("§7/isadmin reset <player> [overworld|nether|end]");
-            sender.sendMessage("§7/isadmin setlevel <player> <level> [dimension]");
-            sender.sendMessage("§7/isadmin setbalance <player> <amount>");
-            sender.sendMessage("§7/isadmin setislandbalance <player> <amount> [dimension]");
-            sender.sendMessage("§7/isadmin givepending <player>");
-            sender.sendMessage("§7/isadmin fixdata <player>");
-            sender.sendMessage("§7/isadmin wardrobe give <player> <levels>");
+            MessageUtil.sendMessage(sender, "§eAdmin Commands:");
+            MessageUtil.sendMessage(sender, "§7/isadmin reset <player> [overworld|nether|end]");
+            MessageUtil.sendMessage(sender, "§7/isadmin setlevel <player> <level> [dimension]");
+            MessageUtil.sendMessage(sender, "§7/isadmin setbalance <player> <amount>");
+            MessageUtil.sendMessage(sender, "§7/isadmin setislandbalance <player> <amount> [dimension]");
+            MessageUtil.sendMessage(sender, "§7/isadmin givepending <player>");
+            MessageUtil.sendMessage(sender, "§7/isadmin fixdata <player>");
+            MessageUtil.sendMessage(sender, "§7/isadmin wardrobe give <player> <levels>");
+            MessageUtil.sendMessage(sender, "§7/isadmin debug worth <player>     - Detailed island worth breakdown");
+            MessageUtil.sendMessage(sender, "§7/isadmin debug minions <player>  - Minion stats and breakdown");
+            MessageUtil.sendMessage(sender, "§7/isadmin debug anticheat <player> - Violation profile and risk");
             return true;
         }
 
@@ -68,6 +72,10 @@ public class AdminCommand implements CommandExecutor {
                 handleSlayerAdminCommand(sender, args);
                 break;
 
+            case "debug":
+                handleDebugCommand(sender, args);
+                break;
+
             case "setbalance":
                 handleSetPlayerBalance(sender, args);
                 break;
@@ -89,7 +97,7 @@ public class AdminCommand implements CommandExecutor {
                 break;
 
             default:
-                sender.sendMessage("§cUnknown admin subcommand. Use /isadmin for help.");
+                MessageUtil.sendMessage(sender, "§cUnknown admin subcommand. Use /isadmin for help.");
         }
 
         return true;
@@ -97,13 +105,13 @@ public class AdminCommand implements CommandExecutor {
 
     private void handleIslandReset(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("§cUsage: /isadmin reset <player> [overworld|nether|end]");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin reset <player> [overworld|nether|end]");
             return;
         }
 
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            sender.sendMessage("§cPlayer not found or offline.");
+            MessageUtil.sendMessage(sender, "§cPlayer not found or offline.");
             return;
         }
 
@@ -112,25 +120,25 @@ public class AdminCommand implements CommandExecutor {
             try {
                 dimension = World.Environment.valueOf(args[2].toUpperCase());
             } catch (IllegalArgumentException e) {
-                sender.sendMessage("§cInvalid dimension. Use: overworld, nether, end");
+                MessageUtil.sendMessage(sender, "§cInvalid dimension. Use: overworld, nether, end");
                 return;
             }
         }
 
         plugin.getIslandManager().resetIslandWithBiome(target, null, dimension);
-        sender.sendMessage("§aReset " + target.getName() + "'s island in " + dimension.name());
-        target.sendMessage("§cYour island in " + dimension.name() + " has been reset by an admin.");
+        MessageUtil.sendMessage(sender, "§aReset " + target.getName() + "'s island in " + dimension.name());
+        MessageUtil.sendMessage(target, "§cYour island in " + dimension.name() + " has been reset by an admin.");
     }
 
     private void handleSetLevel(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            sender.sendMessage("§cUsage: /isadmin setlevel <player> <level> [overworld|nether|end]");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin setlevel <player> <level> [overworld|nether|end]");
             return;
         }
 
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            sender.sendMessage("§cPlayer not found.");
+            MessageUtil.sendMessage(sender, "§cPlayer not found.");
             return;
         }
 
@@ -138,7 +146,7 @@ public class AdminCommand implements CommandExecutor {
         try {
             level = Integer.parseInt(args[2]);
         } catch (NumberFormatException e) {
-            sender.sendMessage("§cInvalid level number.");
+            MessageUtil.sendMessage(sender, "§cInvalid level number.");
             return;
         }
 
@@ -150,21 +158,21 @@ public class AdminCommand implements CommandExecutor {
         Island island = plugin.getIslandManager().getIsland(target.getUniqueId(), dim);
         if (island != null) {
             island.setLevel(level);
-            sender.sendMessage("§aSet " + target.getName() + "'s island level to " + level + " in " + dim.name());
+            MessageUtil.sendMessage(sender, "§aSet " + target.getName() + "'s island level to " + level + " in " + dim.name());
         } else {
-            sender.sendMessage("§cPlayer does not have an island in that dimension.");
+            MessageUtil.sendMessage(sender, "§cPlayer does not have an island in that dimension.");
         }
     }
 
     private void handleSetPlayerBalance(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            sender.sendMessage("§cUsage: /isadmin setbalance <player> <amount>");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin setbalance <player> <amount>");
             return;
         }
 
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            sender.sendMessage("§cPlayer not found.");
+            MessageUtil.sendMessage(sender, "§cPlayer not found.");
             return;
         }
 
@@ -172,23 +180,23 @@ public class AdminCommand implements CommandExecutor {
         try {
             amount = Double.parseDouble(args[2]);
         } catch (NumberFormatException e) {
-            sender.sendMessage("§cInvalid amount.");
+            MessageUtil.sendMessage(sender, "§cInvalid amount.");
             return;
         }
 
         plugin.getEconomyManager().setPlayerBalance(target.getUniqueId(), amount);
-        sender.sendMessage("§aSet " + target.getName() + "'s balance to §e$" + amount);
+        MessageUtil.sendMessage(sender, "§aSet " + target.getName() + "'s balance to §e$" + amount);
     }
 
     private void handleSetIslandBalance(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            sender.sendMessage("§cUsage: /isadmin setislandbalance <player> <amount> [dimension]");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin setislandbalance <player> <amount> [dimension]");
             return;
         }
 
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            sender.sendMessage("§cPlayer not found.");
+            MessageUtil.sendMessage(sender, "§cPlayer not found.");
             return;
         }
 
@@ -196,7 +204,7 @@ public class AdminCommand implements CommandExecutor {
         try {
             amount = Double.parseDouble(args[2]);
         } catch (NumberFormatException e) {
-            sender.sendMessage("§cInvalid amount.");
+            MessageUtil.sendMessage(sender, "§cInvalid amount.");
             return;
         }
 
@@ -209,21 +217,21 @@ public class AdminCommand implements CommandExecutor {
         if (island != null) {
             GridPosition pos = island.getGridPosition();
             plugin.getEconomyManager().setIslandBalance(pos, amount);
-            sender.sendMessage("§aSet island balance for " + target.getName() + " to §e$" + amount);
+            MessageUtil.sendMessage(sender, "§aSet island balance for " + target.getName() + " to §e$" + amount);
         } else {
-            sender.sendMessage("§cPlayer has no island in " + dim.name());
+            MessageUtil.sendMessage(sender, "§cPlayer has no island in " + dim.name());
         }
     }
 
     private void handleGivePending(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("§cUsage: /isadmin givepending <player>");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin givepending <player>");
             return;
         }
 
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            sender.sendMessage("§cPlayer not found.");
+            MessageUtil.sendMessage(sender, "§cPlayer not found.");
             return;
         }
 
@@ -233,9 +241,9 @@ public class AdminCommand implements CommandExecutor {
                 for (var item : items) {
                     target.getInventory().addItem(item);
                 }
-                sender.sendMessage("§aGave pending items to " + target.getName());
+                MessageUtil.sendMessage(sender, "§aGave pending items to " + target.getName());
                 if (target.isOnline()) {
-                    target.sendMessage("§aYou received your pending items from admin.");
+                    MessageUtil.sendMessage(target, "§aYou received your pending items from admin.");
                 }
             });
         });
@@ -243,30 +251,30 @@ public class AdminCommand implements CommandExecutor {
 
     private void handleFixData(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("§cUsage: /isadmin fixdata <player>");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin fixdata <player>");
             return;
         }
 
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            sender.sendMessage("§cPlayer not found.");
+            MessageUtil.sendMessage(sender, "§cPlayer not found.");
             return;
         }
 
         // Reload island data
         plugin.getIslandManager().loadPlayerIslands(target);
-        sender.sendMessage("§aReloaded island data for " + target.getName());
+        MessageUtil.sendMessage(sender, "§aReloaded island data for " + target.getName());
     }
 
     private void handleWardrobe(CommandSender sender, String[] args) {
         if (args.length < 3 || !"give".equalsIgnoreCase(args[1])) {
-            sender.sendMessage("§cUsage: /isadmin wardrobe give <player> <levels>");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin wardrobe give <player> <levels>");
             return;
         }
 
         Player target = Bukkit.getPlayer(args[2]);
         if (target == null) {
-            sender.sendMessage("§cPlayer not found or offline.");
+            MessageUtil.sendMessage(sender, "§cPlayer not found or offline.");
             return;
         }
 
@@ -274,12 +282,12 @@ public class AdminCommand implements CommandExecutor {
         try {
             levels = Integer.parseInt(args[3]);
         } catch (NumberFormatException e) {
-            sender.sendMessage("§cInvalid number of levels.");
+            MessageUtil.sendMessage(sender, "§cInvalid number of levels.");
             return;
         }
 
         if (levels <= 0) {
-            sender.sendMessage("§cLevels must be positive.");
+            MessageUtil.sendMessage(sender, "§cLevels must be positive.");
             return;
         }
 
@@ -295,22 +303,22 @@ public class AdminCommand implements CommandExecutor {
         }
 
         if (applied) {
-            sender.sendMessage("§aGave " + levels + " WARDROBE_SLOTS levels to " + target.getName() + "'s island(s).");
-            target.sendMessage("§aAn admin has increased your wardrobe slot capacity!");
+            MessageUtil.sendMessage(sender, "§aGave " + levels + " WARDROBE_SLOTS levels to " + target.getName() + "'s island(s).");
+            MessageUtil.sendMessage(target, "§aAn admin has increased your wardrobe slot capacity!");
         } else {
-            sender.sendMessage("§cPlayer has no islands to apply wardrobe upgrade to.");
+            MessageUtil.sendMessage(sender, "§cPlayer has no islands to apply wardrobe upgrade to.");
         }
     }
 
     private void handleBoosterCommand(CommandSender sender, String[] args) {
         if (args.length < 5 || !args[1].equalsIgnoreCase("give")) {
-            sender.sendMessage("§cUsage: /isadmin booster give <player> <type> <minutes>");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin booster give <player> <type> <minutes>");
             return;
         }
 
         Player target = Bukkit.getPlayer(args[2]);
         if (target == null) {
-            sender.sendMessage("§cPlayer not found.");
+            MessageUtil.sendMessage(sender, "§cPlayer not found.");
             return;
         }
 
@@ -321,43 +329,43 @@ public class AdminCommand implements CommandExecutor {
 
             Island island = plugin.getIslandManager().getIsland(target.getUniqueId(), target.getWorld().getEnvironment());
             if (island == null) {
-                sender.sendMessage("§cPlayer has no island in current dimension.");
+                MessageUtil.sendMessage(sender, "§cPlayer has no island in current dimension.");
                 return;
             }
 
             double multiplier = plugin.getConfig().getDouble("boosters.multipliers." + type.name(), 1.5);
             plugin.getBoosterManager().activateBooster(island, type, multiplier, duration);
 
-            sender.sendMessage("§aGave " + type.name() + " booster to " + target.getName() + " for " + minutes + " minutes.");
+            MessageUtil.sendMessage(sender, "§aGave " + type.name() + " booster to " + target.getName() + " for " + minutes + " minutes.");
             if (target.isOnline()) {
-                target.sendMessage("§aAn admin has activated a " + type.getDisplayName() + " booster for you!");
+                MessageUtil.sendMessage(target, "§aAn admin has activated a " + type.getDisplayName() + " booster for you!");
             }
         } catch (Exception e) {
-            sender.sendMessage("§cInvalid booster type or duration.");
+            MessageUtil.sendMessage(sender, "§cInvalid booster type or duration.");
         }
     }
 
     private void handleBorderCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("§cUsage: /isadmin border <setsize|setcolor> <player> <value>");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin border <setsize|setcolor> <player> <value>");
             return;
         }
 
         String sub = args[1].toLowerCase();
         if (args.length < 4) {
-            sender.sendMessage("§cUsage: /isadmin border " + sub + " <player> <value>");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin border " + sub + " <player> <value>");
             return;
         }
 
         Player target = Bukkit.getPlayer(args[2]);
         if (target == null) {
-            sender.sendMessage("§cPlayer not found.");
+            MessageUtil.sendMessage(sender, "§cPlayer not found.");
             return;
         }
 
         Island island = plugin.getIslandManager().getIsland(target.getUniqueId(), target.getWorld().getEnvironment());
         if (island == null) {
-            sender.sendMessage("§cPlayer has no island in their current dimension.");
+            MessageUtil.sendMessage(sender, "§cPlayer has no island in their current dimension.");
             return;
         }
 
@@ -372,9 +380,9 @@ public class AdminCommand implements CommandExecutor {
 
                     // Also update effective radius display
                     plugin.getThreadSafety().runOnMainThread(() -> {
-                        sender.sendMessage("§aSet border size for " + target.getName() + "'s island to §b" + newSize + " blocks.");
+                        MessageUtil.sendMessage(sender, "§aSet border size for " + target.getName() + "'s island to §b" + newSize + " blocks.");
                         if (target.isOnline()) {
-                            target.sendMessage("§aAn admin has changed your island border size to §b" + newSize + " blocks.");
+                            MessageUtil.sendMessage(target, "§aAn admin has changed your island border size to §b" + newSize + " blocks.");
                         }
                     });
                 });
@@ -385,23 +393,23 @@ public class AdminCommand implements CommandExecutor {
                     plugin.getIslandSettingsManager().saveSettings(settings);
 
                     plugin.getThreadSafety().runOnMainThread(() -> {
-                        sender.sendMessage("§aSet border color for " + target.getName() + "'s island to §b" + color + ".");
+                        MessageUtil.sendMessage(sender, "§aSet border color for " + target.getName() + "'s island to §b" + color + ".");
                         if (target.isOnline()) {
-                            target.sendMessage("§aAn admin has changed your island border color to §b" + color + ".");
+                            MessageUtil.sendMessage(target, "§aAn admin has changed your island border color to §b" + color + ".");
                         }
                     });
                 });
             } else {
-                sender.sendMessage("§cUnknown border subcommand. Use setsize or setcolor.");
+                MessageUtil.sendMessage(sender, "§cUnknown border subcommand. Use setsize or setcolor.");
             }
         } catch (NumberFormatException e) {
-            sender.sendMessage("§cInvalid number for size.");
+            MessageUtil.sendMessage(sender, "§cInvalid number for size.");
         }
     }
 
     private void handleSlayerAdminCommand(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            sender.sendMessage("§cUsage: /isadmin slayer <giveTokens|resetLeaderboard|forceBoss> <player|all>");
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin slayer <giveTokens|resetLeaderboard|forceBoss> <player|all>");
             return;
         }
 
@@ -409,27 +417,129 @@ public class AdminCommand implements CommandExecutor {
 
         if (sub.equals("givetokens")) {
             if (args.length < 4) {
-                sender.sendMessage("§cUsage: /isadmin slayer giveTokens <player> <amount>");
+                MessageUtil.sendMessage(sender, "§cUsage: /isadmin slayer giveTokens <player> <amount>");
                 return;
             }
             Player target = Bukkit.getPlayer(args[2]);
             if (target == null) {
-                sender.sendMessage("§cPlayer not found.");
+                MessageUtil.sendMessage(sender, "§cPlayer not found.");
                 return;
             }
             try {
                 int amt = Integer.parseInt(args[3]);
                 plugin.getBossManager().awardSlayerTokens(target, amt);
-                sender.sendMessage("§aGave " + amt + " Slayer Tokens to " + target.getName());
+                MessageUtil.sendMessage(sender, "§aGave " + amt + " Slayer Tokens to " + target.getName());
             } catch (NumberFormatException e) {
-                sender.sendMessage("§cInvalid amount.");
+                MessageUtil.sendMessage(sender, "§cInvalid amount.");
             }
         } else if (sub.equals("resetleaderboard")) {
             plugin.getBossManager().checkAndResetTokenLeaderboard();
             plugin.getDatabaseManager().resetWeeklySlayerTokens();
-            sender.sendMessage("§aSlayer Token leaderboard reset.");
+            MessageUtil.sendMessage(sender, "§aSlayer Token leaderboard reset.");
         } else if (sub.equals("forceboss")) {
-            sender.sendMessage("§7Force island boss (advanced admin feature).");
+            MessageUtil.sendMessage(sender, "§7Force island boss (advanced admin feature).");
+        }
+    }
+
+    private void handleDebugCommand(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin debug <worth|minions|anticheat> <player>");
+            return;
+        }
+
+        String debugType = args[1].toLowerCase();
+        if (args.length < 3) {
+            MessageUtil.sendMessage(sender, "§cUsage: /isadmin debug " + debugType + " <player>");
+            return;
+        }
+
+        Player target = Bukkit.getPlayer(args[2]);
+        if (target == null) {
+            MessageUtil.sendMessage(sender, "§cPlayer not found or offline.");
+            return;
+        }
+
+        switch (debugType) {
+            case "worth":
+                handleDebugWorth(sender, target);
+                break;
+            case "minions":
+                handleDebugMinions(sender, target);
+                break;
+            case "anticheat":
+                handleDebugAnticheat(sender, target);
+                break;
+            default:
+                MessageUtil.sendMessage(sender, "§cUnknown debug type. Use worth, minions, or anticheat.");
+        }
+    }
+
+    private void handleDebugWorth(CommandSender sender, Player target) {
+        var island = plugin.getIslandManager().getIsland(target.getUniqueId(), target.getWorld().getEnvironment());
+        if (island == null) {
+            MessageUtil.sendMessage(sender, "§c" + target.getName() + " has no island in this dimension.");
+            return;
+        }
+
+        double worth = plugin.getIslandWorthManager().getCachedWorth(island);
+        int level = plugin.getIslandWorthManager().getCachedWorthLevel(island);
+
+        MessageUtil.sendMessage(sender, "§6=== Worth Debug for " + target.getName() + " ===");
+        MessageUtil.sendMessage(sender, "§7Total Worth: §e$" + String.format("%,.0f", worth));
+        MessageUtil.sendMessage(sender, "§7Worth Level: §b" + level);
+
+        // Show multipliers
+        double prestigeMult = 1.0;
+        if (plugin.getPrestigeManager() != null) {
+            prestigeMult = plugin.getPrestigeManager().getPrestigeMultiplier(island, com.thenerdcj.manager.PrestigeManager.PrestigeMultiplierType.WORTH);
+        }
+        MessageUtil.sendMessage(sender, "§7Prestige Worth Mult: §a" + String.format("%.2fx", prestigeMult));
+
+        MessageUtil.sendMessage(sender, "§7(Incremental tracking active - drift correction runs periodically)");
+    }
+
+    private void handleDebugMinions(CommandSender sender, Player target) {
+        var island = plugin.getIslandManager().getIsland(target.getUniqueId(), target.getWorld().getEnvironment());
+        if (island == null) {
+            MessageUtil.sendMessage(sender, "§c" + target.getName() + " has no island in this dimension.");
+            return;
+        }
+
+        String islandId = island.getId();
+        int maxSlots = plugin.getMinionManager().getMaxMinionSlots(island);
+        int used = plugin.getMinionManager().getPlacedMinionCount(islandId);
+
+        MessageUtil.sendMessage(sender, "§6=== Minion Debug for " + target.getName() + " ===");
+        MessageUtil.sendMessage(sender, "§7Slots: §e" + used + "§7/§e" + maxSlots);
+
+        var breakdown = plugin.getMinionManager().getMinionBreakdown(islandId);
+        if (breakdown.isEmpty()) {
+            MessageUtil.sendMessage(sender, "§7No minions placed.");
+        } else {
+            MessageUtil.sendMessage(sender, "§7Breakdown:");
+            breakdown.forEach((type, count) ->
+                MessageUtil.sendMessage(sender, "  §f" + type.getDisplayName() + " §7x" + count));
+        }
+
+        int fuel = plugin.getMinionManager().getIslandFuel(islandId);
+        MessageUtil.sendMessage(sender, "§7Island Fuel: §e" + fuel);
+    }
+
+    private void handleDebugAnticheat(CommandSender sender, Player target) {
+        var manager = plugin.getAntiCheatManager();
+        int violations = manager.getViolationCount(target.getUniqueId());
+        double risk = manager.getNeuralRiskScore(target);
+
+        MessageUtil.sendMessage(sender, "§6=== AntiCheat Debug for " + target.getName() + " ===");
+        MessageUtil.sendMessage(sender, "§7Total Violations: §e" + violations);
+        MessageUtil.sendMessage(sender, "§7Neural Risk Score: §c" + String.format("%.1f%%", risk * 100));
+
+        if (violations > 10) {
+            MessageUtil.sendMessage(sender, "§cHigh risk profile - review recent activity.");
+        } else if (violations > 3) {
+            MessageUtil.sendMessage(sender, "§eModerate violations - monitor.");
+        } else {
+            MessageUtil.sendMessage(sender, "§aClean profile.");
         }
     }
 }

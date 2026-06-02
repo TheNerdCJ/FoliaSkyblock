@@ -1,6 +1,8 @@
 package com.thenerdcj.gui;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
+import com.thenerdcj.util.SoundUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -63,7 +65,7 @@ public abstract class BaseGUI implements Listener {
         playerPages.put(player.getUniqueId(), page);
 
         String title = getTitlePrefix() + " §7(Page " + (page + 1) + ")";
-        Inventory gui = Bukkit.createInventory(null, INVENTORY_SIZE, title);
+        Inventory gui = Bukkit.createInventory(null, INVENTORY_SIZE, MessageUtil.legacy(title));
 
         addHeader(gui, player, page);
         populatePage(gui, player, page);
@@ -111,10 +113,22 @@ public abstract class BaseGUI implements Listener {
 
         if (action != null) {
             switch (action) {
-                case "PREV" -> open(player, Math.max(0, currentPage - 1));
-                case "NEXT" -> open(player, Math.min(getTotalPages(player) - 1, currentPage + 1));
-                case "CLOSE" -> player.closeInventory();
-                default -> handleAction(action, pdc, player, currentPage, clicked);
+                case "PREV" -> {
+                    SoundUtil.pageTurn(player);
+                    open(player, Math.max(0, currentPage - 1));
+                }
+                case "NEXT" -> {
+                    SoundUtil.pageTurn(player);
+                    open(player, Math.min(getTotalPages(player) - 1, currentPage + 1));
+                }
+                case "CLOSE" -> {
+                    SoundUtil.click(player);
+                    player.closeInventory();
+                }
+                default -> {
+                    SoundUtil.click(player);
+                    handleAction(action, pdc, player, currentPage, clicked);
+                }
             }
             return;
         }

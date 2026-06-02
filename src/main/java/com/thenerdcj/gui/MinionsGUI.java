@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.manager.MinionManager;
 import com.thenerdcj.manager.MinionType;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -17,13 +18,19 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.Arrays;
 import java.util.Map;
 
 /**
  * MinionsGUI - Interactive GUI for managing island minions.
  * Displays current minion slots usage, available minion types, and allows placing/removing minions.
  * Minion types are determined by the upgrade level and island balance.
+ *
+ * Deep modernization (GUI migration sweep):
+ * - All 15+ manual ItemStack + ItemMeta blocks converted to GUIUtils.createItem + targeted PDC helpers.
+ * - Title now uses MessageUtil.legacy.
+ * - Decorative fillers (black/purple glass, accents) centralized.
+ * - Preserved complex logic: fuel tracking, slot limits, placement via PDC (MINION_TYPE_KEY), active minion list, feed/remove actions.
+ * - Folia-safe (no blocking calls in hot paths).
  */
 public class MinionsGUI implements Listener {
 
@@ -48,7 +55,7 @@ public class MinionsGUI implements Listener {
     }
 
     public void openMinionsGUI(Player player) {
-        Inventory inv = Bukkit.createInventory(null, 54, "§6§lMinion Management");
+        Inventory inv = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lMinion Management"));
 
         // Get island context first
         Island island = plugin.getIslandManager().getIslandByOwner(player.getUniqueId(), player.getWorld().getEnvironment());
@@ -64,75 +71,51 @@ public class MinionsGUI implements Listener {
             breakdown = minionManager.getMinionBreakdown(islandId);
         }
 
-        // Decorative top bar - Modern dark theme (skyblock professional look, consistent with Hypixel/Iridium style)
-        ItemStack filler = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
-        ItemMeta fillerMeta = filler.getItemMeta();
-        fillerMeta.setDisplayName("§8 ");
-        filler.setItemMeta(fillerMeta);
+        // Decorative top bar - modernized via GUIUtils (dark theme consistent with skyblock aesthetic)
+        ItemStack filler = GUIUtils.createItem(Material.BLACK_STAINED_GLASS_PANE, "§8 ");
         for (int i = 0; i < 9; i++) {
             if (i != 4) inv.setItem(i, filler);
         }
         // Side accents for modern polish
-        ItemStack accent = new ItemStack(Material.PURPLE_STAINED_GLASS_PANE);
-        ItemMeta accentMeta = accent.getItemMeta();
-        accentMeta.setDisplayName("§5 ");
-        accent.setItemMeta(accentMeta);
+        ItemStack accent = GUIUtils.createItem(Material.PURPLE_STAINED_GLASS_PANE, "§5 ");
         inv.setItem(9, accent);
         inv.setItem(17, accent);
 
         // Title item (center top) - Modern with XP synergy note
-        ItemStack title = new ItemStack(Material.BEACON);
-        ItemMeta titleMeta = title.getItemMeta();
-        titleMeta.setDisplayName("§6§lMinion Management");
-        titleMeta.setLore(Arrays.asList(
-            "§7Automate resource production & boost §eIsland XP",
-            "§7Minions contribute to island progression (dimensions, bosses)",
-            "§7Play to Win: Fuel & slots earned via grind/trade - no P2W"
-        ));
-        title.setItemMeta(titleMeta);
+        ItemStack title = GUIUtils.createItem(Material.BEACON, "§6§lMinion Management",
+                "§7Automate resource production & boost §eIsland XP",
+                "§7Minions contribute to island progression (dimensions, bosses)",
+                "§7Play to Win: Fuel & slots earned via grind/trade - no P2W");
         inv.setItem(4, title);
 
         if (!hasIsland) {
-            // No island message
-            ItemStack noIsland = new ItemStack(Material.BARRIER);
-            ItemMeta noMeta = noIsland.getItemMeta();
-            noMeta.setDisplayName("§c§lNo Island Found");
-            noMeta.setLore(Arrays.asList(
-                "§7You need an island in this dimension",
-                "§7to manage minions.",
-                "",
-                "§eUse §6/is create §eor teleport to your island."
-            ));
-            noIsland.setItemMeta(noMeta);
+            // No island message - modernized
+            ItemStack noIsland = GUIUtils.createItem(Material.BARRIER, "§c§lNo Island Found",
+                    "§7You need an island in this dimension",
+                    "§7to manage minions.",
+                    "",
+                    "§eUse §6/is create §eor teleport to your island.");
             inv.setItem(22, noIsland);
             player.openInventory(inv);
             return;
         }
 
-        // Prominent slots usage display (row 1 center)
-        ItemStack slotsItem = new ItemStack(Material.CHEST);
-        ItemMeta slotsMeta = slotsItem.getItemMeta();
-        slotsMeta.setDisplayName("§e§lMinion Slots");
+        // Prominent slots usage display (row 1 center) - modernized
         int fuel = minionManager.getIslandFuel(islandId != null ? islandId : "");
-        slotsMeta.setLore(Arrays.asList(
-            "§7Active: §f" + placed + " §7/ §f" + maxSlots,
-            "§7Fuel: §e" + fuel + " §7units (consumed per production cycle)",
-            "",
-            "§7Accepted fuels: §fCoal, Blaze Rods, Lava Buckets, Wheat, Ender Pearls",
-            "§7Use the §6Feed Fuel§7 button to power your minions.",
-            "§7Upgrade §6Minion Slots§7 in /is upgrades for more capacity.",
-            "",
-            "§a§lPlay to Win§7: Everything earned via gameplay."
-        ));
-        slotsItem.setItemMeta(slotsMeta);
+        ItemStack slotsItem = GUIUtils.createItem(Material.CHEST, "§e§lMinion Slots",
+                "§7Active: §f" + placed + " §7/ §f" + maxSlots,
+                "§7Fuel: §e" + fuel + " §7units (consumed per production cycle)",
+                "",
+                "§7Accepted fuels: §fCoal, Blaze Rods, Lava Buckets, Wheat, Ender Pearls",
+                "§7Use the §6Feed Fuel§7 button to power your minions.",
+                "§7Upgrade §6Minion Slots§7 in /is upgrades for more capacity.",
+                "",
+                "§a§lPlay to Win§7: Everything earned via gameplay.");
         inv.setItem(13, slotsItem);
 
-        // Section header for types
-        ItemStack typesHeader = new ItemStack(Material.PAPER);
-        ItemMeta headerMeta = typesHeader.getItemMeta();
-        headerMeta.setDisplayName("§a§lAvailable Minion Types");
-        headerMeta.setLore(Arrays.asList("§7Click a type below to place it on your island"));
-        typesHeader.setItemMeta(headerMeta);
+        // Section header for types - modernized
+        ItemStack typesHeader = GUIUtils.createItem(Material.PAPER, "§a§lAvailable Minion Types",
+                "§7Click a type below to place it on your island");
         inv.setItem(9, typesHeader);
 
         // Minion type buttons (click to place) - using expanded MinionType enum
@@ -141,100 +124,70 @@ public class MinionsGUI implements Listener {
 
         for (int i = 0; i < maxTypesToShow; i++) {
             com.thenerdcj.manager.MinionType mt = types[i];
-            ItemStack typeItem = new ItemStack(mt.getIcon());
-            ItemMeta typeMeta = typeItem.getItemMeta();
-            typeMeta.setDisplayName("§a§l" + mt.getDisplayName() + " Minion");
-            typeMeta.setLore(Arrays.asList(
-                "§7Produces: §f" + mt.getResource().name().toLowerCase().replace('_', ' '),
-                "§7Efficiency: §e" + String.format("%.0f%%", mt.getProductionMultiplier() * 100),
-                "",
-                "§eClick to place this minion",
-                "§7(Requires free slot)"
-            ));
-            typeItem.setItemMeta(typeMeta);
+            ItemStack typeItem = GUIUtils.createItem(mt.getIcon(), "§a§l" + mt.getDisplayName() + " Minion",
+                    "§7Produces: §f" + mt.getResource().name().toLowerCase().replace('_', ' '),
+                    "§7Efficiency: §e" + String.format("%.0f%%", mt.getProductionMultiplier() * 100),
+                    "",
+                    "§eClick to place this minion",
+                    "§7(Requires free slot)");
             inv.setItem(18 + i, typeItem);
         }
 
-        // Remove minion button
-        ItemStack removeBtn = new ItemStack(Material.REDSTONE_BLOCK);
-        ItemMeta removeMeta = removeBtn.getItemMeta();
-        removeMeta.setDisplayName("§c§lRemove Last Minion");
-        removeMeta.setLore(Arrays.asList(
-            "§7Removes one active minion",
-            "§7Frees up a slot immediately",
-            "§7(Visual entity will despawn)"
-        ));
-        removeBtn.setItemMeta(removeMeta);
+        // Remove minion button - modernized
+        ItemStack removeBtn = GUIUtils.createItem(Material.REDSTONE_BLOCK, "§c§lRemove Last Minion",
+                "§7Removes one active minion",
+                "§7Frees up a slot immediately",
+                "§7(Visual entity will despawn)");
         inv.setItem(40, removeBtn);
 
-        // Feed Fuel button (real items - Tier B expansion)
-        ItemStack feedBtn = new ItemStack(Material.BLAZE_POWDER);
-        ItemMeta feedMeta = feedBtn.getItemMeta();
-        feedMeta.setDisplayName("§6§lFeed Fuel");
-        feedMeta.setLore(Arrays.asList(
-            "§7Consumes fuel items from your inventory",
-            "§7Accepted: Coal, Blaze Rods, Lava Buckets, etc.",
-            "§7Gives minions more runtime",
-            "",
-            "§eClick to feed all valid fuel items"
-        ));
-        feedBtn.setItemMeta(feedMeta);
+        // Feed Fuel button - modernized
+        ItemStack feedBtn = GUIUtils.createItem(Material.BLAZE_POWDER, "§6§lFeed Fuel",
+                "§7Consumes fuel items from your inventory",
+                "§7Accepted: Coal, Blaze Rods, Lava Buckets, etc.",
+                "§7Gives minions more runtime",
+                "",
+                "§eClick to feed all valid fuel items");
         inv.setItem(42, feedBtn);
 
-        // Bottom info bar
-        ItemStack info = new ItemStack(Material.BOOK);
-        ItemMeta infoMeta = info.getItemMeta();
-        infoMeta.setDisplayName("§b§lMinion Info");
-        infoMeta.setLore(Arrays.asList(
-            "§7• Minions work automatically while you are online",
-            "§7• Higher tier minions gather rarer resources",
-            "§7• Slots are shared across all minion types",
-            "§7• Upgrade slots via island upgrades menu",
-            "§7• Fuel persists across restarts (polished)"
-        ));
-        info.setItemMeta(infoMeta);
+        // Bottom info bar - modernized
+        ItemStack info = GUIUtils.createItem(Material.BOOK, "§b§lMinion Info",
+                "§7• Minions work automatically while you are online",
+                "§7• Higher tier minions gather rarer resources",
+                "§7• Slots are shared across all minion types",
+                "§7• Upgrade slots via island upgrades menu",
+                "§7• Fuel persists across restarts (polished)");
         inv.setItem(49, info);
 
-        // Active minions section with individual removal buttons (polished nice-to-have)
-        ItemStack activeHeader = new ItemStack(Material.ARMOR_STAND);
-        ItemMeta activeHeaderMeta = activeHeader.getItemMeta();
-        activeHeaderMeta.setDisplayName("§e§lYour Minions (click to remove 1)");
-        activeHeaderMeta.setLore(Arrays.asList("§7Total: §f" + placed + " §7/ §f" + maxSlots));
-        activeHeader.setItemMeta(activeHeaderMeta);
+        // Active minions section header - modernized
+        ItemStack activeHeader = GUIUtils.createItem(Material.ARMOR_STAND, "§e§lYour Minions (click to remove 1)",
+                "§7Total: §f" + placed + " §7/ §f" + maxSlots);
         inv.setItem(27, activeHeader);
 
-        // Place one item per active type for removal (starting slot 28)
+        // Place one item per active type for removal (starting slot 28) - modernized with PDC preservation
         int slot = 28;
         if (!breakdown.isEmpty()) {
             for (Map.Entry<MinionType, Integer> entry : breakdown.entrySet()) {
                 if (entry.getValue() > 0 && slot < 35) {
                     MinionType mt = entry.getKey();
-                    ItemStack typeItem = new ItemStack(mt.getIcon(), Math.min(64, entry.getValue()));
-                    ItemMeta typeMeta = typeItem.getItemMeta();
-                    typeMeta.setDisplayName("§c§l" + mt.getDisplayName() + " §7x" + entry.getValue());
-                    typeMeta.setLore(Arrays.asList(
-                        "§7Click to remove §cone§7 of this type",
-                        "§7Produces: §f" + mt.getResource().name().toLowerCase().replace('_', ' ')
-                    ));
-                    PersistentDataContainer pdc = typeMeta.getPersistentDataContainer();
-                    pdc.set(MINION_TYPE_KEY, PersistentDataType.STRING, mt.getKey());
-                    typeItem.setItemMeta(typeMeta);
+                    ItemStack typeItem = GUIUtils.createItem(mt.getIcon(), "§c§l" + mt.getDisplayName() + " §7x" + entry.getValue(),
+                            "§7Click to remove §cone§7 of this type",
+                            "§7Produces: §f" + mt.getResource().name().toLowerCase().replace('_', ' '));
+                    // Preserve the existing PDC for click handling
+                    ItemMeta tm = typeItem.getItemMeta();
+                    if (tm != null) {
+                        tm.getPersistentDataContainer().set(MINION_TYPE_KEY, PersistentDataType.STRING, mt.getKey());
+                        typeItem.setItemMeta(tm);
+                    }
                     inv.setItem(slot++, typeItem);
                 }
             }
         } else {
-            ItemStack none = new ItemStack(Material.BARRIER);
-            ItemMeta noneMeta = none.getItemMeta();
-            noneMeta.setDisplayName("§7No minions placed");
-            none.setItemMeta(noneMeta);
+            ItemStack none = GUIUtils.createItem(Material.BARRIER, "§7No minions placed");
             inv.setItem(28, none);
         }
 
-        // Fill remaining empty slots with subtle glass (avoiding key positions)
-        ItemStack glass = new ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE);
-        ItemMeta glassMeta = glass.getItemMeta();
-        glassMeta.setDisplayName(" ");
-        glass.setItemMeta(glassMeta);
+        // Fill remaining empty slots with subtle glass - modernized (GUIUtils)
+        ItemStack glass = GUIUtils.createItem(Material.LIGHT_GRAY_STAINED_GLASS_PANE, " ");
         int[] skipSlots = {0,1,2,3,4,5,6,7,8,9,13,18,19,20,21,22,23,24,25,26,40,49};
         for (int i = 0; i < 54; i++) {
             if (inv.getItem(i) == null) {
@@ -250,7 +203,9 @@ public class MinionsGUI implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
-        if (event.getView().getTitle() == null || !event.getView().getTitle().equals("§6§lMinion Management")) return;
+        // Resilient title check (modernized pattern)
+        String title = event.getView().getTitle();
+        if (title == null || !title.startsWith("§6§lMinion Management")) return;
 
         event.setCancelled(true);
 

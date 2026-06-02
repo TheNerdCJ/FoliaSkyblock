@@ -628,6 +628,25 @@ public class AntiCheatManager {
         recentXPGains.remove(uuid);
         lastBlockBreakTime.remove(uuid);
         lastBlockPlaceTime.remove(uuid);
-        staffBypassPlayers.remove(uuid);   // ← Add this
+        staffBypassPlayers.remove(uuid);
+    }
+
+    // ==================== ADMIN DEBUG EXPOSURE ====================
+
+    public int getViolationCount(UUID uuid) {
+        return violationCounts.getOrDefault(uuid, 0);
+    }
+
+    public double getNeuralRiskScore(Player player) {
+        if (player == null || neuralDetector == null) return 0.0;
+        PlayerBehaviorProfile profile = profiles.get(player.getUniqueId());
+        if (profile == null) return 0.0;
+        return neuralDetector.getCheatProbability(profile);
+    }
+
+    public double getNeuralRiskScore(UUID uuid) {
+        PlayerBehaviorProfile profile = profiles.get(uuid);
+        if (profile == null || neuralDetector == null) return 0.0;
+        return neuralDetector.getCheatProbability(profile);
     }
 }

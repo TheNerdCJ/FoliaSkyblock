@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandWarp;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -21,6 +22,12 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Island Browse GUI - Scrollable island discovery
  * Shows top-rated islands first, then all public islands
+ *
+ * Deep modernization pass:
+ * - Manual skull + createItem helpers converted to GUIUtils.createItem.
+ * - Dynamic title now uses MessageUtil.legacy.
+ * - Click handler title check made more resilient (startsWith).
+ * - Preserved complex async loading (ratings + warps), metadata state, permission, and teleport logic exactly.
  */
 public class IslandBrowseGUI implements Listener {
 
@@ -77,7 +84,8 @@ public class IslandBrowseGUI implements Listener {
                     // Clamp page to valid range (use final variable)
                     final int validPage = Math.max(0, Math.min(page, totalPages - 1));
 
-                    Inventory gui = Bukkit.createInventory(null, 54, "§6§lIsland Browse §7(Page " + (validPage + 1) + "/" + totalPages + ")");
+                    String title = "§6§lIsland Browse §7(Page " + (validPage + 1) + "/" + totalPages + ")";
+                    Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy(title));
 
                     // Header
                     gui.setItem(4, createItem(Material.COMPASS, "§6§lIsland Discovery",
@@ -122,9 +130,6 @@ public class IslandBrowseGUI implements Listener {
     }
 
     private ItemStack createIslandItem(GridPosition pos, IslandWarp warp, double rating) {
-        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
-        SkullMeta meta = (SkullMeta) item.getItemMeta();
-
         // Get owner name
         String ownerName = "Unknown";
         try {
@@ -136,32 +141,36 @@ public class IslandBrowseGUI implements Listener {
             // Owner name remains "Unknown"
         }
 
-        meta.setDisplayName("§e§l" + ownerName + "'s Island");
-
         List<String> lore = new ArrayList<>();
         lore.add("§7Rating: §e" + String.format("%.1f", rating) + " §6★");
         lore.add("§7Location: §b" + pos.x() + ", " + pos.z());
         lore.add("");
         lore.add("§aClick to teleport!");
 
-        meta.setLore(lore);
-        item.setItemMeta(meta);
+        // Modernized base creation (SkullMeta applied after for owner head)
+        ItemStack item = GUIUtils.createItem(Material.PLAYER_HEAD, "§e§l" + ownerName + "'s Island", lore.toArray(new String[0]));
 
+        ItemMeta meta = item.getItemMeta();
+        if (meta instanceof SkullMeta skullMeta) {
+            try {
+                Island island = plugin.getIslandManager().getIslandByPosition(pos);
+                if (island != null) {
+                    skullMeta.setOwningPlayer(Bukkit.getOfflinePlayer(island.getOwnerUuid()));
+                    item.setItemMeta(skullMeta);
+                }
+            } catch (Exception ignored) {}
+        }
         return item;
     }
 
     private ItemStack createItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        meta.setLore(Arrays.asList(lore));
-        item.setItemMeta(meta);
-        return item;
+        return GUIUtils.createItem(material, name, lore);
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!event.getView().getTitle().contains("§6§lIsland Browse")) return;
+        // Resilient title check (modernized)
+        if (!event.getView().getTitle().startsWith("§6§lIsland Browse")) return;
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();

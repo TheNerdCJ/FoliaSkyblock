@@ -43,7 +43,7 @@ public class TPAListGUI {
             Player requester = Bukkit.getPlayer(uuid);
             if (requester == null || !requester.isOnline()) continue;
 
-            ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+            ItemStack head = GUIUtils.createItem(Material.PLAYER_HEAD, "§e" + requester.getName(), "§7Click to accept TPA request");
             SkullMeta meta = (SkullMeta) head.getItemMeta();
             meta.setOwningPlayer(requester);
             meta.setDisplayName("§e" + requester.getName());
@@ -59,11 +59,8 @@ public class TPAListGUI {
 
         // Fill empty with glass or info
         if (requesters.isEmpty()) {
-            ItemStack info = new ItemStack(Material.BARRIER);
-            var meta = info.getItemMeta();
-            meta.setDisplayName("§cNo pending TPA requests");
-            meta.setLore(java.util.Arrays.asList("§7No one is requesting to teleport to you right now."));
-            info.setItemMeta(meta);
+            ItemStack info = GUIUtils.createItem(Material.BARRIER, "§cNo pending TPA requests",
+                    "§7No one is requesting to teleport to you right now.");
             inv.setItem(4, info);
         }
 

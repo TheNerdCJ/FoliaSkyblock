@@ -6,6 +6,7 @@ import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandUpgrade;
 import com.thenerdcj.island.IslandUpgradeEvent;
 import com.thenerdcj.manager.EconomyManager;
+import com.thenerdcj.util.SoundUtil;
 import org.bukkit.entity.Player;
 
 import java.util.concurrent.CompletableFuture;
@@ -45,12 +46,14 @@ public class IslandUpgradeManager {
         return economyManager.getIslandBalance(pos).thenCompose(currentBalance -> {
 
             if (currentBalance < cost) {
-                player.sendMessage("§cYour island does not have enough balance for this upgrade.");
+                SoundUtil.purchaseFail(player);
+                    player.sendMessage("§cYour island does not have enough balance for this upgrade.");
                 return CompletableFuture.completedFuture(false);
             }
 
             return economyManager.removeIslandBalance(pos, cost).thenCompose(success -> {
                 if (!success) {
+                    SoundUtil.error(player);
                     player.sendMessage("§cFailed to deduct island balance. Please try again.");
                     return CompletableFuture.completedFuture(false);
                 }
@@ -59,6 +62,7 @@ public class IslandUpgradeManager {
                 boolean applied = applyUpgradeEffect(island, upgrade, currentLevel + 1);
 
                 if (applied) {
+                    SoundUtil.purchaseSuccess(player);
                     player.sendMessage("§aUpgrade purchased successfully! §7(-$" + cost + ")");
                     // Persist immediately (idempotent with setUpgradeLevel)
                     String islandKey = island.getId();
@@ -352,12 +356,14 @@ public class IslandUpgradeManager {
 
         return economyManager.getIslandBalance(pos).thenCompose(currentBalance -> {
             if (currentBalance < cost) {
-                player.sendMessage("§cYour island does not have enough balance for this upgrade.");
+                SoundUtil.purchaseFail(player);
+                    player.sendMessage("§cYour island does not have enough balance for this upgrade.");
                 return CompletableFuture.completedFuture(false);
             }
 
             return economyManager.removeIslandBalance(pos, cost).thenCompose(success -> {
                 if (!success) {
+                    SoundUtil.error(player);
                     player.sendMessage("§cFailed to deduct island balance. Please try again.");
                     return CompletableFuture.completedFuture(false);
                 }
@@ -365,6 +371,7 @@ public class IslandUpgradeManager {
                 boolean applied = applyUpgradeEffect(island, upgrade, currentLevel + 1);
 
                 if (applied) {
+                    SoundUtil.purchaseSuccess(player);
                     player.sendMessage("§aUpgrade purchased successfully! §7(-$" + cost + ")");
                     return CompletableFuture.completedFuture(true);
                 } else {

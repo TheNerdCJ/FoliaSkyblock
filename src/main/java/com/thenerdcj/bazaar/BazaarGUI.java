@@ -2,6 +2,8 @@ package com.thenerdcj.bazaar;
 
 import com.thenerdcj.FoliaSkyblock;
 import net.kyori.adventure.text.Component;
+import com.thenerdcj.gui.GUIUtils;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -114,7 +116,7 @@ public class BazaarGUI implements Listener {
 
         Inventory gui = Bukkit.createInventory(
                 new BazaarGUIHolder("main", null, page, null, null),
-                54, Component.text("§6§lBazaar"));
+                54, MessageUtil.legacy("§6§lBazaar"));
 
         int start = page * itemsPerPage;
         int end = Math.min(start + itemsPerPage, itemList.size());
@@ -127,8 +129,8 @@ public class BazaarGUI implements Listener {
             gui.setItem(i, createGlassPane());
         }
 
-        if (page > 0) gui.setItem(45, createNavButton("§a§l« Previous", "prev", page));
-        if (page < totalPages - 1) gui.setItem(53, createNavButton("§a§lNext »", "next", page));
+        if (page > 0) gui.setItem(45, createBazaarNavItem(Material.ARROW, "§a§l« Previous", "prev", page));
+        if (page < totalPages - 1) gui.setItem(53, createBazaarNavItem(Material.ARROW, "§a§lNext »", "next", page));
         gui.setItem(49, createCloseButton());
 
         player.openInventory(gui);
@@ -136,22 +138,22 @@ public class BazaarGUI implements Listener {
     }
 
     private void addBazaarItemToGUI(Inventory gui, int slot, BazaarItem item) {
-        ItemStack stack = new ItemStack(Material.valueOf(item.getMaterial()));
+        ItemStack stack = GUIUtils.createItem(Material.valueOf(item.getMaterial()), "§e" + item.getDisplayName());
+
         ItemMeta meta = stack.getItemMeta();
-        meta.displayName(Component.text("§e" + item.getDisplayName()));
+        if (meta != null) {
+            List<Component> lore = new ArrayList<>();
+            lore.add(MessageUtil.legacy("§7Instant Buy: §a$" + String.format("%.2f", item.getBuyPrice()) + " §7/ea"));
+            lore.add(MessageUtil.legacy("§7Instant Sell: §c$" + String.format("%.2f", item.getSellPrice()) + " §7/ea"));
+            lore.add(MessageUtil.legacy(""));
+            lore.add(MessageUtil.legacy("§aClick to manage this item"));
+            meta.lore(lore);
 
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.text("§7Instant Buy: §a$" + String.format("%.2f", item.getBuyPrice()) + " §7/ea"));
-        lore.add(Component.text("§7Instant Sell: §c$" + String.format("%.2f", item.getSellPrice()) + " §7/ea"));
-        lore.add(Component.text(""));
-        lore.add(Component.text("§aClick to manage this item"));
-        meta.lore(lore);
+            GUIUtils.setPDCString(meta, ACTION_KEY, "open_item");
+            GUIUtils.setPDCString(meta, MATERIAL_KEY, item.getMaterial());
 
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, "open_item");
-        pdc.set(MATERIAL_KEY, PersistentDataType.STRING, item.getMaterial());
-
-        stack.setItemMeta(meta);
+            stack.setItemMeta(meta);
+        }
         gui.setItem(slot, stack);
     }
 
@@ -166,44 +168,34 @@ public class BazaarGUI implements Listener {
         Inventory gui = Bukkit.createInventory(
                 new BazaarGUIHolder("item_detail", material, 0, null, null),
                 54,
-                "§6§l" + item.getDisplayName() + " §7Bazaar"
+                MessageUtil.legacy("§6§l" + item.getDisplayName() + " §7Bazaar")
         );
 
-        // Info item
-        ItemStack info = new ItemStack(Material.valueOf(material));
+        // Info item - modernized
+        ItemStack info = GUIUtils.createItem(Material.valueOf(material), "§e" + item.getDisplayName());
         ItemMeta infoMeta = info.getItemMeta();
-        infoMeta.setDisplayName("§e" + item.getDisplayName());
-        List<String> infoLore = new ArrayList<>();
-        infoLore.add("§7Instant Buy Price: §a$" + String.format("%.2f", item.getBuyPrice()));
-        infoLore.add("§7Instant Sell Price: §c$" + String.format("%.2f", item.getSellPrice()));
-        infoLore.add("§7Stock: §e" + item.getStock());
-        infoMeta.setLore(infoLore);
-        info.setItemMeta(infoMeta);
+        if (infoMeta != null) {
+            List<String> infoLore = new ArrayList<>();
+            infoLore.add("§7Instant Buy Price: §a$" + String.format("%.2f", item.getBuyPrice()));
+            infoLore.add("§7Instant Sell Price: §c$" + String.format("%.2f", item.getSellPrice()));
+            infoLore.add("§7Stock: §e" + item.getStock());
+            infoMeta.setLore(infoLore);
+            info.setItemMeta(infoMeta);
+        }
         gui.setItem(4, info);
 
-        // Action buttons
-        gui.setItem(20, createActionButton("§a§lInstant Buy", "instant_buy", material, Material.GREEN_WOOL));
-        gui.setItem(22, createActionButton("§c§lInstant Sell", "instant_sell", material, Material.RED_WOOL));
-        gui.setItem(24, createActionButton("§b§lCreate Buy Order", "create_buy_order", material, Material.BLUE_WOOL));
-        gui.setItem(29, createActionButton("§6§lCreate Sell Order", "create_sell_order", material, Material.ORANGE_WOOL));
-        gui.setItem(31, createActionButton("§d§lView Buy Orders", "view_buy_orders", material, Material.PURPLE_WOOL));
-        gui.setItem(33, createActionButton("§d§lView Sell Orders", "view_sell_orders", material, Material.PURPLE_WOOL));
+        // Action buttons - using modern helper
+        gui.setItem(20, createBazaarActionItem(Material.GREEN_WOOL, "§a§lInstant Buy", "instant_buy", material));
+        gui.setItem(22, createBazaarActionItem(Material.RED_WOOL, "§c§lInstant Sell", "instant_sell", material));
+        gui.setItem(24, createBazaarActionItem(Material.BLUE_WOOL, "§b§lCreate Buy Order", "create_buy_order", material));
+        gui.setItem(29, createBazaarActionItem(Material.ORANGE_WOOL, "§6§lCreate Sell Order", "create_sell_order", material));
+        gui.setItem(31, createBazaarActionItem(Material.PURPLE_WOOL, "§d§lView Buy Orders", "view_buy_orders", material));
+        gui.setItem(33, createBazaarActionItem(Material.PURPLE_WOOL, "§d§lView Sell Orders", "view_sell_orders", material));
 
         gui.setItem(49, createCloseButton());
 
         player.openInventory(gui);
         openGUIs.put(player.getUniqueId(), (BazaarGUIHolder) gui.getHolder());
-    }
-
-    private ItemStack createActionButton(String name, String action, String material, Material icon) {
-        ItemStack item = new ItemStack(icon);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, action);
-        pdc.set(MATERIAL_KEY, PersistentDataType.STRING, material);
-        item.setItemMeta(meta);
-        return item;
     }
 
     // ==================== ORDERS VIEW (Paginated) ====================
@@ -217,11 +209,12 @@ public class BazaarGUI implements Listener {
         if (page < 0) page = 0;
         if (page >= totalPages && totalPages > 0) page = totalPages - 1;
 
-        String title = isBuyOrders ? "§bBuy Orders" : "§6Sell Orders";
+        String titleBase = isBuyOrders ? "Buy Orders" : "Sell Orders";
+        String color = isBuyOrders ? "§b" : "§6";
         Inventory gui = Bukkit.createInventory(
                 new BazaarGUIHolder("orders", material, page, null, isBuyOrders ? "buy" : "sell"),
                 54,
-                "§6§l" + title + " §7(Page " + (page + 1) + "/" + Math.max(1, totalPages) + ")"
+                MessageUtil.legacy("§6§l" + color + titleBase + " §7(Page " + (page + 1) + "/" + Math.max(1, totalPages) + ")")
         );
 
         int start = page * itemsPerPage;
@@ -233,8 +226,8 @@ public class BazaarGUI implements Listener {
 
         for (int i = end - start; i < 45; i++) gui.setItem(i, createGlassPane());
 
-        if (page > 0) gui.setItem(45, createNavButton("§a§l« Prev", "prev", page));
-        if (page < totalPages - 1) gui.setItem(53, createNavButton("§a§lNext »", "next", page));
+        if (page > 0) gui.setItem(45, createBazaarNavItem(Material.ARROW, "§a§l« Prev", "prev", page));
+        if (page < totalPages - 1) gui.setItem(53, createBazaarNavItem(Material.ARROW, "§a§lNext »", "next", page));
         gui.setItem(49, createBackButton(material));
 
         player.openInventory(gui);
@@ -242,24 +235,26 @@ public class BazaarGUI implements Listener {
     }
 
     private void addOrderItem(Inventory gui, int slot, BazaarOrder order, boolean isBuy) {
-        ItemStack item = new ItemStack(Material.valueOf(order.getMaterial()));
+        // Use GUIUtils for base item creation + manual meta only for complex lore/PDC
+        ItemStack item = GUIUtils.createItem(Material.valueOf(order.getMaterial()), (isBuy ? "§bBuy" : "§6Sell") + " Order");
+
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName((isBuy ? "§bBuy" : "§6Sell") + " Order");
+        if (meta != null) {
+            List<String> lore = new ArrayList<>();
+            lore.add("§7Amount: §e" + order.getAmount());
+            lore.add("§7Price/Unit: §a$" + String.format("%.2f", order.getPricePerUnit()));
+            lore.add("§7Total: §6$" + String.format("%,.0f", order.getTotalPrice()));
+            lore.add("");
+            lore.add("§7Click to §afulfill §7this order (if possible)");
+            meta.setLore(lore);
 
-        List<String> lore = new ArrayList<>();
-        lore.add("§7Amount: §e" + order.getAmount());
-        lore.add("§7Price/Unit: §a$" + String.format("%.2f", order.getPricePerUnit()));
-        lore.add("§7Total: §6$" + String.format("%,.0f", order.getTotalPrice()));
-        lore.add("");
-        lore.add("§7Click to §afulfill §7this order (if possible)");
-        meta.setLore(lore);
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "fulfill_order");
+            pdc.set(ORDER_ID_KEY, PersistentDataType.STRING, order.getId());
+            pdc.set(MATERIAL_KEY, PersistentDataType.STRING, order.getMaterial());
 
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, "fulfill_order");
-        pdc.set(ORDER_ID_KEY, PersistentDataType.STRING, order.getId());
-        pdc.set(MATERIAL_KEY, PersistentDataType.STRING, order.getMaterial());
-
-        item.setItemMeta(meta);
+            item.setItemMeta(meta);
+        }
         gui.setItem(slot, item);
     }
 
@@ -268,18 +263,18 @@ public class BazaarGUI implements Listener {
         // inputType: "amount" or "price"
         // orderType: "buy_order" or "sell_order"
 
-        AnvilInventory anvil = (AnvilInventory) Bukkit.createInventory(null, InventoryType.ANVIL, "§6Enter " + inputType);
+        AnvilInventory anvil = (AnvilInventory) Bukkit.createInventory(null, InventoryType.ANVIL, 
+            MessageUtil.legacy("§6Enter " + inputType));
 
-        ItemStack paper = new ItemStack(Material.PAPER);
+        ItemStack paper = GUIUtils.createItem(Material.PAPER, "§eEnter " + (inputType.equals("amount") ? "amount" : "price per unit"));
         ItemMeta meta = paper.getItemMeta();
-        meta.setDisplayName("§eEnter " + (inputType.equals("amount") ? "amount" : "price per unit"));
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, "anvil_input");
-        pdc.set(MATERIAL_KEY, PersistentDataType.STRING, material);
-        pdc.set(INPUT_TYPE_KEY, PersistentDataType.STRING, inputType);
-        // We store orderType in pendingOrders instead for simplicity
-
-        paper.setItemMeta(meta);
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "anvil_input");
+            pdc.set(MATERIAL_KEY, PersistentDataType.STRING, material);
+            pdc.set(INPUT_TYPE_KEY, PersistentDataType.STRING, inputType);
+            paper.setItemMeta(meta);
+        }
         anvil.setItem(0, paper);
 
         player.openInventory(anvil);
@@ -506,13 +501,13 @@ public class BazaarGUI implements Listener {
     }
 
     private ItemStack createBackButton(String material) {
-        ItemStack item = new ItemStack(Material.ARROW);
+        ItemStack item = GUIUtils.createItem(Material.ARROW, "§7« Back to Item");
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§7« Back to Item");
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, "back");
-        pdc.set(MATERIAL_KEY, PersistentDataType.STRING, material);
-        item.setItemMeta(meta);
+        if (meta != null) {
+            GUIUtils.setPDCString(meta, ACTION_KEY, "back");
+            GUIUtils.setPDCString(meta, MATERIAL_KEY, material);
+            item.setItemMeta(meta);
+        }
         return item;
     }
 
@@ -540,36 +535,26 @@ public class BazaarGUI implements Listener {
                 title
         );
 
-        ItemStack info = new ItemStack(Material.valueOf(material));
+        // Info item
+        ItemStack info = GUIUtils.createItem(Material.valueOf(material), qtyLine);
         ItemMeta infoMeta = info.getItemMeta();
-        infoMeta.setDisplayName(qtyLine);
-        List<String> lore = new ArrayList<>();
-        lore.add("§7Unit Price: §6$" + String.format("%.2f", unitPrice));
-        if (!isBuy) {
-            lore.add("§7Gross: §6$" + String.format("%,.0f", gross));
-            lore.add("§7Tax (1.25%): §c-$" + String.format("%,.0f", tax));
+        if (infoMeta != null) {
+            List<String> lore = new ArrayList<>();
+            lore.add("§7Unit Price: §6$" + String.format("%.2f", unitPrice));
+            if (!isBuy) {
+                lore.add("§7Gross: §6$" + String.format("%,.0f", gross));
+                lore.add("§7Tax (1.25%): §c-$" + String.format("%,.0f", tax));
+            }
+            lore.add("§7Total: §a$" + String.format("%,.0f", total));
+            infoMeta.setLore(lore);
+            info.setItemMeta(infoMeta);
         }
-        lore.add("§7Total: §a$" + String.format("%,.0f", total));
-        infoMeta.setLore(lore);
-        info.setItemMeta(infoMeta);
         confirm.setItem(13, info);
 
-        ItemStack confirmBtn = new ItemStack(isBuy ? Material.GREEN_WOOL : Material.RED_WOOL);
-        ItemMeta cMeta = confirmBtn.getItemMeta();
-        cMeta.setDisplayName((isBuy ? "§a§lCONFIRM BUY " : "§c§lCONFIRM SELL ") + amount + "x");
-        PersistentDataContainer cPdc = cMeta.getPersistentDataContainer();
-        cPdc.set(ACTION_KEY, PersistentDataType.STRING, action);
-        cPdc.set(MATERIAL_KEY, PersistentDataType.STRING, material);
-        confirmBtn.setItemMeta(cMeta);
-        confirm.setItem(11, confirmBtn);
-
-        ItemStack cancel = new ItemStack(Material.RED_WOOL);
-        ItemMeta caMeta = cancel.getItemMeta();
-        caMeta.setDisplayName("§c§lCANCEL");
-        PersistentDataContainer caPdc = caMeta.getPersistentDataContainer();
-        caPdc.set(ACTION_KEY, PersistentDataType.STRING, "close");
-        cancel.setItemMeta(caMeta);
-        confirm.setItem(15, cancel);
+        // Confirm / Cancel using helpers
+        String confirmName = (isBuy ? "§a§lCONFIRM BUY " : "§c§lCONFIRM SELL ") + amount + "x";
+        confirm.setItem(11, createBazaarActionItem(isBuy ? Material.GREEN_WOOL : Material.RED_WOOL, confirmName, action, material));
+        confirm.setItem(15, createBazaarActionItem(Material.RED_WOOL, "§c§lCANCEL", "close", null));
 
         player.openInventory(confirm);
         openGUIs.put(player.getUniqueId(), (BazaarGUIHolder) confirm.getHolder());
@@ -681,39 +666,29 @@ public class BazaarGUI implements Listener {
         Inventory confirm = Bukkit.createInventory(
                 new BazaarGUIHolder("confirm_create", pending.material, 0, null, pending.type),
                 27,
-                "§6§lConfirm " + actionName
+                MessageUtil.legacy("§6§lConfirm " + actionName)
         );
 
-        ItemStack info = new ItemStack(Material.valueOf(pending.material));
+        // Info item
+        String materialName = pending.material;
+        ItemStack info = GUIUtils.createItem(Material.valueOf(materialName), "§e" + pending.amount + "x " + materialName);
         ItemMeta meta = info.getItemMeta();
-        meta.setDisplayName("§e" + pending.amount + "x " + pending.material);
-        List<String> lore = new ArrayList<>();
-        lore.add("§7Price per unit: §a$" + String.format("%.2f", pending.pricePerUnit));
-        lore.add("§7Total Value: §6$" + String.format("%,.0f", total));
-        if ("sell_order".equals(pending.type)) {
-            double tax = total * 0.0125;
-            lore.add("§7You will receive: §a$" + String.format("%,.0f", total - tax) + " §7(after tax)");
+        if (meta != null) {
+            List<String> lore = new ArrayList<>();
+            lore.add("§7Price per unit: §a$" + String.format("%.2f", pending.pricePerUnit));
+            lore.add("§7Total Value: §6$" + String.format("%,.0f", total));
+            if ("sell_order".equals(pending.type)) {
+                double tax = total * 0.0125;
+                lore.add("§7You will receive: §a$" + String.format("%,.0f", total - tax) + " §7(after tax)");
+            }
+            meta.setLore(lore);
+            info.setItemMeta(meta);
         }
-        meta.setLore(lore);
-        info.setItemMeta(meta);
         confirm.setItem(13, info);
 
-        ItemStack confirmBtn = new ItemStack(Material.GREEN_WOOL);
-        ItemMeta cMeta = confirmBtn.getItemMeta();
-        cMeta.setDisplayName("§a§lCONFIRM CREATE " + actionName.toUpperCase());
-        PersistentDataContainer cPdc = cMeta.getPersistentDataContainer();
-        cPdc.set(ACTION_KEY, PersistentDataType.STRING, "confirm_create_order");
-        cPdc.set(MATERIAL_KEY, PersistentDataType.STRING, pending.material);
-        confirmBtn.setItemMeta(cMeta);
-        confirm.setItem(11, confirmBtn);
-
-        ItemStack cancel = new ItemStack(Material.RED_WOOL);
-        ItemMeta caMeta = cancel.getItemMeta();
-        caMeta.setDisplayName("§c§lCANCEL");
-        PersistentDataContainer caPdc = caMeta.getPersistentDataContainer();
-        caPdc.set(ACTION_KEY, PersistentDataType.STRING, "close");
-        cancel.setItemMeta(caMeta);
-        confirm.setItem(15, cancel);
+        // Confirm / Cancel buttons using helpers
+        confirm.setItem(11, createBazaarActionItem(Material.GREEN_WOOL, "§a§lCONFIRM CREATE " + actionName.toUpperCase(), "confirm_create_order", pending.material));
+        confirm.setItem(15, createBazaarActionItem(Material.RED_WOOL, "§c§lCANCEL", "close", null));
 
         player.openInventory(confirm);
         openGUIs.put(player.getUniqueId(), (BazaarGUIHolder) confirm.getHolder());
@@ -722,38 +697,43 @@ public class BazaarGUI implements Listener {
     // NOTE: Order confirmation handling consolidated into onBazaarClick using proper BazaarGUIHolder + pendingOrders map.
     // The previous loose title-sniffing handler has been removed to prevent duplicate processing.
 
-    // ==================== UTILITY ====================
+    // ==================== UTILITY (Modernized with GUIUtils) ====================
     private ItemStack createGlassPane() {
-        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(" ");
-        item.setItemMeta(meta);
-        return item;
+        return GUIUtils.createItem(Material.GRAY_STAINED_GLASS_PANE, " ");
     }
 
     private ItemStack createCloseButton() {
-        ItemStack item = new ItemStack(Material.BARRIER);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§c§lClose");
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, "close");
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    private ItemStack createNavButton(String name, String action, int currentPage) {
-        ItemStack item = new ItemStack(Material.ARROW);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        pdc.set(ACTION_KEY, PersistentDataType.STRING, action);
-        pdc.set(PAGE_KEY, PersistentDataType.INTEGER, currentPage);
-        item.setItemMeta(meta);
-        return item;
+        return createBazaarActionItem(Material.BARRIER, "§c§lClose", "close", null);
     }
 
     private boolean isBuyOrdersFromContext(BazaarGUIHolder holder) {
         return "buy".equals(holder != null ? holder.getPendingAction() : null);
+    }
+
+    // ==================== Bazaar-specific GUI helpers (to reduce boilerplate) ====================
+
+    private ItemStack createBazaarActionItem(Material material, String name, String action, String materialValue) {
+        ItemStack item = GUIUtils.createItem(material, name);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            GUIUtils.setPDCString(meta, ACTION_KEY, action);
+            if (materialValue != null) {
+                GUIUtils.setPDCString(meta, MATERIAL_KEY, materialValue);
+            }
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    private ItemStack createBazaarNavItem(Material material, String name, String action, int page) {
+        ItemStack item = GUIUtils.createItem(material, name);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            GUIUtils.setPDCString(meta, ACTION_KEY, action);
+            meta.getPersistentDataContainer().set(PAGE_KEY, PersistentDataType.INTEGER, page);
+            item.setItemMeta(meta);
+        }
+        return item;
     }
 
     public void open(Player player) {

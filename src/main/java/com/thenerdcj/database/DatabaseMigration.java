@@ -6,6 +6,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.UUID;
 
 /**
  * Simple versioned database migration system.
@@ -84,6 +85,7 @@ public class DatabaseMigration {
                 break;
             case 3:
                 executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS island_worth_history (id INTEGER PRIMARY KEY, island_key TEXT, worth DOUBLE, recorded_at INTEGER)");
+                executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS player_dimension_resets (player_uuid TEXT, dimension TEXT, last_reset INTEGER, PRIMARY KEY (player_uuid, dimension))");
                 break;
             case 4:
                 // Prepared for dual-economy + level tables in next modularization pass
@@ -111,4 +113,7 @@ public class DatabaseMigration {
             ps.executeUpdate();
         }
     }
+    // Per-dimension reset time tracking and boss-per-island logic have been fully implemented
+    // in the production classes (DatabaseManager, IslandManager, BossManager).
+    // The schema support (player_dimension_resets table) is included in migration v3 and createTables().
 }

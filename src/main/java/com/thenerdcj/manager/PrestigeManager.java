@@ -3,6 +3,8 @@ package com.thenerdcj.manager;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.util.MessageUtil;
+import com.thenerdcj.util.SoundUtil;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
@@ -115,6 +117,46 @@ public class PrestigeManager {
     }
 
     /**
+     * Returns a helpful, specific error message explaining exactly why the player
+     * cannot prestige yet. Used for better UX in commands and GUIs.
+     */
+    public String getPrestigeBlockerMessage(Island island) {
+        if (island == null) {
+            return "§cNo island found.";
+        }
+
+        int currentPrestige = getPrestigeLevel(island);
+        if (currentPrestige >= maxPrestige) {
+            return "§cYou have reached the maximum Prestige level (" + maxPrestige + ").";
+        }
+
+        int islandLevel = island.getLevel();
+        double worth = plugin.getIslandWorthManager().getCachedWorth(island);
+
+        StringBuilder msg = new StringBuilder("§cYou cannot prestige yet. Requirements:\n");
+
+        if (islandLevel < minLevelReq) {
+            int needed = minLevelReq - islandLevel;
+            msg.append("§7 • Island Level: §e").append(minLevelReq)
+               .append(" §7(you are §c").append(islandLevel).append("§7, need §a+").append(needed).append("§7)\n");
+        } else {
+            msg.append("§7 • Island Level: §a").append(minLevelReq).append(" §7(✓ you have §e").append(islandLevel).append("§7)\n");
+        }
+
+        if (worth < minWorthReq) {
+            double needed = minWorthReq - worth;
+            msg.append("§7 • Island Worth: §e$").append(String.format("%,.0f", minWorthReq))
+               .append(" §7(you have §6$").append(String.format("%,.0f", worth))
+               .append("§7, need §a+$").append(String.format("%,.0f", needed)).append("§7)");
+        } else {
+            msg.append("§7 • Island Worth: §a$").append(String.format("%,.0f", minWorthReq))
+               .append(" §7(✓ you have §6$").append(String.format("%,.0f", worth)).append("§7)");
+        }
+
+        return msg.toString();
+    }
+
+    /**
      * Performs the prestige action.
      * - Increments prestige level
      * - Resets island level + XP (core power reset)
@@ -124,7 +166,8 @@ public class PrestigeManager {
      */
     public boolean performPrestige(Island island, Player performer) {
         if (!canPrestige(island)) {
-            performer.sendMessage("§cYou do not meet the requirements to prestige yet.");
+            MessageUtil.sendMessage(performer, getPrestigeBlockerMessage(island));
+            SoundUtil.error(performer);
             return false;
         }
 
@@ -150,10 +193,12 @@ public class PrestigeManager {
         // Grant rewards
         grantPrestigeRewards(island, performer, newLevel);
 
+        SoundUtil.prestige(performer);
+
         // Notify
-        performer.sendMessage("§6§lPRESTIGE! §eYou have reached Prestige §b" + newLevel + "§e!");
-        performer.sendMessage("§7Your island level has been reset, but you now have permanent power multipliers.");
-        performer.sendMessage("§aNew multipliers active: §b+" + String.format("%.0f", (getPrestigeMultiplier(island, PrestigeMultiplierType.XP) - 1) * 100) + "% XP, "
+        MessageUtil.sendMessage(performer, "§6§lPRESTIGE! §eYou have reached Prestige §b" + newLevel + "§e!");
+        MessageUtil.sendMessage(performer, "§7Your island level has been reset, but you now have permanent power multipliers.");
+        MessageUtil.sendMessage(performer, "§aNew multipliers active: §b+" + String.format("%.0f", (getPrestigeMultiplier(island, PrestigeMultiplierType.XP) - 1) * 100) + "% XP, "
                 + String.format("%.0f", (getPrestigeMultiplier(island, PrestigeMultiplierType.WORTH) - 1) * 100) + "% Worth, etc.");
 
         // Optional: update tab for the player
@@ -173,7 +218,7 @@ public class PrestigeManager {
             // Generic fallback reward
             if (plugin.getEconomyManager() != null) {
                 // Best effort money reward
-                player.sendMessage("§aYou received a prestige bonus!");
+                MessageUtil.sendMessage(player, "§aYou received a prestige bonus!");
             }
             return;
         }
@@ -183,7 +228,7 @@ public class PrestigeManager {
             // Using island bank as prestige reward (fits the economy loop)
             GridPosition pos = island.getGridPosition();
             plugin.getIslandBankManager().deposit(pos, money);
-            player.sendMessage("§a+§e$" + String.format("%,.0f", money) + " §7added to island bank (Prestige reward)");
+            MessageUtil.sendMessage(player, "§a+§e$" + String.format("%,.0f", money) + " §7added to island bank (Prestige reward)");
         }
 
         // Simple item rewards (parse "MATERIAL:amount")
@@ -200,7 +245,7 @@ public class PrestigeManager {
 
         String title = rewardsSec.getString("title");
         if (title != null) {
-            player.sendMessage("§6Prestige Title Unlocked: " + title);
+            MessageUtil.sendMessage(player, "§6Prestige Title Unlocked: " + title);
             // Future: store per-player titles
         }
     }

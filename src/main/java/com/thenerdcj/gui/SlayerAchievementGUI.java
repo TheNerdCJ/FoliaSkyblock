@@ -3,6 +3,7 @@ package com.thenerdcj.gui;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.boss.SlayerAchievement;
 import com.thenerdcj.boss.AchievementCategory;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -45,8 +46,8 @@ public class SlayerAchievementGUI implements Listener {
         int achievementsPerPage = 6;
         int totalPages = (int) Math.ceil(allAchievements.length / (double) achievementsPerPage);
 
-        Inventory gui = Bukkit.createInventory(null, 54,
-                "§6§lSlayer Achievements §7(Page " + (page + 1) + "/" + totalPages + ")");
+        String title = "§6§lSlayer Achievements §7(Page " + (page + 1) + "/" + totalPages + ")";
+        Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy(title));
 
         // Header
         double completion = plugin.getBossManager().getAchievementManager()
@@ -156,17 +157,6 @@ public class SlayerAchievementGUI implements Listener {
     }
 
     private ItemStack createItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-
-        if (meta != null) {
-            meta.setDisplayName(name);
-            if (lore.length > 0) {
-                meta.setLore(java.util.Arrays.asList(lore));
-            }
-            item.setItemMeta(meta);
-        }
-
-        return item;
+        return GUIUtils.createItem(material, name, lore);
     }
 }

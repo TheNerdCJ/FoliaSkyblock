@@ -1,6 +1,8 @@
 package com.thenerdcj.gui;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.island.Island;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -14,7 +16,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public class ResetConfirmationGUI implements Listener {
@@ -33,80 +37,106 @@ public class ResetConfirmationGUI implements Listener {
         }
     }
 
-    /**
-     * Open the reset confirmation GUI for a specific dimension.
-     * This allows proper multi-dimension reset flow with biome reselection for donors.
-     */
     public void open(Player player, World.Environment dimension) {
         int cost = plugin.getConfig().getInt("island.reset.cost", 0);
-        long cooldownHours = plugin.getConfig().getLong("island.reset.cooldown-hours", 24);
+
+        boolean inCombat = plugin.getIslandManager().isPlayerInCombat(player);
+        boolean hasActiveBoss = plugin.getIslandManager().hasActiveBossOnDimension(player.getUniqueId(), dimension);
+
+        int remainingHours = plugin.getIslandManager().getResetCooldownRemainingHours(player);
+        int remainingMinutes = plugin.getIslandManager().getResetCooldownRemainingMinutes(player);
 
         CompletableFuture<Double> balanceFuture = plugin.getEconomyManager().getBalance(player.getUniqueId());
 
         balanceFuture.thenAccept(balance -> {
             plugin.getThreadSafety().runOnMainThread(() -> {
-                Inventory gui = Bukkit.createInventory(null, 27, GUI_TITLE);
+                Inventory gui = Bukkit.createInventory(null, 36, MessageUtil.legacy(GUI_TITLE));
 
-                // Warning
-                ItemStack warning = new ItemStack(Material.TNT);
-                ItemMeta warningMeta = warning.getItemMeta();
-                warningMeta.setDisplayName("§c§lWARNING");
-                warningMeta.setLore(Arrays.asList(
-                        "§7This will permanently reset your island in §e" + dimension.name() + "§7!",
-                        "§7All blocks and items will be lost.",
-                        "",
-                        cost > 0 ? "§6Cost: §e" + cost + " §7from your balance" : "§aFree reset",
-                        cooldownHours > 0 ? "§7Cooldown: §e" + cooldownHours + " hours" : ""
-                ));
-                warning.setItemMeta(warningMeta);
+                // Warning Item - modernized
+                List<String> warningLore = new ArrayList<>();
+                warningLore.add("§7This will permanently reset your island in §e" + dimension.name() + "§7 only!");
+                warningLore.add("§7All progress in this dimension will be lost.");
+                warningLore.add("");
+                if (inCombat) warningLore.add("§c§l⚠ You are currently in combat!");
+                if (hasActiveBoss) warningLore.add("§c§l⚠ Active boss detected on this dimension!");
+                warningLore.add("");
+                warningLore.add(cost > 0 ? "§6Cost: §e" + cost : "§aFree reset");
+
+                ItemStack warning = GUIUtils.createItem(Material.TNT, "§c§lWARNING - RESET " + dimension.name(), warningLore.toArray(new String[0]));
                 gui.setItem(4, warning);
 
-                // Live Balance
-                ItemStack balanceItem = new ItemStack(Material.GOLD_INGOT);
-                ItemMeta balanceMeta = balanceItem.getItemMeta();
-                balanceMeta.setDisplayName("§6§lYour Current Balance");
-                balanceMeta.setLore(Arrays.asList(
-                        "§e" + String.format("%,.2f", balance),
-                        cost > 0 ? (balance >= cost ? "§aYou can afford this reset" : "§cYou cannot afford this reset") : ""
-                ));
-                balanceItem.setItemMeta(balanceMeta);
-                gui.setItem(13, balanceItem);
-
-                // Confirm - store dimension in PDC for click handler
-                ItemStack confirm = new ItemStack(Material.EMERALD_BLOCK);
-                ItemMeta confirmMeta = confirm.getItemMeta();
-                confirmMeta.setDisplayName("§a§lCONFIRM RESET");
-                if (cost > 0) {
-                    confirmMeta.setLore(Arrays.asList(
-                            "§7This will deduct §e" + cost + "§7 from your balance",
-                            balance >= cost ? "§aYou have enough balance" : "§cInsufficient balance",
-                            "§7Then choose new biome for §e" + dimension.name()
-                    ));
+                // === COOLDOWN TIMER (Smart: shows minutes when low) ===
+                List<String> cooldownLore = new ArrayList<>();
+                if (remainingMinutes > 0) {
+                    cooldownLore.add("§cOn Cooldown");
+                    if (remainingHours >= 2) {
+                        cooldownLore.add("§7Time remaining: §e" + remainingHours + " hour(s)");
+                    } else {
+                        cooldownLore.add("§7Time remaining: §e" + remainingMinutes + " minute(s)");
+                    }
+                    cooldownLore.add("§7You cannot reset yet.");
                 } else {
-                    confirmMeta.setLore(Arrays.asList(
-                            "§7Click to choose new biome for §e" + dimension.name()
-                    ));
+                    cooldownLore.add("§aReady to Reset");
+                    cooldownLore.add("§7No active cooldown.");
                 }
-                // Embed target dimension so click handler knows which dim to reset
+
+                ItemStack cooldownItem = GUIUtils.createItem(Material.CLOCK, "§e§lReset Cooldown", cooldownLore.toArray(new String[0]));
+                gui.setItem(13, cooldownItem);
+
+                // Safety Status
+                List<String> statusLore = new ArrayList<>();
+                statusLore.add(inCombat ? "§c✖ In Combat" : "§a✔ Not in combat");
+                statusLore.add(hasActiveBoss ? "§c✖ Active boss on dimension" : "§a✔ No active boss");
+
+                ItemStack status = GUIUtils.createItem(Material.REDSTONE_TORCH, "§e§lSafety Status", statusLore.toArray(new String[0]));
+                gui.setItem(22, status);
+
+                // Balance
+                ItemStack balanceItem = GUIUtils.createItem(Material.GOLD_INGOT, "§6§lYour Balance", "§e" + String.format("%,.2f", balance));
+                gui.setItem(31, balanceItem);
+
+                // Confirm / Disabled Button
+                boolean isBlocked = inCombat || hasActiveBoss || remainingMinutes > 0;
                 NamespacedKey dimKey = new NamespacedKey(plugin, "target_dimension");
-                confirmMeta.getPersistentDataContainer().set(dimKey, PersistentDataType.STRING, dimension.name());
-                confirm.setItemMeta(confirmMeta);
-                gui.setItem(11, confirm);
+
+                ItemStack confirmItem;
+                if (!isBlocked) {
+                    List<String> confirmLore = new ArrayList<>();
+                    confirmLore.add("§7Click to reset your " + dimension.name() + " island.");
+                    if (cost > 0) confirmLore.add("§7Cost: §e" + cost);
+                    confirmLore.add("§cThis cannot be undone!");
+
+                    confirmItem = GUIUtils.createItem(Material.EMERALD_BLOCK, "§a§lCONFIRM RESET", confirmLore.toArray(new String[0]));
+                } else {
+                    List<String> blockedLore = new ArrayList<>();
+                    if (inCombat) blockedLore.add("§cYou are currently in combat.");
+                    if (hasActiveBoss) blockedLore.add("§cThere is an active boss on this dimension.");
+                    if (remainingMinutes > 0) {
+                        if (remainingHours >= 2) {
+                            blockedLore.add("§cOn cooldown for §e" + remainingHours + " hour(s).");
+                        } else {
+                            blockedLore.add("§cOn cooldown for §e" + remainingMinutes + " minute(s).");
+                        }
+                    }
+                    blockedLore.add("§7Resolve the issues above to enable reset.");
+
+                    confirmItem = GUIUtils.createItem(Material.GRAY_STAINED_GLASS_PANE, "§c§lRESET BLOCKED", blockedLore.toArray(new String[0]));
+                }
+
+                ItemMeta confirmMeta = confirmItem.getItemMeta();
+                if (confirmMeta != null) {
+                    confirmMeta.getPersistentDataContainer().set(dimKey, PersistentDataType.STRING, dimension.name());
+                    confirmItem.setItemMeta(confirmMeta);
+                }
+                gui.setItem(11, confirmItem);
 
                 // Cancel
-                ItemStack cancel = new ItemStack(Material.REDSTONE_BLOCK);
-                ItemMeta cancelMeta = cancel.getItemMeta();
-                cancelMeta.setDisplayName("§c§lCANCEL");
-                cancelMeta.setLore(Arrays.asList("§7Click to cancel"));
-                cancel.setItemMeta(cancelMeta);
+                ItemStack cancel = GUIUtils.createItem(Material.REDSTONE_BLOCK, "§c§lCANCEL", "§7Click to go back");
                 gui.setItem(15, cancel);
 
-                // Fill with glass
-                ItemStack glass = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-                ItemMeta glassMeta = glass.getItemMeta();
-                glassMeta.setDisplayName(" ");
-                glass.setItemMeta(glassMeta);
-                for (int i = 0; i < 27; i++) {
+                // Fill empty using GUIUtils
+                ItemStack glass = GUIUtils.createItem(Material.GRAY_STAINED_GLASS_PANE, " ");
+                for (int i = 0; i < 36; i++) {
                     if (gui.getItem(i) == null) gui.setItem(i, glass);
                 }
 
@@ -115,16 +145,13 @@ public class ResetConfirmationGUI implements Listener {
         });
     }
 
-    /**
-     * Convenience overload - uses player's current world environment.
-     */
     public void open(Player player) {
         open(player, player.getWorld().getEnvironment());
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!event.getView().getTitle().equals(GUI_TITLE)) return;
+        if (!event.getView().getTitle().startsWith("§c§lConfirm Island Reset")) return;
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();
@@ -134,7 +161,34 @@ public class ResetConfirmationGUI implements Listener {
         if (clicked.getType() == Material.EMERALD_BLOCK) {
             player.closeInventory();
 
-            int cost = plugin.getConfig().getInt("island.reset.cost", 0);
+            // === Read dimension FIRST (must be effectively final for lambda) ===
+            World.Environment targetDimension = player.getWorld().getEnvironment();
+
+            ItemMeta meta = clicked.getItemMeta();
+            if (meta != null) {
+                String dimStr = meta.getPersistentDataContainer().get(
+                        new NamespacedKey(plugin, "target_dimension"), PersistentDataType.STRING);
+                if (dimStr != null) {
+                    try {
+                        targetDimension = World.Environment.valueOf(dimStr);
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+            }
+
+            // Final reference for use inside lambdas
+            final World.Environment dimension = targetDimension;
+
+            // Re-check safety
+            if (plugin.getIslandManager().isPlayerInCombat(player)) {
+                player.sendMessage("§cYou cannot reset while in combat!");
+                return;
+            }
+
+            if (plugin.getIslandManager().hasActiveBossOnDimension(player.getUniqueId(), dimension)) {
+                player.sendMessage("§cYou cannot reset while a boss is active on this dimension!");
+                return;
+            }
 
             if (!plugin.getIslandManager().canReset(player)) {
                 long remaining = plugin.getIslandManager().getResetCooldownRemainingHours(player);
@@ -142,44 +196,31 @@ public class ResetConfirmationGUI implements Listener {
                 return;
             }
 
-            // Read target dimension first (safe on main thread)
-            ItemMeta meta = clicked.getItemMeta();
-            World.Environment computedDim = player.getWorld().getEnvironment();
-            if (meta != null) {
-                String dimStr = meta.getPersistentDataContainer().get(
-                        new NamespacedKey(plugin, "target_dimension"), PersistentDataType.STRING);
-                if (dimStr != null) {
-                    try {
-                        computedDim = World.Environment.valueOf(dimStr);
-                    } catch (IllegalArgumentException ignored) {}
-                }
-            }
-            final World.Environment targetDim = computedDim;
+            int cost = plugin.getConfig().getInt("island.reset.cost", 0);
 
             if (cost > 0) {
-                // Async economy check + deduction
                 plugin.getEconomyManager().getBalance(player.getUniqueId()).thenAccept(currentBalance -> {
                     if (currentBalance < cost) {
-                        plugin.getThreadSafety().sendMessageSafely(player, "§cYou need at least §e" + cost + "§c to reset your island.");
+                        plugin.getThreadSafety().sendMessageSafely(player, "§cYou need at least §e" + cost + "§c to reset.");
                         return;
                     }
 
                     plugin.getEconomyManager().removeBalance(player.getUniqueId(), cost).thenRun(() -> {
-                        plugin.getThreadSafety().sendMessageSafely(player, "§a§l" + cost + "§a has been deducted from your balance.");
-
-                        // Open biome GUI on main thread
+                        plugin.getThreadSafety().sendMessageSafely(player, "§a§l" + cost + "§a has been deducted.");
                         plugin.getThreadSafety().runOnMainThread(() -> {
-                            plugin.getBiomeSelectionGUI().open(player, true, targetDim);
+                            plugin.getBiomeSelectionGUI().open(player, true, dimension);
                         });
                     });
                 });
                 return;
             }
 
-            // No cost - open biome GUI directly
-            plugin.getBiomeSelectionGUI().open(player, true, targetDim);
-        }
-        else if (clicked.getType() == Material.REDSTONE_BLOCK) {
+            // No cost → go directly to biome selection
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                plugin.getBiomeSelectionGUI().open(player, true, dimension);
+            });
+
+        } else if (clicked.getType() == Material.REDSTONE_BLOCK) {
             player.closeInventory();
             player.sendMessage("§7Island reset cancelled.");
         }

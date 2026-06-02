@@ -146,6 +146,7 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_balances (uuid TEXT PRIMARY KEY, balance REAL DEFAULT 0)",
                 "CREATE TABLE IF NOT EXISTS island_balances (grid_x INTEGER, grid_z INTEGER, dimension TEXT, balance REAL DEFAULT 0, PRIMARY KEY(grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS island_levels (island_key TEXT PRIMARY KEY, xp REAL DEFAULT 0, level INTEGER DEFAULT 1)",
+                "CREATE TABLE IF NOT EXISTS player_dimension_resets (player_uuid TEXT, dimension TEXT, last_reset INTEGER, PRIMARY KEY (player_uuid, dimension))",
                 "CREATE TABLE IF NOT EXISTS island_upgrades (island_key TEXT, upgrade_type TEXT, level INTEGER, PRIMARY KEY(island_key, upgrade_type))",
                 "CREATE TABLE IF NOT EXISTS island_skills (island_key TEXT, skill_name TEXT, xp REAL DEFAULT 0, level INTEGER DEFAULT 1, PRIMARY KEY(island_key, skill_name))",
                 "CREATE TABLE IF NOT EXISTS island_milestones (island_key TEXT, milestone_id TEXT, completed_at INTEGER, PRIMARY KEY(island_key, milestone_id))",
@@ -1740,5 +1741,58 @@ public class DatabaseManager {
         } catch (SQLException e) {
             plugin.getLogger().severe("[Prestige] saveIslandLevel failed: " + e.getMessage());
         }
+    }
+
+    // ==================== DIMENSION RESET TRACKING (for per-dimension resets) ====================
+    /**
+     * Records that a player has reset a specific dimension.
+     * This enables per-dimension cooldowns (instead of a single global cooldown).
+     * Also updates the legacy global last_reset column on the islands table for backward compatibility.
+     */
+    public void recordIslandReset(UUID playerUuid, World.Environment dimension) {
+        long now = System.currentTimeMillis();
+
+        // 1. Record per-dimension reset
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO player_dimension_resets (player_uuid, dimension, last_reset) VALUES (?, ?, ?)")) {
+            ps.setString(1, playerUuid.toString());
+            ps.setString(2, dimension.name());
+            ps.setLong(3, now);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] recordIslandReset (per-dimension) failed: " + e.getMessage());
+        }
+
+        // 2. Update legacy global last_reset on the islands table (for older code paths)
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE islands SET last_reset = ? WHERE owner_uuid = ?")) {
+            ps.setLong(1, now);
+            ps.setString(2, playerUuid.toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] recordIslandReset (legacy global) failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Returns the timestamp (ms) of the last time this player reset the given dimension.
+     * Falls back to 0 if no per-dimension record exists.
+     */
+    public long getLastDimensionReset(UUID playerUuid, World.Environment dimension) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT last_reset FROM player_dimension_resets WHERE player_uuid = ? AND dimension = ?")) {
+            ps.setString(1, playerUuid.toString());
+            ps.setString(2, dimension.name());
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getLong("last_reset");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[Database] getLastDimensionReset failed: " + e.getMessage());
+        }
+        return 0;
     }
 }

@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.boss.BossManager;
 import com.thenerdcj.cosmetic.ParticleTrail;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -17,12 +18,16 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.Arrays;
-
 /**
  * Dedicated Slayer Shop / Vendor.
  * Players spend Slayer Tokens (earned from Slayer quests and Island Boss Events)
  * on exclusive gear, crates, boosters, and cosmetics.
+ *
+ * Deep modernization pass:
+ * - All three manual creation helpers (createItem, createShopItem, createTrailShopItem) converted to GUIUtils.createItem + PDC attachment helpers.
+ * - Title now uses MessageUtil.legacy.
+ * - Preserved full PDC routing for trail purchases (ACTION_KEY + TRAIL_KEY), prestige gating, token consumption via BossManager, and legacy name-based gear/key purchases.
+ * - Integrates with PrestigeManager, ParticleTrailManager, CrateManager.
  */
 public class SlayerShopGUI implements Listener {
 
@@ -40,9 +45,9 @@ public class SlayerShopGUI implements Listener {
     }
 
     public void open(Player player, Island island) {
-        Inventory gui = Bukkit.createInventory(null, 54, "§6§lSlayer Shop - Spend Tokens");
+        Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lSlayer Shop - Spend Tokens"));
 
-        // Header
+        // Header - modernized
         gui.setItem(4, createItem(Material.NETHER_STAR, "§6§lSlayer Shop",
                 "§7Earn Slayer Tokens from quests & island bosses",
                 "§7Spend them here for exclusive rewards!"));
@@ -83,56 +88,46 @@ public class SlayerShopGUI implements Listener {
     }
 
     private ItemStack createTrailShopItem(String label, ParticleTrail trail, Material mat) {
-        ItemStack item = new ItemStack(mat);
+        // Base item via GUIUtils (modernized)
+        ItemStack item = GUIUtils.createItem(mat, "§dUnlock " + label,
+                "§7Personal cosmetic trail / aura",
+                "",
+                "§7Prestige Req: §b" + trail.getMinPrestige(),
+                "§6Cost: §e" + trail.getTokenCost() + " Slayer Tokens",
+                (trail.getTokenCost() == 0 ? "§aFREE Prestige Reward" : ""),
+                "",
+                "§aClick to purchase & unlock",
+                "§8Opens in your trail collection");
+
+        // Attach the two PDCs for robust trail purchase routing (preserved exactly)
+        attachTrailPDCs(item, trail);
+        return item;
+    }
+
+    private void attachTrailPDCs(ItemStack item, ParticleTrail trail) {
+        if (item == null) return;
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName("§dUnlock " + label);
-            java.util.List<String> lore = new java.util.ArrayList<>();
-            lore.add("§7Personal cosmetic trail / aura");
-            lore.add("");
-            lore.add("§7Prestige Req: §b" + trail.getMinPrestige());
-            lore.add("§6Cost: §e" + trail.getTokenCost() + " Slayer Tokens");
-            if (trail.getTokenCost() == 0) {
-                lore.add("§aFREE Prestige Reward");
-            }
-            lore.add("");
-            lore.add("§aClick to purchase & unlock");
-            lore.add("§8Opens in your trail collection");
             PersistentDataContainer pdc = meta.getPersistentDataContainer();
             pdc.set(ACTION_KEY, PersistentDataType.STRING, "BUY_TRAIL");
             pdc.set(TRAIL_KEY, PersistentDataType.STRING, trail.name());
-            meta.setLore(lore);
             item.setItemMeta(meta);
         }
-        return item;
     }
 
     private ItemStack createShopItem(String name, Material mat, int tokenCost, String... lore) {
-        ItemStack item = new ItemStack(mat);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            java.util.List<String> fullLore = new java.util.ArrayList<>();
-            fullLore.add("§6Cost: §e" + tokenCost + " Slayer Tokens");
-            fullLore.add("");
-            fullLore.addAll(Arrays.asList(lore));
-            fullLore.add("");
-            fullLore.add("§aClick to purchase");
-            meta.setLore(fullLore);
-            item.setItemMeta(meta);
-        }
-        return item;
+        java.util.List<String> fullLore = new java.util.ArrayList<>();
+        fullLore.add("§6Cost: §e" + tokenCost + " Slayer Tokens");
+        fullLore.add("");
+        fullLore.addAll(java.util.Arrays.asList(lore));
+        fullLore.add("");
+        fullLore.add("§aClick to purchase");
+
+        return GUIUtils.createItem(mat, name, fullLore.toArray(new String[0]));
     }
 
     private ItemStack createItem(Material mat, String name, String... lore) {
-        ItemStack item = new ItemStack(mat);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            meta.setLore(Arrays.asList(lore));
-            item.setItemMeta(meta);
-        }
-        return item;
+        return GUIUtils.createItem(mat, name, lore);
     }
 
     @EventHandler

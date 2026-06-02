@@ -16,8 +16,13 @@ import org.bukkit.persistence.PersistentDataType;
 import java.util.*;
 
 /**
- * Pilot-refactored to extend BaseGUI + use GUIUtils.
- * Significant duplication removed (open/nav/click skeleton now inherited).
+ * Particle Trail selection GUI (extends BaseGUI).
+ *
+ * Final modernization pass:
+ * - Last remaining manual `new ItemStack(icon) + getItemMeta() + PDC` block
+ *   in populatePage converted to `GUIUtils.createItem` + attach helper.
+ * - All other item creation already using GUIUtils (preserved).
+ * - Full consistency with the GUI modernization standard.
  */
 public class ParticleTrailGUI extends BaseGUI {
 
@@ -118,16 +123,8 @@ public class ParticleTrailGUI extends BaseGUI {
             lore.add("");
             lore.add(statusLine);
 
-            ItemStack item = new ItemStack(icon);
-            ItemMeta meta = item.getItemMeta();
-            if (meta != null) {
-                meta.setDisplayName("§e" + trail.getDisplayName());
-                meta.setLore(lore);
-                PersistentDataContainer pdc = meta.getPersistentDataContainer();
-                pdc.set(ACTION_KEY, PersistentDataType.STRING, actionValue);
-                pdc.set(TRAIL_ID_KEY, PersistentDataType.STRING, trail.name());
-                item.setItemMeta(meta);
-            }
+            ItemStack item = GUIUtils.createItem(icon, "§e" + trail.getDisplayName(), lore.toArray(new String[0]));
+            attachTrailPDCs(item, actionValue, trail);
             gui.setItem(slot, item);
             slot++;
         }
@@ -187,5 +184,16 @@ public class ParticleTrailGUI extends BaseGUI {
             case DRAGON_BREATH -> Material.DRAGON_BREATH;
             default -> Material.FIREWORK_ROCKET;
         };
+    }
+
+    private void attachTrailPDCs(ItemStack item, String actionValue, ParticleTrail trail) {
+        if (item == null) return;
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, actionValue);
+            pdc.set(TRAIL_ID_KEY, PersistentDataType.STRING, trail.name());
+            item.setItemMeta(meta);
+        }
     }
 }

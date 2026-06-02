@@ -2,6 +2,7 @@ package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.cosmetic.ParticleTrail;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -18,7 +19,7 @@ public class ParticleCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("§cOnly players can use this command.");
+            MessageUtil.sendMessage(sender, "§cOnly players can use this command.");
             return true;
         }
 
@@ -35,7 +36,7 @@ public class ParticleCommand implements CommandExecutor {
                 if (plugin.getParticleTrailGUI() != null) {
                     plugin.getParticleTrailGUI().open(player, 0);
                 } else {
-                    player.sendMessage("§eParticle Trail GUI not available.");
+                    MessageUtil.sendMessage(player, "§eParticle Trail GUI not available.");
                 }
                 break;
 
@@ -51,7 +52,7 @@ public class ParticleCommand implements CommandExecutor {
                     ParticleTrail trail = ParticleTrail.valueOf(sub.toUpperCase());
                     plugin.getParticleTrailManager().setActiveTrail(player, trail);
                 } catch (IllegalArgumentException e) {
-                    player.sendMessage("§cUnknown trail: " + sub);
+                    MessageUtil.sendMessage(player, "§cUnknown trail: " + sub);
                     showHelp(player);
                 }
         }
@@ -60,12 +61,12 @@ public class ParticleCommand implements CommandExecutor {
     }
 
     private void showHelp(Player player) {
-        player.sendMessage("§6§l=== Particle Trails ===");
-        player.sendMessage("§e/trail list §7- Open trail menu");
-        player.sendMessage("§e/trail off §7- Disable your trail");
-        player.sendMessage("§e/trail <name> §7- Activate a trail (e.g. flame, heart)");
-        player.sendMessage("");
-        player.sendMessage("§7Available: §aFLAME, HEART, SOUL, RAINBOW, DRAGON, ELECTRIC, NOTE, DUST, VOID...");
-        player.sendMessage("§8Unlock via Prestige levels (some free) or Slayer Shop + /trail menu");
+        MessageUtil.sendMessage(player, "§6§l=== Particle Trails ===");
+        MessageUtil.sendMessage(player, "§e/trail list §7- Open trail menu");
+        MessageUtil.sendMessage(player, "§e/trail off §7- Disable your trail");
+        MessageUtil.sendMessage(player, "§e/trail <name> §7- Activate a trail (e.g. flame, heart)");
+        MessageUtil.sendMessage(player, "");
+        MessageUtil.sendMessage(player, "§7Available: §aFLAME, HEART, SOUL, RAINBOW, DRAGON, ELECTRIC, NOTE, DUST, VOID...");
+        MessageUtil.sendMessage(player, "§8Unlock via Prestige levels (some free) or Slayer Shop + /trail menu");
     }
 }

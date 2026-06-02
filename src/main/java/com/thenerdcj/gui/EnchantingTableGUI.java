@@ -198,15 +198,6 @@ public class EnchantingTableGUI implements Listener {
     }
 
     private ItemStack createItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            if (lore.length > 0) {
-                meta.setLore(java.util.Arrays.asList(lore));
-            }
-            item.setItemMeta(meta);
-        }
-        return item;
+        return GUIUtils.createItem(material, name, lore);
     }
 }
