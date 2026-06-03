@@ -57,6 +57,13 @@ public class DatabaseManager {
     private CosmeticDAO cosmeticDAO; // Player cosmetic ownership/active/collections (many player_* tables)
     private PendingItemsDAO pendingItemsDAO; // For pending_items table (misc step)
 
+    // Task 3: final remaining DAOs extracted (player skills + island_levels XP/level - was inline for island_levels/player_skills tables)
+    private SkillDAO skillDAO;
+    private IslandLevelDAO islandLevelDAO;
+
+    // Task batch: Full inline-to-DAO for fuel (worth already in IslandDAO; fuel was direct inline in DBManager)
+    private IslandFuelDAO islandFuelDAO;
+
     public IslandDAO getIslandDAO() {
         return islandDAO;
     }
@@ -89,6 +96,13 @@ public class DatabaseManager {
         return pendingItemsDAO;
     }
 
+    // Task 3: getters for extracted remaining DAOs (skills + island level/xp)
+    public SkillDAO getSkillDAO() { return skillDAO; }
+    public IslandLevelDAO getIslandLevelDAO() { return islandLevelDAO; }
+
+    // Task batch: getter for fuel DAO (worth via getIslandDAO)
+    public IslandFuelDAO getIslandFuelDAO() { return islandFuelDAO; }
+
     // For test support (H2 in-memory)
     private String jdbcUrlOverride = null;
 
@@ -114,6 +128,9 @@ public class DatabaseManager {
         this.punishmentDAO = new PunishmentDAO(plugin, dbOps);
         this.cosmeticDAO = new CosmeticDAO(plugin, dbOps);
         this.pendingItemsDAO = new PendingItemsDAO(plugin, dbOps);
+        this.skillDAO = new SkillDAO(plugin, dbOps);
+        this.islandLevelDAO = new IslandLevelDAO(plugin, dbOps);
+        this.islandFuelDAO = new IslandFuelDAO(plugin, dbOps);
     }
 
     /**
@@ -135,6 +152,9 @@ public class DatabaseManager {
         this.punishmentDAO = new PunishmentDAO(plugin, dbOps);
         this.cosmeticDAO = new CosmeticDAO(plugin, dbOps);
         this.pendingItemsDAO = new PendingItemsDAO(plugin, dbOps);
+        this.skillDAO = new SkillDAO(plugin, dbOps);
+        this.islandLevelDAO = new IslandLevelDAO(plugin, dbOps);
+        this.islandFuelDAO = new IslandFuelDAO(plugin, dbOps);
     }
 
     public void initDatabase() {
@@ -203,6 +223,8 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_ranks (uuid TEXT PRIMARY KEY, rank_name TEXT, upvotes INTEGER DEFAULT 0)",
                 "CREATE TABLE IF NOT EXISTS island_minions (island_key TEXT, minion_type TEXT, level INTEGER, PRIMARY KEY(island_key, minion_type))",
                 "CREATE TABLE IF NOT EXISTS island_fuel (island_key TEXT PRIMARY KEY, fuel_amount INTEGER DEFAULT 1000)",
+                "CREATE TABLE IF NOT EXISTS island_museum (island_key TEXT PRIMARY KEY, donated TEXT DEFAULT '', tokens INTEGER DEFAULT 0)", // task batch: full persist for museum
+                "CREATE TABLE IF NOT EXISTS island_museum_donations (island_key TEXT, material TEXT, count INTEGER DEFAULT 0, PRIMARY KEY (island_key, material))", // per-donation rows + count for zero-dep (fallback for Gson provided scope issues on non-standard servers)
                 "CREATE TABLE IF NOT EXISTS island_missions (id TEXT PRIMARY KEY, island_key TEXT, owner_uuid TEXT, type TEXT, objective TEXT, target_material TEXT, target INTEGER, progress INTEGER, reward_money INTEGER, reward_xp INTEGER, reward_item_base64 TEXT, reward_booster_type TEXT, reward_booster_duration INTEGER, completed BOOLEAN, claimed BOOLEAN, created_at INTEGER, expires_at INTEGER, title TEXT, description TEXT)",
                 "CREATE TABLE IF NOT EXISTS island_boosters (island_key TEXT, booster_type TEXT, multiplier REAL, expires_at INTEGER, PRIMARY KEY(island_key, booster_type))",
                 "CREATE TABLE IF NOT EXISTS auctions (id TEXT PRIMARY KEY, seller_uuid TEXT, item_base64 TEXT, price REAL, end_time INTEGER, sold BOOLEAN DEFAULT 0, buyer_uuid TEXT)",
@@ -1042,6 +1064,17 @@ public class DatabaseManager {
 
     public void savePlayerSkill(UUID uuid, String skill, double xp, int level) {
         if (uuid == null || skill == null) return;
+        // Task 3: delegate to extracted SkillDAO (modularization complete for this path)
+        if (skillDAO != null) {
+            try {
+                Island.Skill sk = Island.Skill.valueOf(skill.toUpperCase());
+                skillDAO.savePlayerSkill(uuid, sk, xp, level).join();
+            } catch (Exception e) {
+                plugin.getLogger().severe("[Skills] DAO delegate failed: " + e.getMessage());
+            }
+            return;
+        }
+        // fallback legacy
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "INSERT OR REPLACE INTO player_skills (uuid, skill, xp, level) VALUES (?, ?, ?, ?)")) {
@@ -1805,6 +1838,10 @@ public class DatabaseManager {
     // ==================== ISLAND FUEL PERSISTENCE (Polished) ====================
 
     public CompletableFuture<Boolean> saveIslandFuel(String islandKey, int fuelAmount) {
+        // Full DAO extraction (task batch): delegate to IslandFuelDAO; fallback for compat during transition.
+        if (islandFuelDAO != null) {
+            return islandFuelDAO.saveIslandFuel(islandKey, fuelAmount);
+        }
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
@@ -1821,6 +1858,9 @@ public class DatabaseManager {
     }
 
     public CompletableFuture<Integer> loadIslandFuel(String islandKey) {
+        if (islandFuelDAO != null) {
+            return islandFuelDAO.loadIslandFuel(islandKey);
+        }
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(

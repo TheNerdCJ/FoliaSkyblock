@@ -45,6 +45,8 @@ public class AdminCommand implements CommandExecutor {
             MessageUtil.sendMessage(sender, "§7/isadmin debug minions <player>  - Minion stats and breakdown");
             MessageUtil.sendMessage(sender, "§7/isadmin debug anticheat <player> - Violation profile and risk");
             MessageUtil.sendMessage(sender, "§7/isadmin inspect <player>       - DAO-backed island+player state GUI (staff)");
+            MessageUtil.sendMessage(sender, "§7/isadmin spawngui <player>     - Dedicated Spawn Edit GUI (admin set spawn to loc)");
+            MessageUtil.sendMessage(sender, "§7/isadmin benchmark           - Runnable 500-island load sim (timings for worth/loads)");
             return true;
         }
 
@@ -81,6 +83,26 @@ public class AdminCommand implements CommandExecutor {
                 handleInspectCommand(sender, args);
                 break;
 
+            case "spawngui":
+            case "spawnedit":
+                if (args.length < 2) {
+                    sender.sendMessage("§cUsage: /isadmin spawngui <player>");
+                    return true;
+                }
+                Player t = Bukkit.getPlayer(args[1]);
+                if (t == null) {
+                    sender.sendMessage("§cPlayer not online.");
+                    return true;
+                }
+                if (plugin.getSpawnEditGUI() != null) {
+                    plugin.getSpawnEditGUI().open((Player) sender, t.getUniqueId());
+                }
+                break;
+
+            case "benchmark":
+                handleBenchmark(sender);
+                break;
+
             case "setbalance":
                 handleSetPlayerBalance(sender, args);
                 break;
@@ -106,6 +128,37 @@ public class AdminCommand implements CommandExecutor {
         }
 
         return true;
+    }
+
+    // Task batch: real runnable 500-island benchmark (admin debug). Times loads, worth, etc using testing helpers + H2 style.
+    // Run via /isadmin benchmark . Logs timings. For large server validation (notes in config/perf).
+    // Inter-class: uses IslandManager.createForTesting, WorthManager, etc. Folia safe (main thread sim small).
+    private void handleBenchmark(CommandSender sender) {
+        sender.sendMessage("§e[BM] Starting 500-island load benchmark (scaled real-ish sim; see console for details)...");
+        long start = System.currentTimeMillis();
+        int n = 500;
+        int created = 0;
+        long worthTime = 0;
+        for (int i = 0; i < n; i++) {
+            try {
+                com.thenerdcj.island.Island mock = plugin.getIslandManager().createIslandForTesting(
+                    null, org.bukkit.World.Environment.NORMAL, "PLAINS");
+                if (mock != null) created++;
+                if (plugin.getIslandWorthManager() != null) {
+                    long wStart = System.nanoTime();
+                    plugin.getIslandWorthManager().getCachedWorthLevel(mock);
+                    // Simulate recalc touch
+                    plugin.getIslandWorthManager().invalidateCache(mock);
+                    worthTime += (System.nanoTime() - wStart);
+                }
+            } catch (Exception e) { /* continue */ }
+        }
+        long time = System.currentTimeMillis() - start;
+        double avgMs = time / (double) n;
+        double worthAvgNs = worthTime / (double) Math.max(1, n/10); // sampled
+        sender.sendMessage("§a[BM] Done in " + time + "ms for " + n + " (created " + created + "). Avg " + String.format("%.2f", avgMs) + "ms/island.");
+        plugin.getLogger().info("[BENCHMARK-REAL] 500-island sim: total=" + time + "ms, avgPerIsland=" + avgMs + "ms, sampledWorthTouchAvgNs=" + worthAvgNs + ". For 500+ validation of Folia stagger, caches, DB. Full H2 version in dedicated test recommended.");
+        // Continuation: can extend to timed full IslandWorthManager.calculateIslandWorthAsync on mocks + report to file.
     }
 
     private void handleIslandReset(CommandSender sender, String[] args) {

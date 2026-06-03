@@ -43,4 +43,15 @@ class NeuralCheatDetectorTest {
         double prob = detector.getCheatProbability(profile);
         assertTrue(prob >= 0.0 && prob <= 1.0);
     }
+
+    // Task 6: more integration-like samples for museum/minion AC (party/dim flows tested in other DB tests)
+    @Test
+    void testTrainExpandedAbuseSamples() {
+        assertDoesNotThrow(() -> {
+            double[] minionMacro = {40.0, 25.0, 0.2, 80.0, 1, 0, 0, 0.85};
+            for (int i=0; i<15; i++) detector.train(minionMacro, 0.9);
+            double[] museumSpam = {1.0, 0.5, 15.0, 3.0, 0, 0, 1, 0.75};
+            detector.train(museumSpam, 0.7);
+        });
+    }
 }

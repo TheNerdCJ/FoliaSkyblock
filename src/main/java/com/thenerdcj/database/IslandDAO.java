@@ -1074,4 +1074,163 @@ public class IslandDAO extends BaseDAO {
             return publicWarps;
         });
     }
+
+    // ==================== TASK BATCH: FULL DB-PAGINATED TOPS FOR PAPI (and large server /is top) ====================
+    // Replaces simple cache iteration in PAPI expansion. Uses SQL ORDER BY + LIMIT OFFSET for 500+ islands scale.
+    // Inter-class: called from IslandManager (new wrappers) -> DBManager/IslandDAO -> PAPI expansion and GUIs.
+    // Folia: fully async CompletableFuture. PtW: pure play data (no pay multipliers).
+
+    /**
+     * DB-paginated top islands by XP/level (from island_levels joined or islands level).
+     * For PAPI %f oliaskyblock_top_level_N% etc.
+     */
+    public CompletableFuture<java.util.List<TopIslandEntry>> getTopIslandsByLevel(int limit, int offset) {
+        return supplyAsync(() -> {
+            java.util.List<TopIslandEntry> top = new java.util.ArrayList<>();
+            try {
+                return withConnection(conn -> {
+                    // Prefer island_levels for XP level (main progression); fallback to islands.level
+                    String sql = "SELECT i.owner_uuid, COALESCE(il.level, i.level) as lvl, i.dimension " +
+                                 "FROM islands i LEFT JOIN island_levels il ON (i.owner_uuid || '_' || i.dimension = il.island_key) " +
+                                 "ORDER BY lvl DESC LIMIT ? OFFSET ?";
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setInt(1, Math.max(1, limit));
+                        ps.setInt(2, Math.max(0, offset));
+                        ResultSet rs = ps.executeQuery();
+                        while (rs.next()) {
+                            try {
+                                UUID owner = UUID.fromString(rs.getString("owner_uuid"));
+                                int lvl = rs.getInt("lvl");
+                                String dim = rs.getString("dimension");
+                                top.add(new TopIslandEntry(owner, lvl, dim));
+                            } catch (Exception ignored) {}
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return top;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] getTopIslandsByLevel failed: " + e.getMessage());
+                return top;
+            }
+        });
+    }
+
+    /**
+     * DB-paginated top by worth (from island_worth table).
+     * Returns entries with worth populated.
+     */
+    public CompletableFuture<java.util.List<TopIslandEntry>> getTopIslandsByWorth(int limit, int offset) {
+        return supplyAsync(() -> {
+            java.util.List<TopIslandEntry> top = new java.util.ArrayList<>();
+            try {
+                return withConnection(conn -> {
+                    String sql = "SELECT w.grid_x, w.grid_z, w.dimension, w.worth, w.worth_level, i.owner_uuid " +
+                                 "FROM island_worth w JOIN islands i ON (w.grid_x = i.grid_x AND w.grid_z = i.grid_z AND w.dimension = i.dimension) " +
+                                 "ORDER BY w.worth DESC, w.worth_level DESC LIMIT ? OFFSET ?";
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setInt(1, Math.max(1, limit));
+                        ps.setInt(2, Math.max(0, offset));
+                        ResultSet rs = ps.executeQuery();
+                        while (rs.next()) {
+                            try {
+                                UUID owner = UUID.fromString(rs.getString("owner_uuid"));
+                                int lvl = rs.getInt("worth_level");
+                                String dim = rs.getString("dimension");
+                                double worth = rs.getDouble("worth");
+                                TopIslandEntry e = new TopIslandEntry(owner, lvl, dim, worth);
+                                top.add(e);
+                            } catch (Exception ignored) {}
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return top;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] getTopIslandsByWorth failed: " + e.getMessage());
+                return top;
+            }
+        });
+    }
+
+    // ==================== MUSEUM PERSIST (task batch: full persist for museum donations + tokens) ====================
+    // Per-donation DB rows table (island_museum_donations) for count/rarity support + zero-dep (addresses Gson provided scope runtime issues on non-standard servers; no Gson dep needed).
+    // Tokens in island_museum. Inter-class: MuseumManager <-> IslandDAO (via DB) <-> persist.
+    // Folia async. Play-to-Win: counts from actual donations only. Rarity derived in manager (e.g. material name).
+
+    public CompletableFuture<Boolean> saveMuseumData(String islandKey, java.util.Map<String, Integer> donatedCounts, int tokens) {
+        return supplyAsync(() -> {
+            try {
+                return withConnection(conn -> {
+                    try {
+                        // Update tokens (keep island_museum for tokens)
+                        try (PreparedStatement ps = conn.prepareStatement(
+                                "INSERT OR REPLACE INTO island_museum (island_key, donated, tokens) VALUES (?, '', ?)")) {
+                            ps.setString(1, islandKey);
+                            ps.setInt(2, tokens);
+                            ps.executeUpdate();
+                        }
+                        // Clear old donations for this key
+                        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM island_museum_donations WHERE island_key = ?")) {
+                            ps.setString(1, islandKey);
+                            ps.executeUpdate();
+                        }
+                        // Insert per-donation rows with count (for count/rarity)
+                        if (donatedCounts != null) {
+                            try (PreparedStatement ps = conn.prepareStatement(
+                                    "INSERT INTO island_museum_donations (island_key, material, count) VALUES (?, ?, ?)")) {
+                                for (java.util.Map.Entry<String, Integer> e : donatedCounts.entrySet()) {
+                                    ps.setString(1, islandKey);
+                                    ps.setString(2, e.getKey());
+                                    ps.setInt(3, e.getValue());
+                                    ps.executeUpdate();
+                                }
+                            }
+                        }
+                        return true;
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            } catch (Exception e) {
+                plugin.getLogger().warning("[IslandDAO] saveMuseumData failed: " + e.getMessage());
+                return false;
+            }
+        });
+    }
+
+    public CompletableFuture<Object[]> loadMuseumData(String islandKey) {
+        return supplyAsync(() -> {
+            try {
+                return withConnection(conn -> {
+                    try {
+                        int tokens = 0;
+                        try (PreparedStatement ps = conn.prepareStatement(
+                                "SELECT tokens FROM island_museum WHERE island_key = ?")) {
+                            ps.setString(1, islandKey);
+                            ResultSet rs = ps.executeQuery();
+                            if (rs.next()) tokens = rs.getInt("tokens");
+                        }
+                        java.util.Map<String, Integer> donated = new java.util.HashMap<>();
+                        try (PreparedStatement ps = conn.prepareStatement(
+                                "SELECT material, count FROM island_museum_donations WHERE island_key = ?")) {
+                            ps.setString(1, islandKey);
+                            ResultSet rs = ps.executeQuery();
+                            while (rs.next()) {
+                                donated.put(rs.getString("material"), rs.getInt("count"));
+                            }
+                        }
+                        return new Object[]{donated, tokens};
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            } catch (Exception e) {
+                plugin.getLogger().warning("[IslandDAO] loadMuseumData failed: " + e.getMessage());
+                return new Object[]{new java.util.HashMap<String, Integer>(), 0};
+            }
+        });
+    }
 }

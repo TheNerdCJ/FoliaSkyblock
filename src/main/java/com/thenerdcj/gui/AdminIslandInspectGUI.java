@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
  * Opened via /isadmin inspect <player> (or island owner).
  * Read-only for diagnostics / support (Play-to-Win audit friendly).
  *
+ * Task 7 polish: added spawn edit action (admin can set target island spawn to current loc for fix).
  * Data loaded via IslandDAO (bank/settings/worth/prestige/collections promoted), CosmeticDAO, BalanceDAO, PunishmentDAO.
  * Uses .join() for admin/staff tool (infrequent); production GUIs prefer full async + ThreadSafety.runOnMainThread.
  * TODO (follow-up): pagination for long lists (collections, furniture, logs - tags/puns/collections/furniture paged; more like overhead/emotes/logs follow); richer async non-join loads (data in runAsync background, build/open on main via ThreadSafety; no blocking in open caller); teleport action etc.
@@ -366,6 +367,23 @@ public class AdminIslandInspectGUI implements Listener {
             inspectTargets.remove(p.getUniqueId());
             return;
         }
+
+        // Task 7 polish: spawn edit for admin (set target island spawn to staff's current loc - fixes for 0,0 or issues)
+        ItemStack clicked = e.getCurrentItem();
+        if (clicked != null && clicked.getType() == Material.COMPASS && p.hasPermission("foliasb.admin")) {
+            UUID tgt = inspectTargets.get(p.getUniqueId());
+            if (tgt != null) {
+                Island isl = plugin.getIslandManager().getIsland(tgt, p.getWorld().getEnvironment());
+                if (isl != null) {
+                    isl.setSpawnLocation(p.getLocation());
+                    p.sendMessage("§a[Admin] Island spawn updated to your location.");
+                    // refresh (use 2-arg open; page state already updated)
+                    open(p, tgt);
+                }
+            }
+            return;
+        }
+
         // Pagination handling (advances TODO for pagination in inspect - now complete with target persist + re-open)
         if (e.getSlot() == 45 || e.getSlot() == 53) {
             UUID sid = p.getUniqueId();

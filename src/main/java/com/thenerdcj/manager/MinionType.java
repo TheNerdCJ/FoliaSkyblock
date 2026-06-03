@@ -22,7 +22,14 @@ public enum MinionType {
     // Expanded minions
     QUARTZ("Quartz", Material.QUARTZ, Material.QUARTZ, 0.65),
     BLAZE("Blaze", Material.BLAZE_ROD, Material.BLAZE_ROD, 0.45),
-    WITHER_SKELETON("Wither Skeleton", Material.COAL, Material.COAL, 0.55); // drops coal + chance for skulls in future
+    WITHER_SKELETON("Wither Skeleton", Material.COAL, Material.COAL, 0.55), // drops coal + chance for skulls in future
+    // Hypixel-aligned expansion (YT minion guides: more late-game + special)
+    NETHERITE("Netherite", Material.NETHERITE_SCRAP, Material.NETHERITE_SCRAP, 0.25),
+    GLOWSTONE("Glowstone", Material.GLOWSTONE_DUST, Material.GLOWSTONE, 0.7),
+    GRAVEL("Gravel", Material.GRAVEL, Material.GRAVEL, 1.1),
+    ACACIA("Acacia", Material.ACACIA_LOG, Material.ACACIA_LOG, 0.9),
+    INFERNO("Inferno", Material.MAGMA_CREAM, Material.MAGMA_CREAM, 0.35), // special high-tier like Hypixel
+    REVENANT("Revenant", Material.ROTTEN_FLESH, Material.ROTTEN_FLESH, 0.5); // slayer synergy
 
     private final String displayName;
     private final Material icon;

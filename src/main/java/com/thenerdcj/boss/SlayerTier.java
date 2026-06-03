@@ -214,7 +214,17 @@ public enum SlayerTier {
                     new SlayerReward("PRESTIGE_100", 1, 0.30),
                     new SlayerReward("BOOSTER_ISLAND_XP_120", 1, 0.25)
             ),
-            "§5§lThe ultimate slayer challenge!");
+            "§5§lThe ultimate slayer challenge!"),
+
+    // Task 4 expanded (Hypixel YT slayer progression: T5+ , inferno/blaze synergy, more drops like pet luck, rare mats)
+    INFERNO_SLAYER("Inferno Slayer V", EntityType.BLAZE, 5, 180, 4500, "Nether",
+            Arrays.asList(
+                    new SlayerReward(Material.MAGMA_CREAM, 64, 1.0),
+                    new SlayerReward(Material.NETHERITE_INGOT, 2, 0.2),
+                    new SlayerReward("MINION_INFERNO", 1, 0.15),  // special minion unlock
+                    new SlayerReward("PET_INFERNO", 1, 0.08)
+            ),
+            "§6§lInferno Demon Lord - matches top server depth!");
 
     private final String displayName;
     private final EntityType targetEntity;

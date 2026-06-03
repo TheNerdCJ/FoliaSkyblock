@@ -280,6 +280,10 @@ public class IslandWorthManager {
                     plugin.getDatabaseManager().getIslandDAO().saveIslandWorth(island.getGridPosition(), totalWorth, level, System.currentTimeMillis());
                 }
 
+                // Task 1: explicit tie - sync worthLevel to Island for getProgressionLevel() / display. Worth = economy value (tops, bank interest potential); XP level = play unlocks.
+                // Folia: called from RegionScheduler in FoliaSkyblock worth task (per-island).
+                island.syncWorthLevel(level);
+
                 // Persistence prepared (saveIslandWorth in DatabaseManager)
 
                 return totalWorth;

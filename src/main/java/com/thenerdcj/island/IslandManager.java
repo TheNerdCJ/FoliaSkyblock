@@ -37,12 +37,52 @@ public class IslandManager {
     private static final int MAX_CACHE_SIZE = 2000; // for position caches
     private static final int MAX_HOPPERS_PER_ISLAND = 100; // cap example for hoppers (large scale sink/perf)
 
+    // Task 1: Dimension level gates (enforced before grid alloc to prevent waste) + party XP config (PtW fair)
+    private int netherLevelReq = 15;
+    private int endLevelReq = 30;
+    private final Map<Integer, Double> partyXpMultipliers = new HashMap<>();
+
     public IslandManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
         this.databaseManager = plugin.getDatabaseManager();
         this.gridManager = plugin.getGridManager();
+        loadDimensionAndPartyConfig(); // Task 1: load gates + party multipliers for configurable PtW balancing + Folia-safe enforcement
         // Periodic cleanup for caches/CHM compression + hopper cap enforcement note
         plugin.getThreadSafety().runRepeatingOnMainThread(this::cleanupCaches, 20L * 60 * 5, 20L * 60 * 5);
+    }
+
+    private void loadDimensionAndPartyConfig() {
+        var c = plugin.getConfig();
+        netherLevelReq = c.getInt("island.dimension_requirements.nether", 15);
+        endLevelReq = c.getInt("island.dimension_requirements.end", 30);
+        partyXpMultipliers.clear();
+        if (c.isConfigurationSection("island.party.xp-multipliers")) {
+            for (String key : c.getConfigurationSection("island.party.xp-multipliers").getKeys(false)) {
+                try {
+                    int ps = Integer.parseInt(key);
+                    double mult = c.getDouble("island.party.xp-multipliers." + key, 1.0);
+                    partyXpMultipliers.put(ps, mult);
+                } catch (Exception ignored) {}
+            }
+        }
+        if (partyXpMultipliers.isEmpty()) {
+            partyXpMultipliers.put(1, 1.0); partyXpMultipliers.put(2, 0.85);
+            partyXpMultipliers.put(3, 0.75); partyXpMultipliers.put(4, 0.65);
+            partyXpMultipliers.put(5, 0.60);
+        }
+        // Push to Island for calculateXpMultiplier (and skill) - static for data class, server-side only (PtW + security: no player input affects mult)
+        Island.setPartyXpMultipliers(partyXpMultipliers);
+    }
+
+    public double getPartyXpMultiplier(int partySize) {
+        if (partySize <= 0) partySize = 1;
+        return partyXpMultipliers.getOrDefault(partySize, Math.max(0.55, 1.0 - (partySize - 1) * 0.12));
+    }
+
+    public int getDimensionLevelRequirement(World.Environment dim) {
+        if (dim == World.Environment.NETHER) return netherLevelReq;
+        if (dim == World.Environment.THE_END) return endLevelReq;
+        return 0;
     }
 
     // ==================== ISLAND CREATION ====================
@@ -57,6 +97,19 @@ public class IslandManager {
      * Only honored for actual donors. Purely cosmetic.
      */
     public CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension, boolean donorRerollPersonality) {
+        // === TASK 1: ENFORCE DIM LEVEL GATES (before allocating grid position - prevents waste/leaks) ===
+        // Uses main island XP level (from skills/play, not worth). Config driven. Play-to-Win: cannot buy/skip, must grind main.
+        // Cross-refs: Island.hasUnlocked* (soft), BiomeSelectionGUI (display), IslandCommand (pre-check), Island (level/xp).
+        if (dimension != World.Environment.NORMAL) {
+            int mainLvl = getMainIslandLevel(player.getUniqueId());
+            int req = getDimensionLevelRequirement(dimension);
+            if (mainLvl < req) {
+                MessageUtil.sendMessage(player, "§cYou need main island level §e" + req + "+ §cto create a " + dimension.name() + " island (your main: " + mainLvl + ").");
+                MessageUtil.sendMessage(player, "§7Progress via skills, quests, combat, building on your Overworld island.");
+                return CompletableFuture.completedFuture(false);
+            }
+        }
+
         return gridManager.createPlayerIsland(player.getUniqueId(), dimension)
                 .thenCompose(pos -> {
                     if (pos == null) {
@@ -87,6 +140,11 @@ public class IslandManager {
                                 }
 
                                 cacheIsland(player.getUniqueId(), island);
+
+                                // Task 1: mark unlocked for this dim now that gate passed (for hasUnlocked* queries + persistence roundtrips)
+                                if (dimension != World.Environment.NORMAL) {
+                                    island.unlockDimension(dimension.name());
+                                }
 
                                 Biome biome;
                                 try {
@@ -126,6 +184,11 @@ public class IslandManager {
                     plugin.getMinionManager().loadMinionDataForIsland(islandKey);
                     plugin.getThreadSafety().runOnMainThread(() ->
                             plugin.getMinionManager().respawnMinionsForIsland(island));
+
+                    // Museum persist load for full feature (task continuation)
+                    if (plugin.getMuseumManager() != null) {
+                        plugin.getMuseumManager().loadForIsland(islandKey);
+                    }
 
                     // Island Furniture / Housing decor - ensure visuals
                     if (plugin.getIslandFurnitureManager() != null) {
@@ -184,6 +247,16 @@ public class IslandManager {
         Map<UUID, Island> snapshot = new HashMap<>();
         playerIslands.forEach((owner, dimMap) -> dimMap.values().forEach(island -> snapshot.put(owner, island)));
         return snapshot;
+    }
+
+    // Task batch: DB-paginated tops exposed for PAPI expansion and large server leaderboards (replaces pure cache).
+    // Calls IslandDAO (via db). Folia async. Used by PAPI for %top_level_N% etc.
+    public java.util.concurrent.CompletableFuture<java.util.List<com.thenerdcj.database.TopIslandEntry>> getTopIslandsByLevel(int limit, int offset) {
+        return databaseManager.getIslandDAO().getTopIslandsByLevel(limit, offset);
+    }
+
+    public java.util.concurrent.CompletableFuture<java.util.List<com.thenerdcj.database.TopIslandEntry>> getTopIslandsByWorth(int limit, int offset) {
+        return databaseManager.getIslandDAO().getTopIslandsByWorth(limit, offset);
     }
 
     public Island getIslandAt(Location location) {
@@ -536,6 +609,20 @@ public class IslandManager {
         } catch (IllegalArgumentException e) {
             return null;
         }
+    }
+
+    /**
+     * Task 1 helper: main (overworld) island level for dim gates.
+     * Uses XP level (play/skills) not worth. Inter-class: delegates to Island.getLevel().
+     */
+    public int getMainIslandLevel(UUID uuid) {
+        Island main = getIsland(uuid, World.Environment.NORMAL);
+        if (main != null) return main.getLevel();
+        for (World.Environment dim : new World.Environment[]{World.Environment.NORMAL, World.Environment.NETHER, World.Environment.THE_END}) {
+            Island island = getIsland(uuid, dim);
+            if (island != null) return island.getLevel();
+        }
+        return 0;
     }
 
     public Island createIslandForTesting(Player player, World.Environment dimension, String biome) {

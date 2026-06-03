@@ -71,6 +71,12 @@ public class IslandProtectionListener implements Listener {
             return !wildernessProtection;
         }
 
+        // Task 5: size upgrade affects build radius (worldborder already visuals; this makes mechanical)
+        if (!isWithinIslandBuildRadius(location, island)) {
+            sendProtectedMessage(player, "no-build");
+            return false;
+        }
+
         // Visitor system support
         if (!island.hasPermission(player.getUniqueId(), IslandPermission.BUILD)) {
             // Check if they are a visitor and visitors are allowed
@@ -83,6 +89,19 @@ public class IslandProtectionListener implements Listener {
         }
 
         return true;
+    }
+
+    private boolean isWithinIslandBuildRadius(Location loc, Island island) {
+        if (island == null || loc.getWorld() == null) return true;
+        org.bukkit.Location center = island.getCenter(loc.getWorld());
+        if (center == null) return true;
+        int base = plugin.getConfig().getInt("upgrades.island-size.base-radius", 256);
+        int per = plugin.getConfig().getInt("upgrades.island-size.radius-per-level", 8);
+        int maxr = plugin.getConfig().getInt("upgrades.island-size.max-radius", 512);
+        int lvl = 0;
+        try { lvl = upgradeManager.getUpgradeLevel(island.getId(), com.thenerdcj.island.IslandUpgrade.ISLAND_SIZE); } catch (Exception ignored) {}
+        int radius = Math.min(base + lvl * per, maxr);
+        return loc.distance(center) <= radius;
     }
 
     private boolean canVisitAsGuest(Player player, Island island) {

@@ -53,8 +53,17 @@ public class IslandGenerator {
         long extraSeed = island.getGenerationSeed();
         long seed = computeIslandSeed(center, island.getDimension(), finalBiome, extraSeed);
 
+        // Task batch: size upgrade also affects gen radius (expands terrain spread on reset/creation after upgrades; protection already uses it).
+        int sizeLevel = 0;
+        if (plugin.getIslandUpgradeManager() != null) {
+            try {
+                sizeLevel = plugin.getIslandUpgradeManager().getUpgradeLevel(island.getId(), com.thenerdcj.island.IslandUpgrade.ISLAND_SIZE);
+            } catch (Exception ignored) {}
+        }
+        final int sizeLevelFinal = sizeLevel;
+
         plugin.getServer().getRegionScheduler().execute(plugin, center, () -> {
-            generateIslandStructure(center, finalBiome, island.getDimension(), template, seed);
+            generateIslandStructure(center, finalBiome, island.getDimension(), template, seed, sizeLevelFinal);
             placeStarterChest(center, finalBiome, player, seed);
             setBiomeInChunk(center, finalBiome);
         });
@@ -212,10 +221,14 @@ public class IslandGenerator {
     // ==================== CORE STRUCTURE GENERATION (expanded) ====================
 
     private void generateIslandStructure(Location center, Biome biome, World.Environment dimension,
-                                         BiomeTemplate template, long seed) {
+                                         BiomeTemplate template, long seed, int sizeLevel) {
         Random rand = new Random(seed); // seeded for reproducibility + uniqueness per position
 
         int radius = getRandomizedRadius(template, seed);
+        // Task batch: size upgrade also affects gen radius (expands terrain for upgraded islands on reset/gen)
+        if (sizeLevel > 0) {
+            radius = (int) Math.min(radius * (1.0 + sizeLevel * 0.10), 400);
+        }
         int cx = center.getBlockX();
         int cy = center.getBlockY();
         int cz = center.getBlockZ();

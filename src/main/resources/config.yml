@@ -11,9 +11,25 @@ island:
   base-y: 80
   spawn-protection-radius: 150
   dimension_requirements:
-    nether: 20
-    end: 50
+    nether: 15
+    end: 30
+  # Level gates enforced in IslandManager.createIsland + IslandCommand.handleCreate (Play-to-Win: must progress via XP/skills on main island).
+  # Worth level (from block value) is separate for economy/tops; see IslandWorthManager. Explicit tie in Island.getProgressionLevel() / sync.
   # Default starter items are handled in IslandManager.java
+
+  # Party system config (for XP balancing - ensures solo vs party progression speed feels fair, per design spec and Hypixel reference)
+  party:
+    max-size: 4
+    # XP multipliers applied to island XP and skill XP gains. Higher party = lower per-person gain (diminishing returns).
+    # This makes large parties not trivialize progression. Matches "progression speed feels identical whether single-player or multi-player".
+    # Folia-safe: applied server-side in Island.addXp / addSkillXp via IslandManager.
+    xp-multipliers:
+      1: 1.0
+      2: 0.85
+      3: 0.75
+      4: 0.65
+      5: 0.60
+      # For >5 falls back to 0.55 min in code. Config overrides take precedence.
 
   # =============================================
   # Island Worth / Level System (Classic Skyblock)
@@ -329,6 +345,10 @@ upgrades:
       # Colored borders now respect island_settings.border_color (BLUE, RED, GREEN, GOLD, PURPLE, PINK, etc.)
       # Admin commands: /isadmin border setsize <player> <blocks>  and  setcolor <player> <color>
       # Hologram markers and auto WorldBorder on movement are available via BorderVisualManager
+  # Task 5: Optional schematics (WorldEdit/FAWE) + size upgrades already wired to visuals/protection
+  schematics:
+    enabled: false  # set true + WE/FAWE on cp for admin custom island bases (procedural remains default for Play-to-Win fairness; schems for events/donors cosmetic only)
+    # In IslandGenerator: if enabled and plugin present, can paste schematic at center before/after procedural features.
   spawner-rate:
     speed-bonus-per-level: 0.15         # +15% spawner activation speed
   mob-cap:

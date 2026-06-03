@@ -4,6 +4,7 @@ main: com.thenerdcj.FoliaSkyblock
 api-version: 1.21
 folia-supported: true
 author: TheNerdCJ
+softdepend: [PlaceholderAPI]  # task 2: PAPI expansion for stats (levels, worth, balances, tops) - no hard dep, graceful if absent. Matches competitor ecosystems (Iridium/Superior use PAPI heavily).
 description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, economy, trading, Play-to-Win progression, and full EssentialsX-style QoL commands.
 
 commands:

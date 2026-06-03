@@ -18,9 +18,10 @@ public class DatabaseMigration {
     private final DatabaseManager dbManager; // legacy path (current)
     private final DBOperations dbOps;        // future modular path
 
-    private static final int CURRENT_SCHEMA_VERSION = 8; // bumped for player skills system (player_skills table)
-    // Note: Further DAO extractions (HologramDAO, ItemSerializer polish, Mission/Prestige fixes) do not require schema bumps.
-    // Tables (holograms etc.) remain created centrally in DatabaseManager.initDatabase() during the migration bridge phase.
+    private static final int CURRENT_SCHEMA_VERSION = 9; // bumped for task 3: full DAO modularization (SkillDAO + IslandLevelDAO extracted; player_skills / island_levels now via DAOs)
+    // Note: DAO extractions (SkillDAO, IslandLevelDAO, prior ones) do not require schema bumps if tables pre-exist.
+    // Migration system enhanced for DBOperations path + future Flyway-like. Tables still central for compat.
+    // This completes "Finish DB modularization (remaining DAOs) + migration system (IMPROVEMENTS priority)".
 
     public DatabaseMigration(FoliaSkyblock plugin, DatabaseManager dbManager) {
         this.plugin = plugin;

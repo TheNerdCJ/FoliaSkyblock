@@ -86,6 +86,8 @@ public class FoliaSkyblock extends JavaPlugin {
 
     // Admin tools
     private com.thenerdcj.gui.AdminIslandInspectGUI adminIslandInspectGUI;
+    // Task batch: dedicated SpawnEditGUI (polish for admin spawn fixes)
+    private com.thenerdcj.gui.SpawnEditGUI spawnEditGUI;
 
     private com.thenerdcj.wardrobe.WardrobeManager wardrobeManager;
     private com.thenerdcj.wardrobe.WardrobeGUI wardrobeGUI;
@@ -165,6 +167,10 @@ public class FoliaSkyblock extends JavaPlugin {
     // Core Collections System (unique per-island item discovery for progression + cosmetic rewards)
     private com.thenerdcj.manager.CollectionManager collectionManager;
     private com.thenerdcj.gui.CollectionsGUI collectionsGUI;
+
+    // Task 4: Museum system (Hypixel depth)
+    private com.thenerdcj.manager.MuseumManager museumManager;
+    private com.thenerdcj.gui.MuseumGUI museumGUI;
 
     // Player Skill System (MCMMO-inspired per-player skills with abilities, anti-cheat safe)
     private com.thenerdcj.skills.PlayerSkillManager playerSkillManager;
@@ -246,6 +252,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.particleTrailGUI = new com.thenerdcj.gui.ParticleTrailGUI(this);
         this.generatorGUI = new com.thenerdcj.gui.GeneratorGUI(this);
         this.adminIslandInspectGUI = new com.thenerdcj.gui.AdminIslandInspectGUI(this);
+        this.spawnEditGUI = new com.thenerdcj.gui.SpawnEditGUI(this);
 
         // Scheduled tasks - worth recalc now respects config (economy/perf optimization)
         // For large servers, set recalc-interval-minutes high or 0 in config + rely on event-driven adjustBlockWorth in block listeners.
@@ -494,6 +501,10 @@ public class FoliaSkyblock extends JavaPlugin {
         this.collectionManager = new com.thenerdcj.manager.CollectionManager(this);
         this.collectionsGUI = new com.thenerdcj.gui.CollectionsGUI(this);
 
+        // Task 4: Museum (Hypixel-aligned collection sink/display + tokens for cosmetics)
+        this.museumManager = new com.thenerdcj.manager.MuseumManager(this);
+        this.museumGUI = new com.thenerdcj.gui.MuseumGUI(this);
+
         // Player Skills (MCMMO reference, Folia + anti-cheat safe)
         this.playerSkillManager = new com.thenerdcj.skills.PlayerSkillManager(this);
         this.skillGUI = new com.thenerdcj.gui.SkillGUI(this);
@@ -509,6 +520,18 @@ public class FoliaSkyblock extends JavaPlugin {
         this.worldManager = new WorldManager(this);
         this.worldManager.initializeWorlds();
         MessageUtil.info(getLogger(), "§e[WorldManager] Creating custom void worlds for Skyblock...");
+
+        // Task 2: PAPI expansion registration (soft, after managers ready for stats access). 
+        // Placeholders cover tops, player/island balances, XP level, worth level, progression (tied), party, skills.
+        // Folia-safe (no sched in request). PtW compliant. Compare: Iridium/Superior + Hypixel YT setups rely on this for scoreboards/Discord bots.
+        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            try {
+                new com.thenerdcj.placeholder.FoliaSkyblockExpansion(this).register();
+                getLogger().info("§a[PlaceholderAPI] FoliaSkyblock expansion registered successfully.");
+            } catch (Exception e) {
+                getLogger().warning("§c[PlaceholderAPI] Failed to register expansion: " + e.getMessage());
+            }
+        }
 
         this.hologramManager = new HologramManager(this);
         hologramManager.loadAndSpawnAll();
@@ -811,6 +834,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.gui.ParticleTrailGUI getParticleTrailGUI() { return particleTrailGUI; }
     public com.thenerdcj.gui.GeneratorGUI getGeneratorGUI() { return generatorGUI; }
     public com.thenerdcj.gui.AdminIslandInspectGUI getAdminIslandInspectGUI() { return adminIslandInspectGUI; }
+    public com.thenerdcj.gui.SpawnEditGUI getSpawnEditGUI() { return spawnEditGUI; }
     public com.thenerdcj.gui.BoosterGUI getBoosterGUI() { return boosterGUI; }
     public AuctionManager getAuctionManager() { return auctionManager; }
     public BazaarManager getBazaarManager() { return bazaarManager; }
@@ -945,6 +969,10 @@ public class FoliaSkyblock extends JavaPlugin {
     // Core Collections
     public com.thenerdcj.manager.CollectionManager getCollectionManager() { return collectionManager; }
     public com.thenerdcj.gui.CollectionsGUI getCollectionsGUI() { return collectionsGUI; }
+
+    // Task 4 getters
+    public com.thenerdcj.manager.MuseumManager getMuseumManager() { return museumManager; }
+    public com.thenerdcj.gui.MuseumGUI getMuseumGUI() { return museumGUI; }
 
     // Player Skills
     public com.thenerdcj.skills.PlayerSkillManager getPlayerSkillManager() { return playerSkillManager; }

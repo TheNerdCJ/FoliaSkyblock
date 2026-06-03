@@ -47,6 +47,12 @@ public class MinionManager {
         FUEL_VALUES.put(Material.LAVA_BUCKET, 300);
         FUEL_VALUES.put(Material.WHEAT, 10);
         FUEL_VALUES.put(Material.ENDER_PEARL, 80);
+        // Hypixel-aligned more fuels for expanded minions (task 4)
+        FUEL_VALUES.put(Material.MAGMA_CREAM, 90);
+        FUEL_VALUES.put(Material.NETHERRACK, 5);
+        FUEL_VALUES.put(Material.GLOWSTONE_DUST, 25);
+        FUEL_VALUES.put(Material.GRAVEL, 8);
+        FUEL_VALUES.put(Material.NETHERITE_SCRAP, 500); // rare high fuel
     }
 
     public MinionManager(FoliaSkyblock plugin) {
@@ -131,6 +137,12 @@ public class MinionManager {
             .merge(type, 1, Integer::sum);
 
         saveMinionDataForIsland(islandId);
+
+        // Task batch: AC hook for minion macro (prod log + Neural)
+        if (plugin.getAntiCheatManager() != null) {
+            int count = placedMinionsByType.getOrDefault(islandId, java.util.Collections.emptyMap()).getOrDefault(type, 0);
+            plugin.getAntiCheatManager().isFlaggedForMinionMacro(player, count);
+        }
 
         if (!islandFuels.containsKey(islandId)) {
             islandFuels.put(islandId, 1000);

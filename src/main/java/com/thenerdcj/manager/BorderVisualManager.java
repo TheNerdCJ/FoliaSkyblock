@@ -159,8 +159,10 @@ public class BorderVisualManager {
         Particle particle = getBorderParticle(borderColor);
         Color tint = getParticleColor(borderColor);
 
+        // Explicit scale for gen radius changes: dynamic density to avoid spam on large (gen scaled) islands, more particles for bigger radius.
+        int dynamicDensity = Math.max(2, (int) (particleDensity * (256.0 / Math.max(256, radius))));
         // Four sides of the square border
-        for (int i = -radius; i <= radius; i += particleDensity) {
+        for (int i = -radius; i <= radius; i += dynamicDensity) {
             // North & South edges
             spawnColoredParticleLine(player, world, center.getX() + i, center.getZ() - radius, center.getY(), particle, tint);
             spawnColoredParticleLine(player, world, center.getX() + i, center.getZ() + radius, center.getY(), particle, tint);
@@ -207,19 +209,22 @@ public class BorderVisualManager {
         Location center = island.getCenter(player.getWorld());
         if (center == null) return;
 
+        // Explicit particle/border scale update when gen radius changes (IslandGenerator now scales terrain with sizeLevel; protection+gen aligned).
+        // Use effective (from upgrade which drives gen radius at create/reset time) for border size and particle spacing.
+        int genAwareRadius = effectiveRadius; // could merge with island.getGenRadius() if stored separately in future
         // Get or create a WorldBorder for this island
         GridPosition key = island.getGridPosition();
         WorldBorder border = activeWorldBorders.computeIfAbsent(key, k -> {
             WorldBorder newBorder = Bukkit.createWorldBorder();
             newBorder.setCenter(center);
-            newBorder.setSize(effectiveRadius * 2.0);
+            newBorder.setSize(genAwareRadius * 2.0);
             newBorder.setWarningDistance(5);
             newBorder.setWarningTime(0);
             return newBorder;
         });
 
-        // Update size if it changed (upgrade happened)
-        border.setSize(effectiveRadius * 2.0, 1); // 1 second smooth transition
+        // Update size if it changed (upgrade happened or gen radius scale)
+        border.setSize(genAwareRadius * 2.0, 1); // 1 second smooth transition
 
         // Apply to player
         player.setWorldBorder(border);

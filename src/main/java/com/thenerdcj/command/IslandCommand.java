@@ -73,6 +73,15 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                 handleCreate(player, args);
                 break;
 
+            case "museum":
+            case "mus":
+                if (plugin.getMuseumGUI() != null) {
+                    plugin.getMuseumGUI().open(player);
+                } else {
+                    MessageUtil.sendMessage(player, "§cMuseum not available.");
+                }
+                break;
+
             case "home":
             case "h":
                 handleHome(player, args);
@@ -216,6 +225,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         MessageUtil.sendMessage(player, "§e/is leave §7- Leave the island party.");
         MessageUtil.sendMessage(player, "§e/is disband §7- Disband island party (removes all members, owner only).");
         MessageUtil.sendMessage(player, "§e/is reset §7- Reset current dimension island (donors get confirmation + biome choice GUI).");
+        MessageUtil.sendMessage(player, "§e/is museum §7- Open Museum (donate uniques for tokens, spend for cosmetics - PtW).");
         MessageUtil.sendMessage(player, "§e/is bank §7- Open Island Bank GUI.");
         MessageUtil.sendMessage(player, "§e/is settings §7- Open Island Settings GUI.");
         MessageUtil.sendMessage(player, "§e/is upgrade §7- Open Island Upgrades GUI.");
@@ -249,6 +259,18 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         if (plugin.getIslandManager().hasIsland(player.getUniqueId(), dimension)) {
             MessageUtil.sendMessage(player, "§cYou already have an island in §e" + dimension.name() + "§c! Use §b/is reset §cto start over.");
             return;
+        }
+
+        // === TASK 1: ENFORCE DIM LEVEL GATE HERE TOO (before donor GUI or direct create) ===
+        // Inter-class: reuses IslandManager.getMainIslandLevel + getDimensionLevelRequirement (config). Security: server-side only.
+        // Play-to-Win + design: cannot create nether/end until main XP progression (no donor bypass for gate, only biome choice).
+        if (dimension != World.Environment.NORMAL) {
+            int mainLvl = plugin.getIslandManager().getMainIslandLevel(player.getUniqueId());
+            int req = plugin.getIslandManager().getDimensionLevelRequirement(dimension);
+            if (mainLvl < req) {
+                MessageUtil.sendMessage(player, "§cMain island level §e" + req + "+ §crequired for " + dimension.name() + " (current: " + mainLvl + "). Grind skills/quests/combat on Overworld.");
+                return;
+            }
         }
 
         boolean isDonor = player.hasPermission("foliasb.donor");

@@ -9,6 +9,7 @@ public class TopIslandEntry {
     private final UUID ownerUuid;
     private final int level;
     private final String dimension;
+    private double worth = 0.0; // for worth tops (task batch)
     private String ownerName; // cached for holograms
 
     public TopIslandEntry(UUID ownerUuid, int level, String dimension) {
@@ -17,9 +18,15 @@ public class TopIslandEntry {
         this.dimension = dimension;
     }
 
+    public TopIslandEntry(UUID ownerUuid, int level, String dimension, double worth) {
+        this(ownerUuid, level, dimension);
+        this.worth = worth;
+    }
+
     public UUID getOwnerUuid() { return ownerUuid; }
     public int getLevel() { return level; }
     public String getDimension() { return dimension; }
+    public double getWorth() { return worth; }
 
     public String getOwnerName() {
         if (ownerName != null) return ownerName;

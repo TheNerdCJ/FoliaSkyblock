@@ -24,6 +24,11 @@
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
+        <!-- PlaceholderAPI for task 2 expansion (placeholders for tops, balances, levels, worth - common in Iridium/Superior servers) -->
+        <repository>
+            <id>placeholderapi</id>
+            <url>https://repo.extendedclip.com/content/repositories/placeholderapi/</url>
+        </repository>
         <!-- Required for MockBukkit -->
         <repository>
             <id>jitpack.io</id>
@@ -40,12 +45,22 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- PlaceholderAPI (task 2: expansion for %f oliaskyblock_*% stats - tops/balances/levels/worth. softdepend in plugin.yml) -->
+        <dependency>
+            <groupId>me.clip</groupId>
+            <artifactId>placeholderapi</artifactId>
+            <version>2.11.5</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- HikariCP Connection Pool -->
         <dependency>
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
             <version>5.1.0</version>
         </dependency>
+
+        <!-- Gson removed for zero-dep (per-donation DB rows table used instead for museum persist count/rarity; addresses provided scope runtime issues on non-standard servers) -->
 
         <!-- ==================== TEST DEPENDENCIES ==================== -->
         <dependency>

@@ -79,6 +79,12 @@ public class BiomeSelectionGUI implements Listener {
 
         int playerMainLevel = getPlayerMainIslandLevel(player);
 
+        // Task 1: use config for gates (was hardcoded 15/30; now matches island.dimension_requirements + IslandManager enforcement).
+        // Inter-class comms: config + IslandManager.getDimensionLevelRequirement (for consistency with create gate). Display only here; actual gate in command/manager.
+        // Updated javadoc + comments for design compliance (XP level from play, not worth).
+        int netherReq = plugin.getConfig().getInt("island.dimension_requirements.nether", 15);
+        int endReq = plugin.getConfig().getInt("island.dimension_requirements.end", 30);
+
         if (dimension == World.Environment.NORMAL) {
             gui.setItem(10, createBiomeItem(Material.GRASS_BLOCK, "§aPlains", "PLAINS", dimension, isReset));
             gui.setItem(12, createBiomeItem(Material.OAK_LOG, "§2Forest", "FOREST", dimension, isReset));
@@ -86,29 +92,29 @@ public class BiomeSelectionGUI implements Listener {
             gui.setItem(16, createBiomeItem(Material.SPRUCE_LOG, "§bTaiga", "TAIGA", dimension, isReset));
             gui.setItem(20, createBiomeItem(Material.JUNGLE_LOG, "§2Jungle", "JUNGLE", dimension, isReset));
 
-            // Nether & End unlock information (based on main island level)
-            if (playerMainLevel < 15) {
-                gui.setItem(28, createLockedItem("§cNether Island", "§7Reach level 15 on main island to unlock"));
+            // Nether & End unlock information (based on main island level from config)
+            if (playerMainLevel < netherReq) {
+                gui.setItem(28, createLockedItem("§cNether Island", "§7Reach level " + netherReq + " on main island to unlock"));
             } else {
                 gui.setItem(28, createInfoItem("§cNether Island", "§7Use §b/is create nether §7(donor for biome)"));
             }
 
-            if (playerMainLevel < 30) {
-                gui.setItem(34, createLockedItem("§5End Island", "§7Reach level 30 on main island to unlock"));
+            if (playerMainLevel < endReq) {
+                gui.setItem(34, createLockedItem("§5End Island", "§7Reach level " + endReq + " on main island to unlock"));
             } else {
                 gui.setItem(34, createInfoItem("§5End Island", "§7Use §b/is create end §7(donor for biome)"));
             }
         } else if (dimension == World.Environment.NETHER) {
-            if (playerMainLevel >= 15) {
+            if (playerMainLevel >= netherReq) {
                 gui.setItem(22, createBiomeItem(Material.NETHERRACK, "§cNether Wastes", "NETHER_WASTES", dimension, isReset));
             } else {
-                gui.setItem(22, createLockedItem("§cNether Wastes", "§7Requires main island level 15+"));
+                gui.setItem(22, createLockedItem("§cNether Wastes", "§7Requires main island level " + netherReq + "+"));
             }
         } else if (dimension == World.Environment.THE_END) {
-            if (playerMainLevel >= 30) {
+            if (playerMainLevel >= endReq) {
                 gui.setItem(22, createBiomeItem(Material.END_STONE, "§5The End", "THE_END", dimension, isReset));
             } else {
-                gui.setItem(22, createLockedItem("§5The End", "§7Requires main island level 30+"));
+                gui.setItem(22, createLockedItem("§5The End", "§7Requires main island level " + endReq + "+"));
             }
         }
 
@@ -210,7 +216,8 @@ public class BiomeSelectionGUI implements Listener {
 
     /**
      * Gets the player's MAIN island level (Overworld).
-     * This is used for progression gating (Nether at lvl 15, End at lvl 30).
+     * This is used for progression gating display (actual enforcement + configurable reqs in IslandManager.createIsland / IslandCommand).
+     * Level = XP from skills/play (PtW), not worth value.
      */
     private int getPlayerMainIslandLevel(Player player) {
         if (player == null) return 0;

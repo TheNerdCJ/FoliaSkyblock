@@ -787,9 +787,24 @@ public class AntiCheatManager {
             out.println("Recent quest/collection/housing/minion/enchant tracking sizes: " +
                 recentQuestGains.size() + "/" + recentCollectionDiscovers.size() + "/" +
                 recentHousingPlaces.size() + "/" + recentMinionPlaces.size() + "/" + recentEnchantProcs.size());
+            // Task batch: prod log Neural training samples / risk for top violators (for offline review + retrain)
+            if (neuralDetector != null) {
+                out.println("Neural risk for top violators (samples for training):");
+                violationCounts.entrySet().stream().sorted((a,b)->Integer.compare(b.getValue(),a.getValue())).limit(5)
+                    .forEach(e -> {
+                        double risk = getNeuralRiskScore(e.getKey());
+                        out.println("  " + e.getKey() + " violations:" + e.getValue() + " neuralRisk:" + String.format("%.2f", risk));
+                        // Could persist recent profile as training sample here
+                    });
+            }
             out.println("=== End of shutdown log ===");
             out.println();
             plugin.getLogger().info("§a[AntiCheatManager] Violation logs saved to anticheat-violations.log for staff audit (Play to Win anti-exploit).");
+            // Task: auto export JSON profiles for Neural retrain
+            try {
+                java.io.File jsonFile = new java.io.File(plugin.getDataFolder(), "anticheat-profiles-export.json");
+                exportProfilesToJson(jsonFile);
+            } catch (Exception ignored) {}
         } catch (Exception e) {
             plugin.getLogger().warning("[AntiCheatManager] Failed to save violation logs: " + e.getMessage());
         }
@@ -880,5 +895,55 @@ public class AntiCheatManager {
         PlayerBehaviorProfile profile = profiles.get(uuid);
         if (profile == null || neuralDetector == null) return 0.0;
         return neuralDetector.getCheatProbability(profile);
+    }
+
+    /**
+     * Task batch: profile export method to JSON (for external Neural retrain / audit).
+     * Exports violation counts + neural risks + recent samples to JSON file (e.g. in violations log dir).
+     * Uses Gson (dep added). Folia safe (call on main or async).
+     * Play-to-Win: supports staff review of exploits without player data leak beyond violations.
+     */
+    public void exportProfilesToJson(java.io.File outputFile) {
+        if (outputFile == null) return;
+        try {
+            java.util.Map<String, Object> export = new java.util.HashMap<>();
+            export.put("timestamp", System.currentTimeMillis());
+            export.put("totalViolations", violationCounts.size());
+            java.util.List<java.util.Map<String, Object>> violators = new java.util.ArrayList<>();
+            violationCounts.entrySet().stream().sorted((a,b) -> Integer.compare(b.getValue(), a.getValue())).limit(50).forEach(e -> {
+                java.util.Map<String, Object> v = new java.util.HashMap<>();
+                v.put("uuid", e.getKey().toString());
+                v.put("violations", e.getValue());
+                v.put("neuralRisk", getNeuralRiskScore(e.getKey()));
+                violators.add(v);
+            });
+            export.put("topViolators", violators);
+            export.put("recentXPSamples", recentXPGains.size()); // example
+            String json = new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(export);
+            java.nio.file.Files.writeString(outputFile.toPath(), json, java.nio.charset.StandardCharsets.UTF_8);
+            plugin.getLogger().info("[AntiCheat] Exported profiles to JSON: " + outputFile.getAbsolutePath());
+        } catch (Exception e) {
+            plugin.getLogger().warning("[AntiCheat] Failed to export profiles JSON: " + e.getMessage());
+        }
+    }
+
+    // ==================== TASK 6: EXPANDED HEURISTICS + NEURAL SAMPLES ====================
+    // New for museum/minion/schematic abuse (from logs + popular YT dupe videos for expanded features).
+    // Neural: add training samples in test + runtime profile updates.
+    public boolean isFlaggedForMinionMacro(Player player, int placedThisMinute) {
+        if (placedThisMinute > 15) {
+            flagViolation(player, "Minion macro suspected (rapid place for task 4)", 4);
+            return true;
+        }
+        return false;
+    }
+
+    public void reportMuseumDonateAbuse(Player player, int count) {
+        if (count > 8) flagViolation(player, "Museum donate spam/exploit (task 4)", 3);
+    }
+
+    public boolean isFlaggedForSchematicAbuse(Player player) {
+        // Hook from generator if schematics on; rate limit pastes.
+        return false;
     }
 }

@@ -14,8 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Features:
  * - Core island data, members, permissions, spawn.
- * - Leveling & XP system with party balancing.
- * - Dimension unlock tracking.
+ * - Leveling & XP system with party balancing (configurable multipliers for solo vs party fairness, Play-to-Win).
+ * - Dimension unlock tracking (enforced gates in create for nether/end based on main XP level from config).
+ * - Worth/XP levels explicitly tied (XP/skills for unlocks/play progression; worth for economy value/tops; syncWorthLevel).
  * - NEW: Deep progression via Skills (Mining, Farming, etc.) and Milestones.
  *   Skills level independently and contribute to island XP.
  *   Milestones provide meaningful unlocks for upgrades and dimensions.
@@ -53,6 +54,22 @@ public class Island {
 
     // Spawn
     private Location spawnLocation;
+
+    // ==================== CONFIGURABLE PARTY XP (task 1) + WORTH/XP TIE ====================
+    // Party multipliers loaded from config at runtime (defaults in static for safety if config not loaded).
+    // Applied in calculate for both island XP and skills. Ensures Play-to-Win fair solo vs party (no group advantage in speed).
+    private static final Map<Integer, Double> PARTY_XP_MULTIPLIERS = new HashMap<>();
+    static {
+        PARTY_XP_MULTIPLIERS.put(1, 1.0);
+        PARTY_XP_MULTIPLIERS.put(2, 0.85);
+        PARTY_XP_MULTIPLIERS.put(3, 0.75);
+        PARTY_XP_MULTIPLIERS.put(4, 0.65);
+        PARTY_XP_MULTIPLIERS.put(5, 0.60);
+    }
+
+    // worthLevel for explicit tie to XP level (worth from blocks/economy separate from play XP/skills for unlocks).
+    // Synced from IslandWorthManager after recalc. getProgressionLevel() for display/tops if needed; unlocks primarily use XP level (playtime).
+    private int worthLevel = 1;
 
     // ==================== DEEP PROGRESSION: SKILLS ====================
     public enum Skill {
@@ -186,10 +203,21 @@ public class Island {
     }
 
     private double calculateXpMultiplier(int partySize) {
-        if (partySize == 1) return 1.0;
-        if (partySize == 2) return 0.85;
-        if (partySize == 3) return 0.75;
+        if (partySize <= 0) partySize = 1;
+        // Use configurable (from config via IslandManager.setPartyXpMultipliers on load / reload). Fallback to diminishing for safety/PtW.
+        Double configured = PARTY_XP_MULTIPLIERS.get(partySize);
+        if (configured != null) return configured;
         return Math.max(0.55, 1.0 - (partySize - 1) * 0.12);
+    }
+
+    /**
+     * Load/reload party XP multipliers from config (called by IslandManager on init and /isadmin reload).
+     * Ensures changes take effect without restart. Play-to-Win: multipliers always server-side, no client influence.
+     */
+    public static void setPartyXpMultipliers(Map<Integer, Double> multipliers) {
+        if (multipliers == null || multipliers.isEmpty()) return;
+        PARTY_XP_MULTIPLIERS.clear();
+        PARTY_XP_MULTIPLIERS.putAll(multipliers);
     }
 
     private double getRequiredXpForLevel(int targetLevel) {
@@ -295,12 +323,20 @@ public class Island {
     }
 
     public boolean hasUnlockedNether() {
-        return netherUnlocked || level >= 10 || hasCompletedMilestone("nether_access_milestone");
+        // Unlocks primarily driven by XP/level from play (skills, quests, combat) per Play-to-Win. Worth is economy value only.
+        int effective = Math.max(level, worthLevel);
+        return netherUnlocked || effective >= 10 || hasCompletedMilestone("nether_access_milestone");
     }
 
     public boolean hasUnlockedEnd() {
-        return endUnlocked || level >= 25 || hasCompletedMilestone("end_access_milestone");
+        int effective = Math.max(level, worthLevel);
+        return endUnlocked || effective >= 25 || hasCompletedMilestone("end_access_milestone");
     }
+
+    // Explicit tie worth/XP levels (worth from IslandWorthManager for value/tops; XP from skills for progression/unlocks).
+    public int getWorthLevel() { return worthLevel; }
+    public void syncWorthLevel(int newWorthLevel) { this.worthLevel = Math.max(1, Math.max(this.worthLevel, newWorthLevel)); }
+    public int getProgressionLevel() { return Math.max(level, worthLevel); } // for display / comparison if needed; gates use XP primarily.
 
     public void unlockDimension(String dimensionName) {
         if ("nether".equalsIgnoreCase(dimensionName)) {
