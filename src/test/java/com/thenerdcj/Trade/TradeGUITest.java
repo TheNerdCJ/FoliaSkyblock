@@ -1,4 +1,4 @@
-package com.thenerdcj.Trade;
+package com.thenerdcj.trade;
 
 import com.thenerdcj.TestBase;
 import com.thenerdcj.testutil.MockBukkitGuiSimulator;

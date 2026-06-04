@@ -1,4 +1,4 @@
-package com.thenerdcj.Trade;
+package com.thenerdcj.trade;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
