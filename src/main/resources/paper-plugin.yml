@@ -1,7 +1,7 @@
 name: FoliaSkyblock
-version: 1.0.0
+version: ${project.version}
 main: com.thenerdcj.FoliaSkyblock
 api-version: 1.21
 author: TheNerdCJ
-description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, and economy.
+description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, economy, trading, Play-to-Win progression, and full EssentialsX-style QoL commands.
 folia-supported: true

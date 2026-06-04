@@ -107,6 +107,21 @@ public final class ThreadSafety {
         }
     }
 
+    // ==================== PLAYER SCHEDULING (for per-player effects like weather/particles/music) ====================
+
+    /**
+     * Schedules a repeating task bound to a specific player (Folia uses player scheduler for region affinity).
+     * Returns the underlying task handle (ScheduledTask or BukkitTask) for cancellation if needed.
+     */
+    public Object runRepeatingForPlayer(Player player, Runnable task, long initialDelayTicks, long periodTicks) {
+        if (task == null || player == null || !player.isOnline()) return null;
+        if (isFolia()) {
+            return player.getScheduler().runAtFixedRate(plugin, t -> task.run(), null, initialDelayTicks, periodTicks);
+        } else {
+            return Bukkit.getScheduler().runTaskTimer(plugin, task, initialDelayTicks, periodTicks);
+        }
+    }
+
     // ==================== ASYNC HELPERS ====================
 
     public void runAsync(Runnable task) {

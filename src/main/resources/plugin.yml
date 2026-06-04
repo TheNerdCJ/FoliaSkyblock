@@ -1,5 +1,5 @@
 name: FoliaSkyblock
-version: 1.0.2
+version: ${project.version}
 main: com.thenerdcj.FoliaSkyblock
 api-version: 1.21
 folia-supported: true
@@ -210,8 +210,8 @@ permissions:
     description: Allows use of the /wardrobe command
     default: true
   foliasb.staff.mute:
-  description: Allows muting and unmuting players
-  default: op
+    description: Allows muting and unmuting players
+    default: op
 
   foliasb.staff:
     description: Access to staff panel and tools

@@ -177,18 +177,15 @@ public class IslandMusicManager {
             }
         };
 
-        // Schedule repeating on player's region
+        // Schedule repeating on player's region (use ThreadSafety abstraction for Paper path)
         if (threadSafety.isFolia() && player.isValid()) {
-            // Use runRepeatingForEntity or player scheduler
-            var task = player.getScheduler().runAtFixedRate(plugin, (taskRef) -> {
+            player.getScheduler().runAtFixedRate(plugin, (taskRef) -> {
                 if (player.isOnline()) loop.run();
             }, null, 20L, 25 * 20L); // every ~25s
-            // We can't easily store BukkitTask here for cancel in simple way; rely on stopSound on change
+            // Folia: rely on stopSound on change + lambda guard (no store needed)
         } else {
-            // Paper/Spigot fallback (Folia uses per-player scheduler above for region safety).
-            // Matches project pattern of preferring player.getScheduler() + ThreadSafety where possible.
-            int taskId = Bukkit.getScheduler().runTaskTimer(plugin, loop, 20L, 25 * 20L).getTaskId();
-            activeLoops.put(player.getUniqueId(), taskId);
+            threadSafety.runRepeatingForPlayer(player, loop, 20L, 25 * 20L);
+            // Paper: no taskId tracked; stopLoopForPlayer relies on stopSound which is sufficient to end music
         }
 
         // Play once immediately

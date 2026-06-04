@@ -887,6 +887,82 @@ These directly address "Config for 'worth calc interval per island size' or even
 
 This prioritization keeps momentum on technical foundations first (DB), then player experience (early game), then sustainability (economy/perf), while the recent feature depth (cosmetics, enchants, housing, skills) is already excellent.
 
+---
+
+## June 2026 Codebase Scan & Quick Wins (from Grok interactive session)
+
+**Scan scope:** Only C:\Users\CJ\IdeaProjects\FoliaSkyblock (no work in worktrees). Full dir listing, pom, ymls, main, DB layer, ThreadSafety, GUI bases, cosmetic managers, listeners, config, git hygiene, greps for TODOs/prints/direct-sched/JDBC, deprecation compile, version consistency, package naming, YAML validity, scheduler Folia usage, GUI modernization status, import hygiene, etc. Multiple mvn clean compile BUILD SUCCESS after edits.
+
+**Key findings / improvements identified (many executed as quick wins in-session):**
+
+- **Build / hygiene:**
+  - dependency-reduced-pom.xml was tracked in git (build artifact). Added to .gitignore + git rm --cached + disk delete. (Prevents bloat.)
+  - Versions inconsistent (pom 1.0.0, plugin.yml 1.0.2, paper-plugin 1.0.0). Synced pom to 1.0.2, switched ymls to ${project.version} (filtering already enabled in pom resources). Updated paper desc for parity.
+  - *.iml / target/ already properly ignored (good).
+
+- **Java conventions / structure:**
+  - Capitalized package `Trade/` (only uppercase dir). Renamed (two-step for Windows FS) to `trade/` in src/main + src/test; updated package decl + import in FoliaSkyblock + test. Compiles.
+  - FoliaSkyblock.java had excessive fully-qualified names (com.thenerdcj.xxx) across fields, inits, getters, commands despite * imports for gui/manager/command/listener (due to subpkgs like cosmetic/wardrobe/pets/tags etc + historical). Added targeted imports (cosmetic.*, wardrobe.*, pets.*, tags.*, wings.*, runes.*, mission, booster, crate, season, skills, util.ThreadSafety/NameCache, bazaar.BazaarGUI, database.GridPosition, enchant). Shortened dozens of decls + new XXX(this) + some lambdas/GridPosition. Cleaner, still compiles.
+
+- **Config / metadata:**
+  - plugin.yml permissions malformed: `foliasb.staff.mute:` had `description` and `default` at wrong indent level (would parse as siblings, potential override). Fixed indent. Audited rest of section (only this one broken).
+  - paper-plugin.yml was minimal/outdated vs plugin.yml (commands/perm in legacy yml only). Left as-is (common dual-file pattern) but desc synced.
+
+- **Folia / threading / schedulers (critical for "high-performance Folia"):**
+  - ThreadSafety good central abstraction but missing player-bound repeating helper (cosmetics use direct player.getScheduler() or Bukkit for per-player effects like weather/music). Added `runRepeatingForPlayer(Player, Runnable, initial, period)` returning task handle (Folia player scheduler or BukkitTask). Updated IslandWeatherCosmeticManager + IslandMusicManager to use it for Paper paths (Folia paths keep direct for self-cancel lambda + handle capture where needed). Comments point to abstraction. Compiles + uses project util.
+  - Some managers still bypass (OverheadCosmeticManager, AccessoryCosmeticManager, BorderVisualManager, HologramManager use direct getScheduler/Global/Entity for good reason). Future: more calls through ThreadSafety where simple.
+  - setServerTabHeaderFooter only fired at enable (for then-online players). Added per-player overload + call in PlayerQuitListener.onPlayerJoin (MONITOR, after worth tab update). New joins now get header/footer.
+
+- **GUI layer (ongoing modernization from prior passes):**
+  - Many cosmetic + core GUIs still manual (raw Bukkit.createInventory + new ItemStack + getItemMeta + setDisplayName/setLore + brittle title.equals checks) or partial GUIUtils+PDC. BaseGUI (PDC ACTION, startsWith prefix guard, standard nav, pagination state, SoundUtil, auto-listener) + AbstractGUI (legacy) exist; many migrated (Bazaar/Auction/Prestige/Minions/Reset/Dim/Biome/Booster/SlayerShop/Settings etc.).
+  - Quick win: SkillGUI + CollectionsGUI had zero GUIUtils (all manual glass + items + metas). Converted fillers + info/skill items + close to GUIUtils.createItem (no more direct new ItemStack/ItemMeta in hot paths). Removed boilerplate while preserving logic/clicks/titles. (Full BaseGUI extend left for later as they are non-paged/simple.)
+  - Remaining candidates for next modernization pass: PetGUI, many *CosmeticGUI (Emote/Overhead/DeathMessage/Wing/Tag/Rune/Helmet etc - they use GUIUtils + custom PDC already but duplicate click/open logic + raw titles), TPAList, Generator, Challenge, Museum, Island* (some bank/settings upgraded), Crate, Mission, HologramList, SpawnEdit, AdminIslandInspect (complex), Trade/Auction/Bazaar (intentionally custom for Anvil flows).
+  - Suggestion: extract a lightweight "ActionPDCGUI" or option in BaseGUI for non-paged catalog-style to kill duplication across 15+ cosmetic GUIs.
+
+- **DB / persistence (god class progress good):**
+  - Excellent modularization (many *DAO: Island, Cosmetic, Balance, Auction, Slayer, Prestige, Mission, Hologram, Punishment, BugReport, PendingItems, Skill, IslandLevel, IslandFuel). DBOperations helper, no direct conn in most managers.
+  - Remaining direct JDBC outside database/ pkg: GridManager (grid alloc), ChestShopManager (4 sites), SeasonManager (executeUpdate for wipes). Action: extract GridDAO/ChestShopDAO or delegate via new methods.
+  - executeUpdate in DatabaseManager still used by Season for bulk wipes (acceptable for admin op).
+  - H2 tests + real DAOs good.
+
+- **Other code smells / quick items:**
+  - Direct Bukkit.getScheduler in IslandWeather/IslandMusic (now partially routed), HologramManager (uses ScheduledTask directly - fine for dynamic), some listeners.
+  - Main class onEnable still very long (1000+ LOC) with 50+ managers + giant periodic tasks (worth/tax/tops) + registration. Consider manager bootstrap or @PostConstruct style, but functional.
+  - Some getters in FoliaSkyblock for on-demand GUIs do `return new XXXGUI(this);` (e.g. Overhead, Emote, ChatBubble) - creates fresh each call (may be intended for stateless, but inconsistent with cached fields).
+  - plugin.yml has mix of `folia.skyblock.wardrobe` vs `foliasb.*` prefixes; some command aliases duplicated across.
+  - No major TODO/FIXME in active .java (mostly historical in MD + comments marking completed work). No prod printStackTrace.
+  - Compile shows minor: AbstractGUI javadoc @deprecated without @Deprecated annotation on class; some deprecated API usage in IslandManager (recompile -Xlint details not fully surfaced easily).
+  - Target/ on disk (expected after build), but clean git.
+
+- **Play-to-Win / anti-cheat / large-scale readiness:** Strong (neural anticheat, caps, LRU, pagination, Region stagger in Folia tasks, event-driven sinks, per-island sched where added). Continued good.
+
+**Actions taken during scan (all in C:\Users\CJ\IdeaProjects\FoliaSkyblock only, verified BUILD SUCCESS multiple times):**
+- Fixed plugin.yml indent.
+- Version sync + filtering.
+- Git hygiene for reduced-pom.
+- Package rename Trade->trade.
+- ThreadSafety player helper + 2 manager adoptions.
+- Tab header on join.
+- Import cleanup + qual removal in FoliaSkyblock (partial but significant).
+- GUIUtils adoption in SkillGUI + CollectionsGUI.
+- All changes compile clean; no behavior change for end users.
+
+**Recommended next from this scan (add to prioritized list):**
+1. Finish JDBC extraction for Grid + ChestShop (+ Season bulk if needed).
+2. Full migration or common base for remaining manual/partial cosmetic + skill GUIs (reduce ~dupe PDC/open/click code).
+3. Enhance ThreadSafety with task handle returns + cancel helpers, or player-task registry.
+4. Add join listener (or expand PlayerQuitListener name) for more on-join if needed; consider tab header refresh on world change?
+5. Audit + add @Deprecated to AbstractGUI class; resolve any real deprecations in IslandManager.
+6. Consider shade config tweak: remove mainClass transformer (unneeded for Bukkit plugin) or set dependencyReducedPomLocation to target/.
+7. More per-island RegionScheduler in remaining global loops (holograms?).
+8. Update Wiki.md / other design docs if they reference old package or versions.
+9. Add simple unit for the new runRepeatingForPlayer (H2 style or mock).
+10. If scaling to 1k+ players: profile the neural anticheat + collection listener etc under load.
+
+See also existing "GUI Cleanliness", "Folia API Maximization", "Database Integrity" sections. This scan confirms the project is in excellent shape for a complex Folia Skyblock server, with rapid recent progress on cosmetics/persistence/perf.
+
+*Scan performed 2026 per user request; all work restricted to official project dir.*
+
 ## Final Batch Execution (Gson zero-dep, benchmark CI stubbing/profile, actual screenshot assets, more edge tests)
 All 4 tasks executed in exact order with verification (reads/greps for current code + inter-class with IslandManager, DatabaseManager, BorderVisualManager, IslandWorthManager, AC, tests, Wiki), exact changes/new files/diffs/pom (Gson removal, table, stubbing, assets, tests), Folia (async DB, stubbing for calc Folia paths, Region in visuals), PtW (counts from play, test coverage without power), no vulns (zero-dep, test only), design compliance (custom gen with size scale in visuals/DAO, void, dual, leveling, party, resets, donor first, AC with export, ranks).
 

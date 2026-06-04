@@ -47,11 +47,8 @@ public class CollectionsGUI implements Listener {
 
         Inventory inv = Bukkit.createInventory(null, 54, "§6§lIsland Collections §8- " + (total + "/" + known));
 
-        // Fillers
-        ItemStack filler = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
-        ItemMeta fm = filler.getItemMeta();
-        fm.setDisplayName("§8 ");
-        filler.setItemMeta(fm);
+        // Fillers (GUIUtils for consistency)
+        ItemStack filler = GUIUtils.createItem(Material.BLACK_STAINED_GLASS_PANE, "§8 ");
         for (int i = 0; i < 54; i++) inv.setItem(i, filler);
 
         // Title

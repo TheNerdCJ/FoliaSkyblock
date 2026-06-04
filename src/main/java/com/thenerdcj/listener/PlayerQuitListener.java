@@ -131,6 +131,9 @@ public class PlayerQuitListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        if (plugin != null) {
+            plugin.setServerTabHeaderFooter(player);
+        }
         if (plugin.getIslandWorthManager() != null) {
             plugin.getIslandWorthManager().updatePlayerTabList(player);
         }

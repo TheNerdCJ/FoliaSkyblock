@@ -245,22 +245,21 @@ public class IslandWeatherCosmeticManager {
             }
         };
 
-        // Schedule repeating particle effect (visible to this player)
+        // Schedule repeating particle effect (visible to this player).
+        // Uses ThreadSafety helper for Paper fallback path (Folia uses direct player scheduler for self-cancel on disconnect).
+        Object task;
         if (threadSafety.isFolia() && player.isValid()) {
-            var task = player.getScheduler().runAtFixedRate(plugin, (scheduledTask) -> {
+            task = player.getScheduler().runAtFixedRate(plugin, (scheduledTask) -> {
                 if (player.isOnline()) {
                     particleTask.run();
                 } else {
                     scheduledTask.cancel();
                 }
             }, null, 10L, 15L); // fairly frequent for nice effect, low cost
-            activeWeatherTasks.put(player.getUniqueId(), task);
         } else {
-            // Paper/Spigot fallback (Folia path above uses player.getScheduler() for proper region/entity affinity on large servers).
-            // See ThreadSafety for the project's preferred abstraction (used in most other paths).
-            var task = Bukkit.getScheduler().runTaskTimer(plugin, particleTask, 10L, 15L);
-            activeWeatherTasks.put(player.getUniqueId(), task);
+            task = threadSafety.runRepeatingForPlayer(player, particleTask, 10L, 15L);
         }
+        if (task != null) activeWeatherTasks.put(player.getUniqueId(), task);
 
         // Immediate burst
         particleTask.run();

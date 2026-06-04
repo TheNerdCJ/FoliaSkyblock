@@ -18,3 +18,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Maven shade build artifact (do not commit)
+dependency-reduced-pom.xml
+dependency-reduced-pom.xml.bak
