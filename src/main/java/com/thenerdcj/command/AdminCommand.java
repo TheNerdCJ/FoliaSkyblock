@@ -45,6 +45,7 @@ public class AdminCommand implements CommandExecutor {
             MessageUtil.sendMessage(sender, "§7/isadmin debug minions <player>  - Minion stats and breakdown");
             MessageUtil.sendMessage(sender, "§7/isadmin debug anticheat <player> - Violation profile and risk");
             MessageUtil.sendMessage(sender, "§7/isadmin inspect <player>       - DAO-backed island+player state GUI (staff)");
+            MessageUtil.sendMessage(sender, "§7/isadmin reports               - Open bug reports triage GUI (view, triage, resolve)");
             MessageUtil.sendMessage(sender, "§7/isadmin spawngui <player>     - Dedicated Spawn Edit GUI (admin set spawn to loc)");
             MessageUtil.sendMessage(sender, "§7/isadmin benchmark           - Runnable 500-island load sim (timings for worth/loads)");
             return true;
@@ -81,6 +82,16 @@ public class AdminCommand implements CommandExecutor {
 
             case "inspect":
                 handleInspectCommand(sender, args);
+                break;
+
+            case "reports":
+            case "bugs":
+            case "bugreports":
+                if (sender instanceof Player p && plugin.getBugReportListGUI() != null) {
+                    plugin.getBugReportListGUI().open(p);
+                } else {
+                    sender.sendMessage("§cOnly players can open the reports GUI.");
+                }
                 break;
 
             case "spawngui":

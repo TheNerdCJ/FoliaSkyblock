@@ -105,7 +105,7 @@ public class AccessoryCosmeticManager {
                 updateAccessoryDisplay(player, accessory);
             }, null, 1L, 20L);
         } else {
-            Bukkit.getScheduler().runTaskTimer(plugin, task, 1L, 20L);
+            threadSafety.runRepeatingOnMainThread(task, 1L, 20L);
         }
     }
 

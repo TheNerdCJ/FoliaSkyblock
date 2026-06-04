@@ -102,7 +102,7 @@ public class OverheadCosmeticManager {
                 updateDisplay(player, cosmetic);
             }, null, 1L, 20L);
         } else {
-            Bukkit.getScheduler().runTaskTimer(plugin, task, 1L, 20L);
+            threadSafety.runRepeatingOnMainThread(task, 1L, 20L);
         }
     }
 

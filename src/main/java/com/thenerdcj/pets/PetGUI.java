@@ -281,7 +281,7 @@ public class PetGUI implements Listener {
         preview.getEquipment().setHelmet(head);
 
         // Remove after 8 seconds
-        Bukkit.getScheduler().runTaskLater(plugin, preview::remove, 20L * 8);
+        plugin.getThreadSafety().runOnMainThreadLater(preview::remove, 20L * 8);
     }
 
     @EventHandler

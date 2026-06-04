@@ -18,7 +18,7 @@ public class DatabaseMigration {
     private final DatabaseManager dbManager; // legacy path (current)
     private final DBOperations dbOps;        // future modular path
 
-    private static final int CURRENT_SCHEMA_VERSION = 9; // bumped for task 3: full DAO modularization (SkillDAO + IslandLevelDAO extracted; player_skills / island_levels now via DAOs)
+    private static final int CURRENT_SCHEMA_VERSION = 10; // bumped for bug reporting system (bug_reports table + DAO)
     // Note: DAO extractions (SkillDAO, IslandLevelDAO, prior ones) do not require schema bumps if tables pre-exist.
     // Migration system enhanced for DBOperations path + future Flyway-like. Tables still central for compat.
     // This completes "Finish DB modularization (remaining DAOs) + migration system (IMPROVEMENTS priority)".
@@ -124,6 +124,12 @@ public class DatabaseMigration {
                 // Player Skill System: table created in initDatabase IF NOT EXISTS, ensure index.
                 executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_player_skills_uuid ON player_skills(uuid)");
                 plugin.getLogger().info("§a[DB Migration v8] Player skills system (player_skills) ready - MCMMO-style per-player progression.");
+                break;
+            case 10:
+                // Bug reporting system: ensure table exists for upgrades (created in initDatabase too).
+                executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS bug_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, reporter_uuid TEXT NOT NULL, reporter_name TEXT, category TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'OPEN', created_at INTEGER NOT NULL, resolved_at INTEGER, resolved_by_uuid TEXT, staff_notes TEXT)");
+                executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_bug_reports_status_created ON bug_reports(status, created_at)");
+                plugin.getLogger().info("§a[DB Migration v10] Bug reports table ready.");
                 break;
             default:
                 plugin.getLogger().warning("[DB] Unknown migration version: " + version);

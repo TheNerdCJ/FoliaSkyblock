@@ -56,6 +56,8 @@ public class FoliaSkyblock extends JavaPlugin {
     private HologramManager hologramManager;
     private TeleportRequestManager teleportRequestManager;
     private PunishmentManager punishmentManager;
+    private BugReportManager bugReportManager;
+    private BugReportListGUI bugReportListGUI;
     private AutoSellerManager autoSellerManager;
     private com.thenerdcj.util.ThreadSafety threadSafety;
     private com.thenerdcj.util.NameCache nameCache;
@@ -232,6 +234,8 @@ public class FoliaSkyblock extends JavaPlugin {
         this.teleportRequestManager = new TeleportRequestManager(this);
         this.tpaListGUI = new TPAListGUI(this, teleportRequestManager);
         this.punishmentManager = new PunishmentManager(this);
+        this.bugReportManager = new BugReportManager(this);
+        this.bugReportListGUI = new BugReportListGUI(this);
         this.autoSellerManager = new AutoSellerManager(this);
 
         // Island Worth / Level + Economy sinks
@@ -749,6 +753,12 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("setspawn", staffCmd);
         safeRegisterCommand("isadmin", new AdminCommand(this));
 
+        // Bug reporting system (player submit + staff /bug reports)
+        safeRegisterCommand("bug", new com.thenerdcj.command.BugReportCommand(this));
+        safeRegisterCommand("bugreport", new com.thenerdcj.command.BugReportCommand(this));
+        safeRegisterCommand("reportbug", new com.thenerdcj.command.BugReportCommand(this));
+        safeRegisterCommand("reports", new com.thenerdcj.command.BugReportCommand(this));
+
         // Trade
         safeRegisterCommand("trade", (sender, cmd, label, args) -> {
             if (sender instanceof Player player) {
@@ -863,6 +873,10 @@ public class FoliaSkyblock extends JavaPlugin {
 
     // NEW: Per-dimension island reset
     public DimensionResetGUI getDimensionResetGUI() { return dimensionResetGUI; }
+
+    // Bug reporting system
+    public BugReportManager getBugReportManager() { return bugReportManager; }
+    public BugReportListGUI getBugReportListGUI() { return bugReportListGUI; }
 
     // ==================== HELPERS ====================
     public World getSkyblockWorld(World.Environment environment) {
@@ -982,26 +996,62 @@ public class FoliaSkyblock extends JavaPlugin {
     private void validateConfiguration() {
         boolean hasIssues = false;
 
-        String[] requiredWorlds = {"worlds.overworld", "worlds.nether", "worlds.end"};
-        for (String key : requiredWorlds) {
-            if (!getConfig().contains(key)) {
-                MessageUtil.warning(getLogger(), "§e[Config] Missing key '" + key + "' in config.yml. Using safe default.");
+        // Basic structure warnings (many sections use getXXX with defaults, but surface missing for admins)
+        String[] importantSections = {
+            "island", "island.reset", "island.worth", "island.party", "island.perf", "island.upkeep",
+            "boosters", "reports", "worth" // worth may be under island.worth in current layout
+        };
+        for (String sec : importantSections) {
+            if (!getConfig().contains(sec)) {
+                MessageUtil.warning(getLogger(), "§e[Config] Missing section/key '" + sec + "' in config.yml. Defaults will be used.");
             }
         }
 
-        if (getConfig().getDouble("economy.starting-balance", 0) < 0) {
-            MessageUtil.severe(getLogger(), "§c[Config] economy.starting-balance cannot be negative!");
-            hasIssues = true;
+        // Reports (new bug reporting system)
+        if (getConfig().getInt("reports.cooldown-minutes", 5) < 0) {
+            MessageUtil.warning(getLogger(), "§e[Config] reports.cooldown-minutes should be >= 0.");
+        }
+        if (getConfig().getInt("reports.max-description-length", 500) < 20) {
+            MessageUtil.warning(getLogger(), "§e[Config] reports.max-description-length is very low; consider >= 100.");
+        }
+
+        // Island reset safety
+        if (getConfig().getBoolean("island.reset.enabled", true)) {
+            double cost = getConfig().getDouble("island.reset.cost", 5000);
+            if (cost < 0) {
+                MessageUtil.severe(getLogger(), "§c[Config] island.reset.cost cannot be negative!");
+                hasIssues = true;
+            }
+        }
+
+        // Worth / economy sanity
+        if (getConfig().getDouble("island.worth.level-formula.base", 100) <= 0) {
+            MessageUtil.warning(getLogger(), "§e[Config] island.worth.level-formula.base should be > 0.");
+        }
+        double upkeepPercent = getConfig().getDouble("island.upkeep.percent-per-hour", 0.5);
+        if (upkeepPercent < 0 || upkeepPercent > 10) {
+            MessageUtil.warning(getLogger(), "§e[Config] island.upkeep.percent-per-hour looks extreme (" + upkeepPercent + "%).");
+        }
+
+        // Perf caps (large server)
+        int maxRecalc = getConfig().getInt("island.worth.max-islands-per-recalc-tick", 50);
+        if (maxRecalc < 1 || maxRecalc > 500) {
+            MessageUtil.warning(getLogger(), "§e[Config] island.worth.max-islands-per-recalc-tick should be reasonable (1-200 for large servers).");
         }
 
         if (!isFolia()) {
-            MessageUtil.warning(getLogger(), "§e[Config] Running on non-Folia server. Many Folia-specific optimizations are disabled.");
+            MessageUtil.warning(getLogger(), "§e[Config] Running on non-Folia server. Many Folia-specific optimizations (Region/Entity schedulers, etc.) are disabled or fallback.");
+        }
+
+        // New reports system note
+        if (!getConfig().getBoolean("reports.enabled", true)) {
+            MessageUtil.info(getLogger(), "§e[Config] reports.enabled=false — in-game bug reporting disabled.");
         }
 
         if (hasIssues) {
-            MessageUtil.severe(getLogger(), "§c[Config] Critical configuration issues detected.");
+            MessageUtil.severe(getLogger(), "§c[Config] Critical configuration issues detected. Review above warnings.");
         } else {
-            MessageUtil.info(getLogger(), "§a[Config] Configuration validated.");
+            MessageUtil.info(getLogger(), "§a[Config] Configuration validated (including new reports section).");
         }
     }
 

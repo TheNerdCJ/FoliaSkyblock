@@ -54,6 +54,7 @@ public class DatabaseManager {
     private HologramDAO hologramDAO; // Extracted as continuation of DB modularization (hologram persistence moved out of god class)
     private BalanceDAO balanceDAO;
     private PunishmentDAO punishmentDAO;
+    private BugReportDAO bugReportDAO;
     private CosmeticDAO cosmeticDAO; // Player cosmetic ownership/active/collections (many player_* tables)
     private PendingItemsDAO pendingItemsDAO; // For pending_items table (misc step)
 
@@ -86,6 +87,10 @@ public class DatabaseManager {
 
     public PunishmentDAO getPunishmentDAO() {
         return punishmentDAO;
+    }
+
+    public BugReportDAO getBugReportDAO() {
+        return bugReportDAO;
     }
 
     public CosmeticDAO getCosmeticDAO() {
@@ -126,6 +131,7 @@ public class DatabaseManager {
         this.hologramDAO = new HologramDAO(plugin, dbOps);
         this.balanceDAO = new BalanceDAO(plugin, dbOps);
         this.punishmentDAO = new PunishmentDAO(plugin, dbOps);
+        this.bugReportDAO = new BugReportDAO(plugin, dbOps);
         this.cosmeticDAO = new CosmeticDAO(plugin, dbOps);
         this.pendingItemsDAO = new PendingItemsDAO(plugin, dbOps);
         this.skillDAO = new SkillDAO(plugin, dbOps);
@@ -150,6 +156,7 @@ public class DatabaseManager {
         this.hologramDAO = new HologramDAO(plugin, dbOps);
         this.balanceDAO = new BalanceDAO(plugin, dbOps);
         this.punishmentDAO = new PunishmentDAO(plugin, dbOps);
+        this.bugReportDAO = new BugReportDAO(plugin, dbOps);
         this.cosmeticDAO = new CosmeticDAO(plugin, dbOps);
         this.pendingItemsDAO = new PendingItemsDAO(plugin, dbOps);
         this.skillDAO = new SkillDAO(plugin, dbOps);
@@ -245,6 +252,7 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS island_ratings (grid_x INTEGER, grid_z INTEGER, dimension TEXT, player_uuid TEXT, rating INTEGER, timestamp INTEGER, PRIMARY KEY (grid_x, grid_z, dimension, player_uuid))",
                 "CREATE TABLE IF NOT EXISTS island_warps (grid_x INTEGER, grid_z INTEGER, dimension TEXT, world TEXT, x REAL, y REAL, z REAL, yaw REAL, pitch REAL, enabled BOOLEAN DEFAULT 0, PRIMARY KEY (grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS punishments (id INTEGER PRIMARY KEY AUTOINCREMENT, target_uuid TEXT NOT NULL, staff_uuid TEXT, type TEXT NOT NULL, reason TEXT, duration INTEGER, timestamp INTEGER, active BOOLEAN DEFAULT 1)",
+                "CREATE TABLE IF NOT EXISTS bug_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, reporter_uuid TEXT NOT NULL, reporter_name TEXT, category TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'OPEN', created_at INTEGER NOT NULL, resolved_at INTEGER, resolved_by_uuid TEXT, staff_notes TEXT)",
 
                 // Wardrobe system (Armor + Equipment presets)
                 "CREATE TABLE IF NOT EXISTS player_wardrobe (uuid TEXT, slot INTEGER, set_type TEXT, name TEXT, icon TEXT, h_base64 TEXT, c_base64 TEXT, l_base64 TEXT, b_base64 TEXT, e1_base64 TEXT, e2_base64 TEXT, e3_base64 TEXT, e4_base64 TEXT, PRIMARY KEY (uuid, slot, set_type))",
@@ -1948,6 +1956,43 @@ public class DatabaseManager {
     public CompletableFuture<Boolean> unbanPlayer(UUID uuid) {
         if (punishmentDAO != null) return punishmentDAO.unbanPlayer(uuid);
         return CompletableFuture.completedFuture(false);
+    }
+
+    // ==================== BUG REPORTS (delegated to BugReportDAO) ====================
+
+    public CompletableFuture<Integer> submitBugReport(BugReport report) {
+        if (bugReportDAO != null) return bugReportDAO.submitReport(report);
+        return CompletableFuture.completedFuture(-1);
+    }
+
+    public CompletableFuture<List<BugReport>> getOpenBugReports(int limit) {
+        if (bugReportDAO != null) return bugReportDAO.getOpenReports(limit);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
+    }
+
+    public CompletableFuture<List<BugReport>> getOpenBugReports(int limit, int offset) {
+        if (bugReportDAO != null) return bugReportDAO.getOpenReports(limit, offset);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
+    }
+
+    public CompletableFuture<BugReport> getBugReportById(int id) {
+        if (bugReportDAO != null) return bugReportDAO.getReportById(id);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public CompletableFuture<Boolean> updateBugReportStatus(int reportId, BugReport.Status status, UUID resolvedBy, String notes) {
+        if (bugReportDAO != null) return bugReportDAO.updateStatus(reportId, status, resolvedBy, notes);
+        return CompletableFuture.completedFuture(false);
+    }
+
+    public CompletableFuture<List<BugReport>> getBugReportsForPlayer(UUID uuid, int limit) {
+        if (bugReportDAO != null) return bugReportDAO.getReportsForPlayer(uuid, limit);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
+    }
+
+    public CompletableFuture<Integer> countOpenBugReports() {
+        if (bugReportDAO != null) return bugReportDAO.countOpenReports();
+        return CompletableFuture.completedFuture(0);
     }
 
     // ==================== SLAYER STATS (now functional) ====================

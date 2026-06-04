@@ -104,6 +104,17 @@ commands:
     description: View the server rules
     usage: /<command>
 
+  # Bug reporting / player feedback system (in-game tickets for bugs, exploits, suggestions)
+  bug:
+    description: Submit a bug report, exploit, or suggestion. Staff use /bug reports or /reports to triage.
+    usage: /<command> [bug|exploit|suggestion|other] <detailed description>
+    aliases: [bugreport, reportbug]
+
+  reports:
+    description: (Staff) Open the bug reports triage GUI directly
+    usage: /<command>
+    permission: foliasb.staff
+
   challenge:
     description: View daily, weekly, and progression challenges
     usage: /<command>

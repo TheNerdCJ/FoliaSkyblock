@@ -2,7 +2,7 @@ package com.thenerdcj.gui;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.manager.MuseumManager;
-import org.bukkit.Bukkit;
+import org.bukkit.Bukkit; // kept for createInventory / other; scheduler calls routed via ThreadSafety
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -95,7 +95,7 @@ public class MuseumGUI implements Listener {
                     p.setItemOnCursor(null);
                     p.sendMessage("§aDonated!");
                     // refresh
-                    Bukkit.getScheduler().runTask(plugin, () -> open(p));
+                    plugin.getThreadSafety().runOnMainThread(() -> open(p));
                 }
             } else {
                 p.sendMessage("§cHold a unique item to donate (cursor).");
@@ -106,13 +106,13 @@ public class MuseumGUI implements Listener {
         // Task batch: spend shop for tokens -> cosmetic (PtW)
         if (e.getCurrentItem().getType() == Material.EMERALD) {
             if (museumManager != null && museumManager.spendTokens(p, 50, "cosmetic")) {
-                Bukkit.getScheduler().runTask(plugin, () -> open(p));
+                plugin.getThreadSafety().runOnMainThread(() -> open(p));
             }
             return;
         }
         if (e.getCurrentItem().getType() == Material.NAME_TAG) {
             if (museumManager != null && museumManager.spendTokens(p, 100, "title")) {
-                Bukkit.getScheduler().runTask(plugin, () -> open(p));
+                plugin.getThreadSafety().runOnMainThread(() -> open(p));
             }
             return;
         }

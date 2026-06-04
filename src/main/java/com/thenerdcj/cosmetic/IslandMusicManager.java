@@ -185,6 +185,8 @@ public class IslandMusicManager {
             }, null, 20L, 25 * 20L); // every ~25s
             // We can't easily store BukkitTask here for cancel in simple way; rely on stopSound on change
         } else {
+            // Paper/Spigot fallback (Folia uses per-player scheduler above for region safety).
+            // Matches project pattern of preferring player.getScheduler() + ThreadSafety where possible.
             int taskId = Bukkit.getScheduler().runTaskTimer(plugin, loop, 20L, 25 * 20L).getTaskId();
             activeLoops.put(player.getUniqueId(), taskId);
         }
@@ -196,6 +198,7 @@ public class IslandMusicManager {
     private void stopLoopForPlayer(Player player) {
         Integer taskId = activeLoops.remove(player.getUniqueId());
         if (taskId != null) {
+            // Paper fallback cancel (Folia path relies on stopSound + auto-cancel in player scheduler lambda).
             Bukkit.getScheduler().cancelTask(taskId);
         }
         try {

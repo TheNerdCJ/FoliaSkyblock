@@ -92,6 +92,15 @@ island:
     min-balance: 1000       # Only tax islands with at least this balance
 
 # =============================================
+# Bug Reporting System (player /bug + staff triage GUI)
+# =============================================
+reports:
+  enabled: true
+  cooldown-minutes: 5          # Per-player rate limit between submissions (staff bypass)
+  max-description-length: 500  # Truncate long reports
+  staff-notify: true           # Broadcast new reports to online staff (actionbar + chat preview)
+
+# =============================================
 # Booster System (Temporary Island Multipliers)
 # =============================================
 boosters:

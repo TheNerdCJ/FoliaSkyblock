@@ -256,7 +256,8 @@ public class IslandWeatherCosmeticManager {
             }, null, 10L, 15L); // fairly frequent for nice effect, low cost
             activeWeatherTasks.put(player.getUniqueId(), task);
         } else {
-            // Bukkit fallback (rare)
+            // Paper/Spigot fallback (Folia path above uses player.getScheduler() for proper region/entity affinity on large servers).
+            // See ThreadSafety for the project's preferred abstraction (used in most other paths).
             var task = Bukkit.getScheduler().runTaskTimer(plugin, particleTask, 10L, 15L);
             activeWeatherTasks.put(player.getUniqueId(), task);
         }
