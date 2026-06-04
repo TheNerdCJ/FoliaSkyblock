@@ -357,4 +357,12 @@ public class CollectionManager {
             while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
         }
     }
+
+    /** Seasonal reset hook (collections data wiped at DB layer). */
+    public void clearForNewSeason() {
+        islandCollections.clear();
+        // collections map may be local; rely on DB wipe + cleanup
+        cleanupCaches();
+        plugin.getLogger().info("[CollectionManager] Cleared collection caches for new season.");
+    }
 }

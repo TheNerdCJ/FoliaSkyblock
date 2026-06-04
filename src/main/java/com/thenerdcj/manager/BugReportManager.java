@@ -12,6 +12,9 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 /**
  * Manager for the bug reporting system.
  * - Rate limiting / cooldowns per player (configurable).
@@ -99,6 +102,10 @@ public class BugReportManager {
                 MessageUtil.sendMessage(reporterRef, "§aBug report #" + id + " submitted. Thank you! Staff have been notified.");
                 SoundUtil.success(reporterRef);
 
+                // Append to the single readable bug_reports.md file (for Grok Build analysis / plugin repairs)
+                // This happens only after cooldown + validation passed.
+                appendToBugReportsFile(id, reporterRef.getName(), reporterRef.getUniqueId(), catRef, finalDesc, null);
+
                 // Notify staff (async result -> main for player iteration)
                 final int reportId = id;
                 plugin.getThreadSafety().runOnMainThread(() -> {
@@ -142,6 +149,12 @@ public class BugReportManager {
                         MessageUtil.sendMessage(staff, "§aUpdated report #" + reportId + " to " + newStatus.getColor() + newStatus.getDisplayName());
                         SoundUtil.success(staff);
                     });
+
+                    // Append status update to the bug_reports.md file (keeps full history readable for Grok)
+                    String update = "Status changed to " + newStatus.name() + " by " + staff.getName() +
+                            (noteText.isEmpty() ? "" : " | " + noteText);
+                    // Use a lightweight call (null category means update entry)
+                    appendToBugReportsFile(reportId, staff.getName(), staff.getUniqueId(), null, "", update);
                 }
                 return success;
             });
@@ -162,5 +175,54 @@ public class BugReportManager {
     /** For admin inspect integration (future). */
     public CompletableFuture<java.util.List<BugReport>> getReportsForPlayer(UUID uuid, int limit) {
         return plugin.getDatabaseManager().getBugReportsForPlayer(uuid, limit);
+    }
+
+    /**
+     * Appends a human-readable Markdown entry to plugins/FoliaSkyblock/bug_reports.md .
+     * This single file is designed to be easily readable/pastable into Grok Build (or other LLMs)
+     * for further analysis and plugin repairs. Each submission and status change adds an entry.
+     * Spam protection is enforced upstream in canSubmit (cooldown) before reaching here.
+     */
+    private void appendToBugReportsFile(int reportId, String reporterName, UUID reporterUuid,
+                                        BugReport.Category category, String description, String statusUpdate) {
+        if (reportId <= 0) return;
+        try {
+            Path dataDir = plugin.getDataFolder().toPath();
+            Path logFile = dataDir.resolve("bug_reports.md");
+
+            if (!Files.exists(logFile)) {
+                Files.createDirectories(dataDir);
+                String header = "# FoliaSkyblock Bug Reports Log\n\n" +
+                    "This file is automatically appended to whenever players submit bug reports (via /bug or aliases).\n" +
+                    "It is intentionally in a clean, single-file Markdown format that is easy for Grok Build / AI tools to read and analyze for diagnosing and repairing the plugin.\n\n" +
+                    "**Spam Protection:** Per-player cooldown (configurable in config.yml under `reports.cooldown-minutes`, default 5 minutes). " +
+                    "Staff with foliasb.admin or foliasb.staff bypass the cooldown. Short descriptions (<10 chars) and length caps are also enforced.\n\n" +
+                    "Reports are also stored in the database for in-game GUI triage (/isadmin reports).\n\n";
+                Files.writeString(logFile, header, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            }
+
+            String time = Instant.now().toString();
+            StringBuilder sb = new StringBuilder();
+            sb.append("\n---\n\n");
+            sb.append("## Report #").append(reportId).append("\n\n");
+            sb.append("- **Time:** ").append(time).append("\n");
+            sb.append("- **Reporter:** ").append(reporterName).append(" (").append(reporterUuid != null ? reporterUuid.toString() : "system").append(")\n");
+            if (category != null) {
+                sb.append("- **Category:** ").append(category.name()).append("\n");
+            }
+            if (statusUpdate != null && !statusUpdate.isEmpty()) {
+                sb.append("- **Update:** ").append(statusUpdate).append("\n");
+            }
+            if (description != null && !description.trim().isEmpty()) {
+                sb.append("\n**Description:**\n\n");
+                sb.append(description).append("\n\n");
+            }
+            sb.append("---\n");
+
+            Files.writeString(logFile, sb.toString(), StandardOpenOption.APPEND, StandardOpenOption.CREATE);
+
+        } catch (Exception e) {
+            plugin.getLogger().warning("[BugReportManager] Failed to append to bug_reports.md (non-fatal): " + e.getMessage());
+        }
     }
 }

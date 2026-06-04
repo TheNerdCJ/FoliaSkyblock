@@ -48,6 +48,9 @@ public class AdminCommand implements CommandExecutor {
             MessageUtil.sendMessage(sender, "§7/isadmin reports               - Open bug reports triage GUI (view, triage, resolve)");
             MessageUtil.sendMessage(sender, "§7/isadmin spawngui <player>     - Dedicated Spawn Edit GUI (admin set spawn to loc)");
             MessageUtil.sendMessage(sender, "§7/isadmin benchmark           - Runnable 500-island load sim (timings for worth/loads)");
+            MessageUtil.sendMessage(sender, "§7/isadmin season info         - Current season + reset status");
+            MessageUtil.sendMessage(sender, "§7/isadmin season reset <id> [CONFIRM] [--dry-run]  - Full Option B seasonal wipe + staggered clears");
+            MessageUtil.sendMessage(sender, "§7/isadmin season grant <cat> <id> <player|all|donors>  - Grant seasonal cosmetic (reuses player_* tables)");
             return true;
         }
 
@@ -132,6 +135,10 @@ public class AdminCommand implements CommandExecutor {
 
             case "wardrobe":
                 handleWardrobe(sender, args);
+                break;
+
+            case "season":
+                handleSeasonCommand(sender, args);
                 break;
 
             default:
@@ -627,5 +634,91 @@ public class AdminCommand implements CommandExecutor {
         } else {
             MessageUtil.sendMessage(sender, "§cInspect GUI not initialized.");
         }
+    }
+
+    // ==================== SEASONAL RESET (Option B full impl) ====================
+    private void handleSeasonCommand(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            MessageUtil.sendMessage(sender, "§eSeason commands:");
+            MessageUtil.sendMessage(sender, "§7/isadmin season info");
+            MessageUtil.sendMessage(sender, "§7/isadmin season reset <season-id> [CONFIRM] [--dry-run]");
+            MessageUtil.sendMessage(sender, "§7/isadmin season grant <cat> <id> <player|all|donors>");
+            return;
+        }
+        String sub = args[1].toLowerCase();
+
+        if ("info".equals(sub)) {
+            if (plugin.getSeasonManager() != null) {
+                MessageUtil.sendMessage(sender, "§a" + plugin.getSeasonManager().getInfo());
+            } else {
+                MessageUtil.sendMessage(sender, "§cSeasonManager not initialized.");
+            }
+            return;
+        }
+
+        if ("reset".equals(sub)) {
+            if (args.length < 3) {
+                MessageUtil.sendMessage(sender, "§cUsage: /isadmin season reset <season-id> [CONFIRM] [--dry-run]");
+                return;
+            }
+            String seasonId = args[2];
+            boolean dry = false;
+            boolean confirmed = false;
+            for (int i = 3; i < args.length; i++) {
+                String a = args[i].toUpperCase();
+                if ("--DRY-RUN".equals(a) || "DRY".equals(a)) dry = true;
+                if ("CONFIRM".equals(a)) confirmed = true;
+            }
+            if (!dry && !confirmed) {
+                MessageUtil.sendMessage(sender, "§c§lDANGER: §cThis will wipe ALL island progress for a fresh season.");
+                MessageUtil.sendMessage(sender, "§cRe-run with the exact season id and CONFIRM (or --dry-run first).");
+                return;
+            }
+            if (plugin.getSeasonManager() != null) {
+                plugin.getSeasonManager().beginSeasonalReset(seasonId, dry, sender.getName());
+                MessageUtil.sendMessage(sender, "§aSeason reset request submitted (see console for progress).");
+            }
+            return;
+        }
+
+        if ("grant".equals(sub)) {
+            if (args.length < 5) {
+                MessageUtil.sendMessage(sender, "§cUsage: /isadmin season grant <cat> <id> <player|all|donors>");
+                return;
+            }
+            String cat = args[2];
+            String id = args[3];
+            String target = args[4].toLowerCase();
+
+            if (plugin.getSeasonManager() == null) {
+                MessageUtil.sendMessage(sender, "§cSeasonManager not available.");
+                return;
+            }
+
+            if ("all".equals(target)) {
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    plugin.getSeasonManager().grantSeasonalCosmetic(p.getUniqueId(), cat, id, null, "admin-grant");
+                }
+                MessageUtil.sendMessage(sender, "§aGranted " + cat + ":" + id + " to all online players (seasonal).");
+            } else if ("donors".equals(target)) {
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    if (p.hasPermission("foliasb.donor")) {
+                        plugin.getSeasonManager().grantSeasonalCosmetic(p.getUniqueId(), cat, id, null, "donor-reward");
+                    }
+                }
+                MessageUtil.sendMessage(sender, "§aGranted " + cat + ":" + id + " to online donors.");
+            } else {
+                Player p = Bukkit.getPlayer(target);
+                if (p != null) {
+                    plugin.getSeasonManager().grantSeasonalCosmetic(p.getUniqueId(), cat, id, null, "admin-grant");
+                    MessageUtil.sendMessage(sender, "§aGranted to " + p.getName());
+                } else {
+                    MessageUtil.sendMessage(sender, "§cPlayer not online (offline grants require UUID lookup in full impl).");
+                }
+            }
+            return;
+        }
+
+        MessageUtil.sendMessage(sender, "§cUnknown season subcommand. Use /isadmin season for help.");
     }
 }

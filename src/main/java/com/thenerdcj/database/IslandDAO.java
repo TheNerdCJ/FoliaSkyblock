@@ -1081,6 +1081,48 @@ public class IslandDAO extends BaseDAO {
     // Folia: fully async CompletableFuture. PtW: pure play data (no pay multipliers).
 
     /**
+     * Shared query helper for the two rich per-category top queries (level + members).
+     * Both previously duplicated the same SELECT (COALESCE for level, worth subq from island_worth for display,
+     * memberCount subq from island_members, same LEFT JOIN + result mapping to TopIslandEntry 5-arg ctor).
+     * Only the ORDER BY clause differed. This centralizes the SQL construction + execution + mapping.
+     *
+     * Benefits for large scale + persistence:
+     * - Single place to update if we extend the common projection (e.g. pull last_*_rank columns from island_worth
+     *   for richer top entries without duplicating subqueries).
+     * - Easier to add filters, change joins, or switch to a more formal query builder later.
+     * - Reduces maintenance surface for the persisted tops/ranks paths (cross-ref snapshot columns + my-rank COUNTs).
+     * - Keeps zero new deps, pure JDBC in withConnection style.
+     */
+    private java.util.List<TopIslandEntry> fetchRichPagedTopIslands(java.sql.Connection conn, String orderByClause, int limit, int offset) {
+        java.util.List<TopIslandEntry> top = new java.util.ArrayList<>();
+        String sql = "SELECT i.owner_uuid, COALESCE(il.level, i.level) as lvl, i.dimension, " +
+                     "COALESCE((SELECT worth FROM island_worth ww WHERE ww.grid_x = i.grid_x AND ww.grid_z = i.grid_z AND ww.dimension = i.dimension), 0) as w, " +
+                     "COALESCE((SELECT ww.member_count FROM island_worth ww WHERE ww.grid_x = i.grid_x AND ww.grid_z = i.grid_z AND ww.dimension = i.dimension), 0) as mc, " +
+                     "COALESCE((SELECT ip.prestige_level FROM island_prestige ip WHERE ip.island_key = i.owner_uuid || '_' || i.dimension), 0) as prestige " +
+                     "FROM islands i LEFT JOIN island_levels il ON (i.owner_uuid || '_' || i.dimension = il.island_key) " +
+                     orderByClause + " LIMIT ? OFFSET ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, Math.max(1, limit));
+            ps.setInt(2, Math.max(0, offset));
+            java.sql.ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                try {
+                    UUID owner = UUID.fromString(rs.getString("owner_uuid"));
+                    int lvl = rs.getInt("lvl");
+                    String dim = rs.getString("dimension");
+                    double worth = rs.getDouble("w");
+                    int mc = rs.getInt("mc");
+                    int prestige = rs.getInt("prestige");
+                    top.add(new TopIslandEntry(owner, lvl, dim, worth, mc, prestige));
+                } catch (Exception ignored) {}
+            }
+        } catch (java.sql.SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return top;
+    }
+
+    /**
      * DB-paginated top islands by XP/level (from island_levels joined or islands level).
      * For PAPI %f oliaskyblock_top_level_N% etc.
      */
@@ -1089,29 +1131,36 @@ public class IslandDAO extends BaseDAO {
             java.util.List<TopIslandEntry> top = new java.util.ArrayList<>();
             try {
                 return withConnection(conn -> {
-                    // Prefer island_levels for XP level (main progression); fallback to islands.level
-                    String sql = "SELECT i.owner_uuid, COALESCE(il.level, i.level) as lvl, i.dimension " +
-                                 "FROM islands i LEFT JOIN island_levels il ON (i.owner_uuid || '_' || i.dimension = il.island_key) " +
-                                 "ORDER BY lvl DESC LIMIT ? OFFSET ?";
-                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                        ps.setInt(1, Math.max(1, limit));
-                        ps.setInt(2, Math.max(0, offset));
-                        ResultSet rs = ps.executeQuery();
-                        while (rs.next()) {
-                            try {
-                                UUID owner = UUID.fromString(rs.getString("owner_uuid"));
-                                int lvl = rs.getInt("lvl");
-                                String dim = rs.getString("dimension");
-                                top.add(new TopIslandEntry(owner, lvl, dim));
-                            } catch (Exception ignored) {}
-                        }
-                    } catch (SQLException e) {
-                        throw new RuntimeException(e);
-                    }
-                    return top;
+                    // Delegate to shared query helper (see fetchRichPagedTopIslands). Centralizes the rich SELECT
+                    // (level COALESCE + worth/member subqs) + mapping. Only ORDER BY is specific here.
+                    // Compression win: ~25 lines of duplicated SQL+loop removed; future changes (e.g. including
+                    // persisted last_*_rank columns from island_worth for top entries) touch one place.
+                    return fetchRichPagedTopIslands(conn, "ORDER BY lvl DESC", limit, offset);
                 });
             } catch (Exception e) {
                 plugin.getLogger().severe("[IslandDAO] getTopIslandsByLevel failed: " + e.getMessage());
+                return top;
+            }
+        });
+    }
+
+    /**
+     * DB-paginated top islands by member count (for /is top members + IslandTopGUI MEMBERS category).
+     * Uses subquery for count (from island_members). Pulls level + worth too for rich display in GUI lores.
+     * True server-side pagination (LIMIT OFFSET) for large scale compression (no loading all islands).
+     * Complements the worth and level tops; advances per-category dedicated paginated leaderboards.
+     */
+    public CompletableFuture<java.util.List<TopIslandEntry>> getTopIslandsByMemberCount(int limit, int offset) {
+        return supplyAsync(() -> {
+            java.util.List<TopIslandEntry> top = new java.util.ArrayList<>();
+            try {
+                return withConnection(conn -> {
+                    // Delegate to shared query helper (see fetchRichPagedTopIslands javadoc for dupe-reduction rationale).
+                    // ORDER BY specific to member count primary, level secondary (consistent with prior impl).
+                    return fetchRichPagedTopIslands(conn, "ORDER BY mc DESC, lvl DESC", limit, offset);
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] getTopIslandsByMemberCount failed: " + e.getMessage());
                 return top;
             }
         });
@@ -1151,6 +1200,359 @@ public class IslandDAO extends BaseDAO {
             } catch (Exception e) {
                 plugin.getLogger().severe("[IslandDAO] getTopIslandsByWorth failed: " + e.getMessage());
                 return top;
+            }
+        });
+    }
+
+    // Small shared helpers for the live COUNT fallbacks in my-rank queries (the "rank" side of top/rank queries).
+    // These were previously inlined (slightly different subq for level vs simple for worth). Extracted alongside
+    // the rich tops fetch helper to fulfill the "shared query builder/helper in IslandDAO (reduce duplication in
+    // the similar subqueries for worth/level/member + rank COUNTs)" suggestion. Makes it trivial to evolve the
+    // rank computation (e.g. tie-break rules, dimension scoping, or using persisted snapshots more) in one place.
+    private int computeHigherWorthCount(java.sql.Connection conn, double myWorth) {
+        try (java.sql.PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM island_worth WHERE worth > ?")) {
+            ps.setDouble(1, myWorth);
+            java.sql.ResultSet rs = ps.executeQuery();
+            if (rs.next()) return rs.getInt(1) + 1;
+            return 1;
+        } catch (java.sql.SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private int computeHigherLevelCount(java.sql.Connection conn, int myLevel) {
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM (" +
+                "SELECT COALESCE(il.level, i.level) as lvl FROM islands i LEFT JOIN island_levels il ON (i.owner_uuid || '_' || i.dimension = il.island_key)" +
+                ") sub WHERE lvl > ?")) {
+            ps.setInt(1, myLevel);
+            java.sql.ResultSet rs = ps.executeQuery();
+            if (rs.next()) return rs.getInt(1) + 1;
+            return 1;
+        } catch (java.sql.SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Efficient my-worth-rank using the persisted island_worth table.
+     * Returns 1-based rank (number of islands with strictly higher worth + 1).
+     * Uses COUNT subquery for O(log N) or better with index (no full materialization of tops list).
+     * Global across dimensions (matches the worth tops leaderboard behavior).
+     * For PAPI %f oliaskyblock_my_worth_rank% and /is rank worth.
+     * Persistence-backed (island_worth is the source of truth for worth tops).
+     */
+    public CompletableFuture<Integer> getMyWorthRank(GridPosition pos) {
+        return supplyAsync(() -> {
+            try {
+                return withConnection(conn -> {
+                    // Get my worth for this pos (grid+dim)
+                    double myWorth = 0.0;
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT worth FROM island_worth WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
+                        ps.setInt(1, pos.x());
+                        ps.setInt(2, pos.z());
+                        ps.setString(3, pos.dimension() != null ? pos.dimension().name() : "NORMAL");
+                        ResultSet rs = ps.executeQuery();
+                        if (rs.next()) {
+                            myWorth = rs.getDouble(1);
+                        }
+                    } catch (SQLException sqle) {
+                        throw new RuntimeException(sqle);
+                    }
+                    if (myWorth <= 0) return 999999; // not ranked or no worth yet
+
+                    // Prefer persisted snapshot if available (O(1) after initial compute; refreshed on changes).
+                    int snap = loadLastWorthRankSnapshot(pos);
+                    if (snap > 0) {
+                        return snap;
+                    }
+
+                    // Compute live (COUNT on persisted data) -- now via shared helper (see computeHigherWorthCount).
+                    int computed = computeHigherWorthCount(conn, myWorth);
+
+                    // Persist the snapshot for future fast reads (compression/persistence win for large scale + frequent access).
+                    saveIslandRankSnapshot(pos, computed, 0); // level snapshot can be filled similarly
+                    return computed;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] getMyWorthRank failed: " + e.getMessage());
+                return 0;
+            }
+        });
+    }
+
+    /**
+     * Efficient my-level-rank using persisted levels.
+     * Similar COUNT on the effective level.
+     */
+    public CompletableFuture<Integer> getMyLevelRank(GridPosition pos) {
+        return supplyAsync(() -> {
+            try {
+                return withConnection(conn -> {
+                    int myLevel = 0;
+                    // Prefer island_levels, fallback islands.level (same as top query)
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT COALESCE(il.level, i.level) as lvl FROM islands i LEFT JOIN island_levels il ON (i.owner_uuid || '_' || i.dimension = il.island_key) WHERE i.grid_x = ? AND i.grid_z = ? AND i.dimension = ?")) {
+                        ps.setInt(1, pos.x());
+                        ps.setInt(2, pos.z());
+                        ps.setString(3, pos.dimension() != null ? pos.dimension().name() : "NORMAL");
+                        ResultSet rs = ps.executeQuery();
+                        if (rs.next()) myLevel = rs.getInt("lvl");
+                    } catch (SQLException sqle) {
+                        throw new RuntimeException(sqle);
+                    }
+                    if (myLevel <= 0) return 999999;
+
+                    // Prefer persisted snapshot if available.
+                    int snap = loadLastLevelRankSnapshot(pos);
+                    if (snap > 0) {
+                        return snap;
+                    }
+
+                    // Compute live (COUNT on effective level) -- now via shared helper (see computeHigherLevelCount).
+                    int computed = computeHigherLevelCount(conn, myLevel);
+
+                    // Persist snapshot.
+                    saveIslandRankSnapshot(pos, 0, computed);
+                    return computed;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] getMyLevelRank failed: " + e.getMessage());
+                return 0;
+            }
+        });
+    }
+
+    /**
+     * Save the last computed ranks for this pos into the persisted island_worth row (snapshot for fast future reads).
+     * Called after rank computation on significant changes (prestige, full worth recalc) or periodic refresh for top islands.
+     */
+    public void saveIslandRankSnapshot(GridPosition pos, int worthRank, int levelRank) {
+        runAsync(() -> {
+            try {
+                withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE island_worth SET last_worth_rank = ?, last_level_rank = ? WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
+                        ps.setInt(1, worthRank);
+                        ps.setInt(2, levelRank);
+                        ps.setInt(3, pos.x());
+                        ps.setInt(4, pos.z());
+                        ps.setString(5, pos.getDimension() != null ? pos.getDimension().name() : "NORMAL");
+                        ps.executeUpdate();
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return null;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] saveIslandRankSnapshot failed: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Save rank snapshot by owner+dimension (convenience for refresh-from-tops-window).
+     * Does a cheap grid lookup then delegates to the column update. Useful after a top list
+     * (from cache pre-warm or GUI page 0) is materialized: we can stamp the *current* ranks
+     * (from list position) into the last_* columns for O(1) my-rank for those islands without
+     * re-running COUNTs. Complements the per-island save on calc/prestige.
+     */
+    public void saveIslandRankSnapshotByOwner(UUID owner, String dimension, int worthRank, int levelRank) {
+        runAsync(() -> {
+            try {
+                withConnection(conn -> {
+                    int gx = 0, gz = 0;
+                    String dim = (dimension != null ? dimension : "NORMAL");
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT grid_x, grid_z FROM islands WHERE owner_uuid = ? AND dimension = ? LIMIT 1")) {
+                        ps.setString(1, owner.toString());
+                        ps.setString(2, dim);
+                        ResultSet rs = ps.executeQuery();
+                        if (rs.next()) {
+                            gx = rs.getInt(1);
+                            gz = rs.getInt(2);
+                        } else {
+                            return null;
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    if (gx == 0 && gz == 0) return null;
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE island_worth SET last_worth_rank = ?, last_level_rank = ? WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
+                        ps.setInt(1, worthRank);
+                        ps.setInt(2, levelRank);
+                        ps.setInt(3, gx);
+                        ps.setInt(4, gz);
+                        ps.setString(5, dim);
+                        ps.executeUpdate();
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return null;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] saveIslandRankSnapshotByOwner failed: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Load the last persisted rank snapshot for this pos (if any).
+     * Returns the worthRank (or 0 if none).
+     */
+    public int loadLastWorthRankSnapshot(GridPosition pos) {
+        try {
+            return withConnection(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT last_worth_rank FROM island_worth WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
+                    ps.setInt(1, pos.x());
+                    ps.setInt(2, pos.z());
+                    ps.setString(3, pos.getDimension() != null ? pos.getDimension().name() : "NORMAL");
+                    ResultSet rs = ps.executeQuery();
+                    if (rs.next()) {
+                        return rs.getInt(1);
+                    }
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+                return 0;
+            });
+        } catch (Exception e) {
+            plugin.getLogger().severe("[IslandDAO] loadLastWorthRankSnapshot failed: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    public int loadLastLevelRankSnapshot(GridPosition pos) {
+        try {
+            return withConnection(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT last_level_rank FROM island_worth WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
+                    ps.setInt(1, pos.x());
+                    ps.setInt(2, pos.z());
+                    ps.setString(3, pos.getDimension() != null ? pos.getDimension().name() : "NORMAL");
+                    ResultSet rs = ps.executeQuery();
+                    if (rs.next()) {
+                        return rs.getInt(1);
+                    }
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+                return 0;
+            });
+        } catch (Exception e) {
+            plugin.getLogger().severe("[IslandDAO] loadLastLevelRankSnapshot failed: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Find islands that have persisted worth but are missing rank snapshots (last_*_rank <=0).
+     * Used by backfill task to ensure O(1) my-ranks for as many islands as possible without forcing COUNT on every access.
+     * Limits to avoid long runs on very large servers.
+     */
+    public java.util.List<GridPosition> findIslandsNeedingRankSnapshotBackfill(int limit) {
+        try {
+            return withConnection(conn -> {
+                java.util.List<GridPosition> list = new java.util.ArrayList<>();
+                String sql = "SELECT grid_x, grid_z, dimension FROM island_worth WHERE worth > 0 AND (last_worth_rank <= 0 OR last_level_rank <= 0) LIMIT ?";
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setInt(1, Math.max(1, limit));
+                    ResultSet rs = ps.executeQuery();
+                    while (rs.next()) {
+                        int gx = rs.getInt(1);
+                        int gz = rs.getInt(2);
+                        String d = rs.getString(3);
+                        World.Environment env = World.Environment.NORMAL;
+                        try {
+                            if (d != null) env = World.Environment.valueOf(d);
+                        } catch (Exception ignored) {}
+                        list.add(new GridPosition(gx, gz, env));
+                    }
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+                return list;
+            });
+        } catch (Exception e) {
+            plugin.getLogger().severe("[IslandDAO] findIslandsNeedingRankSnapshotBackfill failed: " + e.getMessage());
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    /**
+     * Fire-and-forget backfill for missing rank snapshots (up to maxBatch).
+     * For each needing pos, calling getMy* will hit the compute+save path (since snap missing) and persist the COUNT result.
+     * Intended to be called from low-frequency global Folia task (e.g. 30min) or on startup delayed.
+     * Complements the window-stamp on cache refresh (which covers the "hot" top islands for free using list positions, no COUNT).
+     */
+    public void backfillMissingRankSnapshots(int maxBatch) {
+        runAsync(() -> {
+            try {
+                java.util.List<GridPosition> needing = findIslandsNeedingRankSnapshotBackfill(maxBatch);
+                int processed = 0;
+                for (GridPosition pos : needing) {
+                    // These are CFs; calling starts the async work which will compute live (if still missing) and save snapshot as side-effect.
+                    getMyWorthRank(pos);
+                    getMyLevelRank(pos);
+                    processed++;
+                }
+                if (processed > 0) {
+                    plugin.getLogger().info("[IslandDAO] Backfilled rank snapshots for " + processed + " islands (one-time COUNT + persist for missing).");
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("[IslandDAO] backfillMissingRankSnapshots error (non-fatal): " + e.getMessage());
+            }
+        });
+    }
+
+    // ==================== PERSISTED AGGREGATES (member_count + prestige_level snapshots on island_worth) ====================
+    // For O(1) access in tops, holograms, PAPI without live subqueries (per IMPROVEMENTS "Persist more aggregates for O(1)/near-O(1)").
+    // member_count replaces COUNT subq from island_members in rich top queries + allows fast ORDER BY.
+    // prestige_level provides snapshot alongside island_prestige table for display speed.
+
+    public void saveIslandMemberCount(GridPosition pos, int count) {
+        runAsync(() -> {
+            try {
+                withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE island_worth SET member_count = ? WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
+                        ps.setInt(1, count);
+                        ps.setInt(2, pos.x());
+                        ps.setInt(3, pos.z());
+                        ps.setString(4, pos.getDimension() != null ? pos.getDimension().name() : "NORMAL");
+                        ps.executeUpdate();
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return null;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] saveIslandMemberCount failed: " + e.getMessage());
+            }
+        });
+    }
+
+    public void saveIslandPrestigeLevel(GridPosition pos, int level) {
+        runAsync(() -> {
+            try {
+                withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE island_worth SET prestige_level = ? WHERE grid_x = ? AND grid_z = ? AND dimension = ?")) {
+                        ps.setInt(1, level);
+                        ps.setInt(2, pos.x());
+                        ps.setInt(3, pos.z());
+                        ps.setString(4, pos.getDimension() != null ? pos.getDimension().name() : "NORMAL");
+                        ps.executeUpdate();
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return null;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] saveIslandPrestigeLevel failed: " + e.getMessage());
             }
         });
     }
@@ -1233,4 +1635,144 @@ public class IslandDAO extends BaseDAO {
             }
         });
     }
+
+    // ==================== SEASONAL RESET SUPPORT (Option B full impl) ====================
+
+    /**
+     * Returns all current island grid positions for physical clear pass + grid reset after wipe.
+     * Used by SeasonManager for staggered RegionScheduler clears (Option B).
+     * Async but often .join() in reset orchestration on admin thread for simplicity (small data).
+     */
+    public CompletableFuture<java.util.List<GridPosition>> getAllIslandGrids() {
+        return supplyAsync(() -> {
+            java.util.List<GridPosition> grids = new java.util.ArrayList<>();
+            try {
+                return withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT grid_x, grid_z, dimension FROM islands")) {
+                        ResultSet rs = ps.executeQuery();
+                        while (rs.next()) {
+                            int gx = rs.getInt("grid_x");
+                            int gz = rs.getInt("grid_z");
+                            String dimStr = rs.getString("dimension");
+                            try {
+                                org.bukkit.World.Environment env = org.bukkit.World.Environment.valueOf(dimStr);
+                                grids.add(new GridPosition(gx, gz, env));
+                            } catch (Exception ignored) {
+                                grids.add(new GridPosition(gx, gz, org.bukkit.World.Environment.NORMAL));
+                            }
+                        }
+                    } catch (SQLException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                    return grids;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] getAllIslandGrids failed: " + e.getMessage());
+                return grids;
+            }
+        });
+    }
+
+    /**
+     * Performs full server-wide seasonal data wipe for island-bound progress (Option B).
+     * Selectively deletes all competitive/island state while leaving player cosmetics, skills, slayer, ranks, player_balances (caller decides).
+     * Reuses and extends the per-island cleanupIslandData patterns for correctness and safety.
+     * Also clears auctions/bazaar active orders (fresh economy for new season).
+     * Returns rough count of islands processed (for logging/audit).
+     *
+     * IMPORTANT: This is destructive. Caller must have done confirmation + backup + dry-run.
+     * Folia/async safe (all via supplyAsync + withConnection).
+     */
+    public CompletableFuture<Integer> performSeasonalIslandWipe() {
+        return supplyAsync(() -> {
+            try {
+                return withConnection(conn -> {
+                    int wipedIslands = 0;
+                    // First, collect grids for reference (and later physical clear uses pre-wipe list)
+                    java.util.List<GridPosition> grids = new java.util.ArrayList<>();
+                    try (PreparedStatement gq = conn.prepareStatement("SELECT grid_x, grid_z, dimension FROM islands")) {
+                        ResultSet grs = gq.executeQuery();
+                        while (grs.next()) {
+                            int gx = grs.getInt(1);
+                            int gz = grs.getInt(2);
+                            String d = grs.getString(3);
+                            try {
+                                grids.add(new GridPosition(gx, gz, org.bukkit.World.Environment.valueOf(d)));
+                            } catch (Exception ignored) {
+                                grids.add(new GridPosition(gx, gz, org.bukkit.World.Environment.NORMAL));
+                            }
+                        }
+                    } catch (SQLException ignored) {}
+
+                    // Delete core islands (this invalidates island_id for members)
+                    try {
+                        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM islands")) {
+                            wipedIslands = ps.executeUpdate();
+                        }
+                    } catch (SQLException ignored) {}
+
+                    // Bulk delete island_members (orphaned by islands delete, but explicit for safety)
+                    try {
+                        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM island_members")) {
+                            ps.executeUpdate();
+                        }
+                    } catch (SQLException ignored) {}
+
+                    // Per-island key + grid cleanups for all known island_* tables (extended from cleanupIslandData)
+                    // Key-based (island_key = owner_dim usually)
+                    String[] keyTables = {
+                        "island_upgrades", "island_levels", "island_skills", "island_milestones",
+                        "island_fuel", "island_boosters", "island_collections",
+                        "island_active_weather", "island_active_music",
+                        "island_missions", "island_prestige", "island_shop_purchases",
+                        "island_museum", "island_museum_donations",
+                        "minion_skin_assignments"
+                    };
+                    for (String t : keyTables) {
+                        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM " + t)) {
+                            ps.executeUpdate();
+                        } catch (SQLException ignored) { /* table may not exist in old schema */ }
+                    }
+
+                    // Grid+dim tables
+                    String[] gridTables = {
+                        "island_banks", "island_worth", "island_settings", "island_ratings",
+                        "island_warps", "island_balances"
+                    };
+                    for (String t : gridTables) {
+                        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM " + t)) {
+                            ps.executeUpdate();
+                        } catch (SQLException ignored) {}
+                    }
+
+                    // Placed cosmetics per island (ownership player_*_furniture etc stay for persistence)
+                    try (PreparedStatement ps = conn.prepareStatement("DELETE FROM island_placed_furniture")) { ps.executeUpdate(); } catch (SQLException ignored) {}
+                    try (PreparedStatement ps = conn.prepareStatement("DELETE FROM island_placed_structures")) { ps.executeUpdate(); } catch (SQLException ignored) {}
+
+                    // Market reset for new season economy (active only; history can stay or be archived separately)
+                    try (PreparedStatement ps = conn.prepareStatement("DELETE FROM auctions WHERE sold = 0")) { ps.executeUpdate(); } catch (SQLException ignored) {}
+                    try (PreparedStatement ps = conn.prepareStatement("DELETE FROM bazaar_orders WHERE filled = 0")) { ps.executeUpdate(); } catch (SQLException ignored) {}
+
+                    // Reset dimension cooldowns for fresh season (player can re-experience early game cooldowns)
+                    try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_dimension_resets")) { ps.executeUpdate(); } catch (SQLException ignored) {}
+
+                    // Note: player_balances, player_skills, slayer_*, player_ranks, all player_* cosmetics are DELIBERATELY untouched here.
+                    // They provide the "persistence on donor items".
+
+                    plugin.getLogger().info("[IslandDAO] Seasonal wipe complete. Islands removed: " + wipedIslands + ", grids cleared in DB: " + grids.size());
+                    return wipedIslands;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[IslandDAO] performSeasonalIslandWipe failed: " + e.getMessage());
+                return 0;
+            }
+        });
+    }
+
+    /**
+     * Optional: stamp the season on newly created islands (for future per-season analytics/tops).
+     * Called from IslandManager create success path if SeasonManager present.
+     */
+    // stampIslandSeason omitted for initial seasonal wipe (optional for future per-season analytics; can be added cleanly later without breaking core reset).
 }

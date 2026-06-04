@@ -89,6 +89,13 @@ public class FoliaSkyblockExpansion extends PlaceholderExpansion {
             Island island = plugin.getIslandManager().getIsland(uuid, env);
             return island != null ? String.valueOf(island.getProgressionLevel()) : "0";
         }
+
+        if (params.equals("current_season") || params.equals("season")) {
+            if (plugin.getSeasonManager() != null) {
+                return plugin.getSeasonManager().getCurrentSeason();
+            }
+            return "S1";
+        }
         if (params.equals("player_balance") || params.equals("balance") || params.equals("coins")) {
             EconomyManager econ = plugin.getEconomyManager();
             if (econ == null) return "0";
@@ -127,6 +134,28 @@ public class FoliaSkyblockExpansion extends PlaceholderExpansion {
                 String name = plugin.getNameCache().getName(e.getOwnerUuid());
                 return name + ":" + String.format("%.0f", e.getWorth());
             } catch (Exception e) { return "N/A"; }
+        }
+
+        // Task batch continuation: my ranks using efficient persistence-backed COUNT queries (no full tops list materialization).
+        // Uses the new DAO rank methods (global across dims for consistency with tops leaderboards).
+        // Compression: avoids loading N entries just to find own position.
+        if (params.equals("my_worth_rank") || params.equals("worth_rank")) {
+            try {
+                Island island = plugin.getIslandManager().getIsland(uuid, env);
+                if (island != null && plugin.getIslandWorthManager() != null) {
+                    return String.valueOf(plugin.getIslandWorthManager().getMyWorthRank(uuid, env).join());
+                }
+            } catch (Exception ignored) {}
+            return "0";
+        }
+        if (params.equals("my_level_rank") || params.equals("level_rank")) {
+            try {
+                Island island = plugin.getIslandManager().getIsland(uuid, env);
+                if (island != null && plugin.getIslandWorthManager() != null) {
+                    return String.valueOf(plugin.getIslandWorthManager().getMyLevelRank(uuid, env).join());
+                }
+            } catch (Exception ignored) {}
+            return "0";
         }
 
         // Party / other

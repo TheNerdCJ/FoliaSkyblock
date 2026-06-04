@@ -236,4 +236,16 @@ public class GridManager {
     public boolean isSpawnGridPosition(GridPosition pos) {
         return pos != null && pos.x() == 0 && pos.z() == 0;
     }
+
+    /**
+     * Called by SeasonManager after a full seasonal wipe (Option B).
+     * Clears in-memory used positions so new creates start fresh from the spiral beginning on clean plots.
+     */
+    public void resetForNewSeason() {
+        usedPositions.clear();
+        positionQueue.clear();
+        currentLayer = 1;
+        generateInitialSpiral();
+        plugin.getLogger().info("[GridManager] Reset for new season (used positions cleared; spiral restarted).");
+    }
 }

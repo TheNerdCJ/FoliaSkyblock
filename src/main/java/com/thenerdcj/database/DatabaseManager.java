@@ -108,6 +108,17 @@ public class DatabaseManager {
     // Task batch: getter for fuel DAO (worth via getIslandDAO)
     public IslandFuelDAO getIslandFuelDAO() { return islandFuelDAO; }
 
+    // Seasonal reset delegation (Option B)
+    public CompletableFuture<Integer> performSeasonalIslandWipe() {
+        if (islandDAO != null) return islandDAO.performSeasonalIslandWipe();
+        return CompletableFuture.completedFuture(0);
+    }
+
+    public CompletableFuture<java.util.List<GridPosition>> getAllIslandGrids() {
+        if (islandDAO != null) return islandDAO.getAllIslandGrids();
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
+    }
+
     // For test support (H2 in-memory)
     private String jdbcUrlOverride = null;
 
@@ -248,7 +259,7 @@ public class DatabaseManager {
                 // Island feature tables (centralized from Island*Manager classes)
                 "CREATE TABLE IF NOT EXISTS island_settings (grid_x INTEGER, grid_z INTEGER, dimension TEXT, pvp_enabled BOOLEAN DEFAULT 0, visitors_allowed BOOLEAN DEFAULT 1, explosions_enabled BOOLEAN DEFAULT 0, fire_spread_enabled BOOLEAN DEFAULT 0, mob_spawning_enabled BOOLEAN DEFAULT 1, crop_trampling_enabled BOOLEAN DEFAULT 1, animal_spawning_enabled BOOLEAN DEFAULT 1, leaf_decay_enabled BOOLEAN DEFAULT 1, border_color TEXT DEFAULT 'BLUE', border_size INTEGER DEFAULT 100, border_markers_enabled BOOLEAN DEFAULT 0, warp_enabled BOOLEAN DEFAULT 0, warp_description TEXT DEFAULT '', PRIMARY KEY (grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS island_banks (grid_x INTEGER, grid_z INTEGER, dimension TEXT, balance REAL DEFAULT 0.0, PRIMARY KEY (grid_x, grid_z, dimension))",
-                "CREATE TABLE IF NOT EXISTS island_worth (grid_x INTEGER, grid_z INTEGER, dimension TEXT, worth REAL DEFAULT 0.0, worth_level INTEGER DEFAULT 1, last_calculated INTEGER DEFAULT 0, PRIMARY KEY (grid_x, grid_z, dimension))",
+                "CREATE TABLE IF NOT EXISTS island_worth (grid_x INTEGER, grid_z INTEGER, dimension TEXT, worth REAL DEFAULT 0.0, worth_level INTEGER DEFAULT 1, last_calculated INTEGER DEFAULT 0, last_worth_rank INTEGER DEFAULT 0, last_level_rank INTEGER DEFAULT 0, member_count INTEGER DEFAULT 0, prestige_level INTEGER DEFAULT 0, PRIMARY KEY (grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS island_ratings (grid_x INTEGER, grid_z INTEGER, dimension TEXT, player_uuid TEXT, rating INTEGER, timestamp INTEGER, PRIMARY KEY (grid_x, grid_z, dimension, player_uuid))",
                 "CREATE TABLE IF NOT EXISTS island_warps (grid_x INTEGER, grid_z INTEGER, dimension TEXT, world TEXT, x REAL, y REAL, z REAL, yaw REAL, pitch REAL, enabled BOOLEAN DEFAULT 0, PRIMARY KEY (grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS punishments (id INTEGER PRIMARY KEY AUTOINCREMENT, target_uuid TEXT NOT NULL, staff_uuid TEXT, type TEXT NOT NULL, reason TEXT, duration INTEGER, timestamp INTEGER, active BOOLEAN DEFAULT 1)",
@@ -341,7 +352,12 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_death_messages (uuid TEXT, message_id TEXT, PRIMARY KEY (uuid, message_id))",
 
                 // Player Skill System (MCMMO-like per-player skills: Mining, Woodcutting, etc. with levels/XP/abilities)
-                "CREATE TABLE IF NOT EXISTS player_skills (uuid TEXT, skill TEXT, xp DOUBLE DEFAULT 0, level INTEGER DEFAULT 1, PRIMARY KEY (uuid, skill))"
+                "CREATE TABLE IF NOT EXISTS player_skills (uuid TEXT, skill TEXT, xp DOUBLE DEFAULT 0, level INTEGER DEFAULT 1, PRIMARY KEY (uuid, skill))",
+                // Seasonal resets (Option B): current season tracking + history + cosmetic grant audit for event/donor releases.
+                // player_seasonal_grants allows tracking what was released this season without duplicating ownership (ownership still in player_* cosmetic tables).
+                "CREATE TABLE IF NOT EXISTS server_meta (meta_key TEXT PRIMARY KEY, meta_value TEXT)",
+                "CREATE TABLE IF NOT EXISTS seasons (season_id TEXT PRIMARY KEY, name TEXT, started_at INTEGER, ended_at INTEGER, islands_wiped INTEGER DEFAULT 0, triggered_by TEXT)",
+                "CREATE TABLE IF NOT EXISTS player_seasonal_grants (uuid TEXT, season_id TEXT, category TEXT, cosmetic_id TEXT, granted_at INTEGER, source TEXT, PRIMARY KEY (uuid, season_id, category, cosmetic_id))"
         };
 
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
@@ -383,6 +399,9 @@ public class DatabaseManager {
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_weather ON player_island_weather(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_active_weather ON island_active_weather(island_key)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_accessories ON player_accessories(uuid)");
+            // Seasonal
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_seasonal_grants_season ON player_seasonal_grants(season_id)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_seasons_started ON seasons(started_at)");
 
             // Backwards-compat ALTERs for mission booster reward columns (safe if columns exist)
             try { stmt.executeUpdate("ALTER TABLE island_missions ADD COLUMN reward_booster_type TEXT"); } catch (SQLException ignored) {}
@@ -403,9 +422,26 @@ public class DatabaseManager {
             // Border markers flag
             try { stmt.executeUpdate("ALTER TABLE island_settings ADD COLUMN border_markers_enabled BOOLEAN DEFAULT 0"); } catch (SQLException ignored) {}
 
+            // Persisted rank snapshots for O(1) my-rank (compression/persistence for large servers + frequent PAPI/command access)
+            // Added after the live COUNT my-rank implementation.
+            try { stmt.executeUpdate("ALTER TABLE island_worth ADD COLUMN last_worth_rank INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("ALTER TABLE island_worth ADD COLUMN last_level_rank INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+
+            // Persisted aggregates for O(1) displays (member count snapshot + prestige level snapshot) in tops/holograms/PAPI without subqueries or joins in hot paths.
+            // Per "Persist more aggregates for O(1)/near-O(1)" in IMPROVEMENTS.
+            try { stmt.executeUpdate("ALTER TABLE island_worth ADD COLUMN member_count INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("ALTER TABLE island_worth ADD COLUMN prestige_level INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+
             // Particle trail cosmetics
             try { stmt.executeUpdate("ALTER TABLE player_particle_trails ADD COLUMN trail_id TEXT"); } catch (SQLException ignored) {}
             try { stmt.executeUpdate("ALTER TABLE player_active_trail ADD COLUMN trail_id TEXT"); } catch (SQLException ignored) {}
+
+            // Seasonal resets (v13) compat for live servers (server_meta for current_season, seasons history, grants audit table for event cosmetics, created_season stamp).
+            try { stmt.executeUpdate("CREATE TABLE IF NOT EXISTS server_meta (meta_key TEXT PRIMARY KEY, meta_value TEXT)"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("CREATE TABLE IF NOT EXISTS seasons (season_id TEXT PRIMARY KEY, name TEXT, started_at INTEGER, ended_at INTEGER, islands_wiped INTEGER DEFAULT 0, triggered_by TEXT)"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("CREATE TABLE IF NOT EXISTS player_seasonal_grants (uuid TEXT, season_id TEXT, category TEXT, cosmetic_id TEXT, granted_at INTEGER, source TEXT, PRIMARY KEY (uuid, season_id, category, cosmetic_id))"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_seasonal_grants_season ON player_seasonal_grants(season_id)"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("ALTER TABLE islands ADD COLUMN created_season TEXT"); } catch (SQLException ignored) {}
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to create tables: " + e.getMessage());
         }
@@ -2176,6 +2212,64 @@ public class DatabaseManager {
         }, executor);
     }
 
+    public CompletableFuture<Boolean> removeIslandMember(int gridX, int gridZ, String dimension, UUID playerUuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "DELETE FROM island_members WHERE island_id = (SELECT id FROM islands WHERE grid_x = ? AND grid_z = ? AND dimension = ?) AND player_uuid = ?")) {
+                ps.setInt(1, gridX);
+                ps.setInt(2, gridZ);
+                ps.setString(3, dimension);
+                ps.setString(4, playerUuid.toString());
+                ps.executeUpdate();
+                return true;
+            } catch (SQLException e) {
+                return false;
+            }
+        }, executor);
+    }
+
+    // ==================== SEASONAL META (for SeasonManager) ====================
+    public String getCurrentSeason() {
+        if (islandDAO != null) {
+            // Prefer going through DAO if we extract later; simple direct for speed
+        }
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT meta_value FROM server_meta WHERE meta_key = 'current_season'")) {
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) return rs.getString(1);
+        } catch (SQLException ignored) {}
+        return "S1"; // default first season
+    }
+
+    public void setCurrentSeason(String seasonId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT OR REPLACE INTO server_meta (meta_key, meta_value) VALUES ('current_season', ?)")) {
+            ps.setString(1, seasonId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("[DB] setCurrentSeason failed: " + e.getMessage());
+        }
+    }
+
+    public CompletableFuture<Void> recordSeasonHistory(String seasonId, String name, long startedAt, int islandsWiped, String triggeredBy) {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO seasons (season_id, name, started_at, islands_wiped, triggered_by) VALUES (?, ?, ?, ?, ?)")) {
+                ps.setString(1, seasonId);
+                ps.setString(2, name != null ? name : seasonId);
+                ps.setLong(3, startedAt);
+                ps.setInt(4, islandsWiped);
+                ps.setString(5, triggeredBy);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().warning("[DB] recordSeasonHistory failed: " + e.getMessage());
+            }
+        }, executor);
+    }
+
     // ==================== GLOBAL ISLAND WORTH LEADERBOARD (DB-backed) ====================
 
     public static class TopWorthEntry {
@@ -2213,9 +2307,7 @@ public class DatabaseManager {
             List<TopWorthEntry> results = new ArrayList<>();
             String sql = """
                 SELECT w.grid_x, w.grid_z, w.dimension, w.worth, w.worth_level, i.owner_uuid,
-                       (SELECT COUNT(*) FROM island_members m 
-                        JOIN islands ii ON m.island_id = ii.id 
-                        WHERE ii.grid_x = w.grid_x AND ii.grid_z = w.grid_z AND ii.dimension = w.dimension) as member_count
+                       COALESCE(w.member_count, 0) as member_count
                 FROM island_worth w
                 JOIN islands i ON i.grid_x = w.grid_x AND i.grid_z = w.grid_z AND i.dimension = w.dimension
                 ORDER BY w.worth DESC

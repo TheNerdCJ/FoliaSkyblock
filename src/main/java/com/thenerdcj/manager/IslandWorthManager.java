@@ -54,6 +54,43 @@ public class IslandWorthManager {
         }
     });
 
+    // Short-TTL result cache + event-driven dirty for global worth tops leaderboards (compression for 1000+ islands).
+    // Avoids hammering DB for every /is top / GUI / PAPI request. Pre-warmed in Folia global task.
+    // Integrates with "topsDirty" pattern from rating manager and "event-driven to compress periodic work".
+    private volatile java.util.List<IslandTopEntry> cachedTopWorth;
+    private volatile long lastTopWorthFetchMs = 0;
+    private static final long TOP_WORTH_TTL_MS = 90_000L; // ~1.5 min; tune via perf section or future config
+    private volatile boolean worthTopsDirty = true;
+
+    // Similar short caches for the dedicated per-category tops (level, members) added in previous pass.
+    private volatile java.util.List<IslandTopEntry> cachedTopLevel;
+    private volatile long lastTopLevelFetchMs = 0;
+    private volatile boolean levelTopsDirty = true;
+
+    private volatile java.util.List<IslandTopEntry> cachedTopMembers;
+    private volatile long lastTopMembersFetchMs = 0;
+    private volatile boolean membersTopsDirty = true;
+
+    // Promoted tops result caches (and rank results) to real LRU LinkedHashMap (access-order + bounded removeEldest)
+    // matching the per-island worthCache / worthLevelCache pattern (from earlier optimization passes).
+    // Provides memory safety / bounded growth for 1000+ islands (evicts least-recently-accessed top windows or my-rank results
+    // under load; hot categories like WORTH and frequently queried players stay via access-order).
+    // Integrates with existing dirty flags (evict on mark), TTL freshness, and snapshot refresh on populate.
+    // Keys: category for tops windows; "owner:cat:env" for my-rank results.
+    // See IMPROVEMENTS "Promote the tops result caches ... to real LinkedHashMap".
+    private final Map<String, java.util.List<IslandTopEntry>> topResultsLRU = Collections.synchronizedMap(new LinkedHashMap<String, java.util.List<IslandTopEntry>>(4, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, java.util.List<IslandTopEntry>> eldest) {
+            return size() > 6;  // bound total recent top windows across cats (WORTH hot stays; others may evict)
+        }
+    });
+    private final Map<String, Integer> myRankLRU = Collections.synchronizedMap(new LinkedHashMap<String, Integer>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Integer> eldest) {
+            return size() > 5000;  // bound recent my-rank results (for PAPI/command hot paths on active players)
+        }
+    });
+
     // === NEW: Live delta tracking for incremental worth (Phase 1 optimization) ===
     // This lets us avoid full rescans on every block change.
     private final Map<String, Double> baseBlockWorth = new ConcurrentHashMap<>(); // islandKey -> sum of raw block values (no multipliers)
@@ -277,8 +314,25 @@ public class IslandWorthManager {
 
                 // Persist for drift correction on load (this pass)
                 if (plugin.getDatabaseManager() != null && plugin.getDatabaseManager().getIslandDAO() != null) {
-                    plugin.getDatabaseManager().getIslandDAO().saveIslandWorth(island.getGridPosition(), totalWorth, level, System.currentTimeMillis());
+                    GridPosition gpos = island.getGridPosition();
+                    plugin.getDatabaseManager().getIslandDAO().saveIslandWorth(gpos, totalWorth, level, System.currentTimeMillis());
+                    // Persist aggregates snapshots too (member_count + prestige_level) for O(1)
+                    plugin.getDatabaseManager().getIslandDAO().saveIslandMemberCount(gpos, island.getMemberCount());
+                    // prestige synced via PrestigeManager on change; default 0 is fine
                 }
+
+                // Refresh persisted rank snapshot for this island (so my-rank queries can be O(1) from the last_* columns until next significant change).
+                // The getMy*Rank will compute live COUNT if no snapshot and then save it (persistence + compression for frequent /is rank and PAPI).
+                if (plugin.getDatabaseManager() != null && plugin.getDatabaseManager().getIslandDAO() != null) {
+                    GridPosition gpos = island.getGridPosition();
+                    plugin.getDatabaseManager().getIslandDAO().getMyWorthRank(gpos); // fire-and-forget; side-effect saves snapshot
+                }
+
+                // Event sink for worth tops: mark dirty so global leaderboards can use event-driven refresh instead of always periodic.
+                // Complements rating's topsDirty and "full event-driven to compress periodic work" suggestions.
+                markWorthTopsDirty();
+                markLevelTopsDirty();
+                markMembersTopsDirty();
 
                 // Task 1: explicit tie - sync worthLevel to Island for getProgressionLevel() / display. Worth = economy value (tops, bank interest potential); XP level = play unlocks.
                 // Folia: called from RegionScheduler in FoliaSkyblock worth task (per-island).
@@ -401,6 +455,11 @@ public class IslandWorthManager {
         // Invalidate the final cached total so next read will recombine base + multipliers
         worthCache.remove(key);
         worthLevelCache.remove(key);
+
+        // Incremental change also dirties the tops cache (event-driven compression for leaderboards)
+        markWorthTopsDirty();
+        markLevelTopsDirty();
+        markMembersTopsDirty();
     }
 
     private String getIslandKey(Island island) {
@@ -448,12 +507,15 @@ public class IslandWorthManager {
                     int members = island.getMemberCount();
                     String ownerName = plugin.getNameCache().getName(island.getOwnerUuid());
 
+                    String dim = (island.getGridPosition() != null && island.getGridPosition().getDimension() != null)
+                            ? island.getGridPosition().getDimension().name() : "NORMAL";
                     entries.add(new IslandTopEntry(
                         island.getOwnerUuid(),
                         worth,
                         wLevel,
                         members,
-                        ownerName != null ? ownerName : island.getOwnerUuid().toString().substring(0, 8)
+                        ownerName != null ? ownerName : island.getOwnerUuid().toString().substring(0, 8),
+                        dim
                     ));
                 }
             }
@@ -469,31 +531,7 @@ public class IslandWorthManager {
      * Falls back to local cache if DB query fails.
      */
     public CompletableFuture<java.util.List<IslandTopEntry>> getTopIslandsByWorth(int limit) {
-        return plugin.getDatabaseManager().getTopIslandsByWorth(limit).thenApply(dbResults -> {
-            java.util.List<IslandTopEntry> entries = new java.util.ArrayList<>();
-
-            for (var db : dbResults) {
-                String ownerName = plugin.getNameCache().getName(db.ownerUuid);
-                entries.add(new IslandTopEntry(
-                    db.ownerUuid,
-                    db.worth,
-                    db.worthLevel,
-                    db.memberCount,
-                    ownerName != null ? ownerName : db.ownerUuid.toString().substring(0, 8)
-                ));
-            }
-
-            // Already sorted by DB query (ORDER BY worth DESC)
-            return entries;
-        }).exceptionally(ex -> {
-            plugin.getLogger().warning("[IslandWorth] DB leaderboard failed, falling back to local: " + ex.getMessage());
-            // Fallback
-            try {
-                return getTopIslandsByWorthLocal(limit).get();
-            } catch (Exception e) {
-                return java.util.Collections.emptyList();
-            }
-        });
+        return getTopIslandsByWorth(limit, 0);
     }
 
     /**
@@ -501,21 +539,71 @@ public class IslandWorthManager {
      * Delegates to DM for server-side pagination.
      */
     public CompletableFuture<java.util.List<IslandTopEntry>> getTopIslandsByWorth(int limit, int offset) {
-        return plugin.getDatabaseManager().getTopIslandsByWorth(limit, offset).thenApply(dbResults -> {
-            java.util.List<IslandTopEntry> entries = new java.util.ArrayList<>();
+        long now = System.currentTimeMillis();
+        String cacheKey = "WORTH";
+        // LRU-backed (access-order + bounded): get touches LRU recency. Short TTL + dirty for event-driven freshness.
+        // Promoted from plain volatile List for memory safety on 1000+ (evicts cold windows; hot stay).
+        java.util.List<IslandTopEntry> cached = topResultsLRU.get(cacheKey);
+        if (cached != null && !worthTopsDirty && (now - lastTopWorthFetchMs < TOP_WORTH_TTL_MS)) {
+            int start = Math.max(0, offset);
+            int end = Math.min(start + limit, cached.size());
+            java.util.List<IslandTopEntry> page = new java.util.ArrayList<>(cached.subList(start, end));
+            cachedTopWorth = cached;  // keep field in sync for snapshot refresh etc.
+            return CompletableFuture.completedFuture(page);
+        }
 
+        // Miss / stale / dirty: refresh a window of top entries (e.g. 200 for common leaderboard pages) into cache, then serve requested slice.
+        int cacheWindow = 200;
+        return plugin.getDatabaseManager().getTopIslandsByWorth(cacheWindow, 0).thenApply(dbResults -> {
+            java.util.List<IslandTopEntry> fresh = new java.util.ArrayList<>();
             for (var db : dbResults) {
                 String ownerName = plugin.getNameCache().getName(db.ownerUuid);
-                entries.add(new IslandTopEntry(
+                fresh.add(new IslandTopEntry(
                     db.ownerUuid,
                     db.worth,
                     db.worthLevel,
                     db.memberCount,
-                    ownerName != null ? ownerName : db.ownerUuid.toString().substring(0, 8)
+                    ownerName != null ? ownerName : db.ownerUuid.toString().substring(0, 8),
+                    db.dimension
                 ));
             }
+            cachedTopWorth = fresh;
+            lastTopWorthFetchMs = now;
+            worthTopsDirty = false;
+            topResultsLRU.put(cacheKey, fresh);  // store in LRU (may evict eldest if over bound; access-order will keep hot)
 
-            return entries;
+            // Refresh persisted rank snapshots from the authoritative top window order (list position = current rank).
+            // Uses the new saveByOwner helper (grid lookup + column update). This gives O(1) last_worth_rank
+            // for the top ~200 islands on cache refresh / pre-warm (common for "my rank" queries on active tops).
+            // Ties the shared query builder work + snapshot columns into a closed persistence loop for ranks.
+            // (Level ranks could be done similarly from level cache; worth is primary for this path.)
+            try {
+                var dao = (plugin.getDatabaseManager() != null) ? plugin.getDatabaseManager().getIslandDAO() : null;
+                if (dao != null) {
+                    for (int i = 0; i < dbResults.size(); i++) {
+                        var db = dbResults.get(i);
+                        int lr = 0;
+                        if (cachedTopLevel != null) {
+                            for (int li = 0; li < cachedTopLevel.size(); li++) {
+                                if (cachedTopLevel.get(li).owner.equals(db.ownerUuid)) {
+                                    lr = li + 1;
+                                    break;
+                                }
+                            }
+                        }
+                        dao.saveIslandRankSnapshotByOwner(db.ownerUuid, db.dimension, i + 1, lr);
+                    }
+                }
+            } catch (Exception snapEx) {
+                plugin.getLogger().fine("[IslandWorth] rank snapshot refresh from tops (non-fatal): " + snapEx.getMessage());
+            }
+
+            int start = Math.max(0, offset);
+            int end = Math.min(start + limit, fresh.size());
+            java.util.List<IslandTopEntry> page = new java.util.ArrayList<>(fresh.subList(start, end));
+            // General refresh (covers cross level ranks etc from current caches)
+            refreshRankSnapshotsFromTops();
+            return page;
         }).exceptionally(ex -> {
             plugin.getLogger().warning("[IslandWorth] DB leaderboard (offset) failed, falling back to local: " + ex.getMessage());
             try {
@@ -526,19 +614,261 @@ public class IslandWorthManager {
         });
     }
 
+    /**
+     * DB-paginated top by level (dedicated, not derived from worth sort).
+     * Maps DAO TopIslandEntry (now with memberCount + worth pulled in query) to rich IslandTopEntry for GUI.
+     * Enables proper server-side ORDER BY level + LIMIT/OFFSET in IslandTopGUI for the LEVEL category.
+     */
+    public CompletableFuture<java.util.List<IslandTopEntry>> getTopIslandsByLevel(int limit, int offset) {
+        long now = System.currentTimeMillis();
+        String cacheKey = "LEVEL";
+        java.util.List<IslandTopEntry> cached = topResultsLRU.get(cacheKey);
+        if (cached != null && !levelTopsDirty && (now - lastTopLevelFetchMs < TOP_WORTH_TTL_MS)) {
+            int start = Math.max(0, offset);
+            int end = Math.min(start + limit, cached.size());
+            java.util.List<IslandTopEntry> page = new java.util.ArrayList<>(cached.subList(start, end));
+            cachedTopLevel = cached;
+            return CompletableFuture.completedFuture(page);
+        }
+        int cacheWindow = 200;
+        return plugin.getIslandManager().getTopIslandsByLevel(cacheWindow, 0).thenApply(dbResults -> {
+            java.util.List<IslandTopEntry> fresh = new java.util.ArrayList<>();
+            for (var db : dbResults) {
+                String ownerName = plugin.getNameCache().getName(db.getOwnerUuid());
+                fresh.add(new IslandTopEntry(
+                    db.getOwnerUuid(),
+                    db.getWorth(),
+                    db.getLevel(),
+                    db.getMemberCount(),
+                    ownerName != null ? ownerName : db.getOwnerUuid().toString().substring(0, 8),
+                    db.getDimension()
+                ));
+            }
+            cachedTopLevel = fresh;
+            lastTopLevelFetchMs = now;
+            levelTopsDirty = false;
+            topResultsLRU.put(cacheKey, fresh);
+
+            // Stamp snapshots for level window (primary level rank from position, cross worth rank if worth cache hot)
+            try {
+                var dao = (plugin.getDatabaseManager() != null) ? plugin.getDatabaseManager().getIslandDAO() : null;
+                if (dao != null) {
+                    for (int i = 0; i < dbResults.size(); i++) {
+                        var db = dbResults.get(i);
+                        int wr = 0;
+                        if (cachedTopWorth != null) {
+                            for (int wi = 0; wi < cachedTopWorth.size(); wi++) {
+                                if (cachedTopWorth.get(wi).owner.equals(db.getOwnerUuid())) {
+                                    wr = wi + 1;
+                                    break;
+                                }
+                            }
+                        }
+                        dao.saveIslandRankSnapshotByOwner(db.getOwnerUuid(), db.getDimension(), wr, i + 1);
+                    }
+                }
+            } catch (Exception snapEx) {
+                plugin.getLogger().fine("[IslandWorth] level rank snapshot refresh (non-fatal): " + snapEx.getMessage());
+            }
+
+            int start = Math.max(0, offset);
+            int end = Math.min(start + limit, fresh.size());
+            java.util.List<IslandTopEntry> page = new java.util.ArrayList<>(fresh.subList(start, end));
+            // Ensure snapshots updated when this cache populates (e.g. from GUI request for LEVEL cat)
+            refreshRankSnapshotsFromTops();
+            return page;
+        }).exceptionally(ex -> {
+            plugin.getLogger().warning("[IslandWorth] DB top by level (offset) failed: " + ex.getMessage());
+            return java.util.Collections.emptyList();
+        });
+    }
+
+    /**
+     * DB-paginated top by member count (new dedicated query for true largest islands by party size).
+     * Supports full offset pagination for large scale. Maps to IslandTopEntry for IslandTopGUI MEMBERS cat.
+     */
+    public CompletableFuture<java.util.List<IslandTopEntry>> getTopIslandsByMemberCount(int limit, int offset) {
+        long now = System.currentTimeMillis();
+        String cacheKey = "MEMBERS";
+        java.util.List<IslandTopEntry> cached = topResultsLRU.get(cacheKey);
+        if (cached != null && !membersTopsDirty && (now - lastTopMembersFetchMs < TOP_WORTH_TTL_MS)) {
+            int start = Math.max(0, offset);
+            int end = Math.min(start + limit, cached.size());
+            java.util.List<IslandTopEntry> page = new java.util.ArrayList<>(cached.subList(start, end));
+            cachedTopMembers = cached;
+            return CompletableFuture.completedFuture(page);
+        }
+        int cacheWindow = 200;
+        return plugin.getIslandManager().getTopIslandsByMemberCount(cacheWindow, 0).thenApply(dbResults -> {
+            java.util.List<IslandTopEntry> fresh = new java.util.ArrayList<>();
+            for (var db : dbResults) {
+                String ownerName = plugin.getNameCache().getName(db.getOwnerUuid());
+                fresh.add(new IslandTopEntry(
+                    db.getOwnerUuid(),
+                    db.getWorth(),
+                    db.getLevel(),
+                    db.getMemberCount(),
+                    ownerName != null ? ownerName : db.getOwnerUuid().toString().substring(0, 8),
+                    db.getDimension()
+                ));
+            }
+            cachedTopMembers = fresh;
+            lastTopMembersFetchMs = now;
+            membersTopsDirty = false;
+            topResultsLRU.put(cacheKey, fresh);
+            int start = Math.max(0, offset);
+            int end = Math.min(start + limit, fresh.size());
+            java.util.List<IslandTopEntry> page = new java.util.ArrayList<>(fresh.subList(start, end));
+            // Member populate can also trigger snapshot refresh (for cross worth/level ranks of top member islands)
+            refreshRankSnapshotsFromTops();
+            return page;
+        }).exceptionally(ex -> {
+            plugin.getLogger().warning("[IslandWorth] DB top by member count (offset) failed: " + ex.getMessage());
+            return java.util.Collections.emptyList();
+        });
+    }
+
+    // --- Top result caching + event-driven support (for large scale leaderboards compression) ---
+    public boolean isWorthTopsDirty() { return worthTopsDirty; }
+    public void clearWorthTopsDirty() { worthTopsDirty = false; topResultsLRU.remove("WORTH"); myRankLRU.clear(); }
+    public void markWorthTopsDirty() { worthTopsDirty = true; topResultsLRU.remove("WORTH"); myRankLRU.clear(); }
+
+    public boolean isLevelTopsDirty() { return levelTopsDirty; }
+    public void clearLevelTopsDirty() { levelTopsDirty = false; topResultsLRU.remove("LEVEL"); myRankLRU.clear(); }
+    public void markLevelTopsDirty() { levelTopsDirty = true; topResultsLRU.remove("LEVEL"); myRankLRU.clear(); }
+
+    public boolean isMembersTopsDirty() { return membersTopsDirty; }
+    public void clearMembersTopsDirty() { membersTopsDirty = false; topResultsLRU.remove("MEMBERS"); myRankLRU.clear(); }
+
+    /**
+     * Called by SeasonManager on full server seasonal reset (Option B).
+     * Evicts all LRU result caches, marks dirty so next access repopulates from (now empty) DB, resets any snapshot stamps.
+     */
+    public void clearAllForNewSeason() {
+        topResultsLRU.clear();
+        myRankLRU.clear();
+        worthCache.clear();
+        cachedTopWorth = null;
+        cachedTopLevel = null;
+        cachedTopMembers = null;
+        lastTopWorthFetchMs = 0;
+        lastTopLevelFetchMs = 0;
+        lastTopMembersFetchMs = 0;
+        worthTopsDirty = true;
+        levelTopsDirty = true;
+        membersTopsDirty = true;
+        plugin.getLogger().info("[IslandWorthManager] Cleared all caches/LRU/snapshots for new season (tops will repopulate from fresh data).");
+    }
+    public void markMembersTopsDirty() { membersTopsDirty = true; topResultsLRU.remove("MEMBERS"); myRankLRU.clear(); }
+
+    // Convenience for my-rank (delegates to IslandManager/DAO for the efficient persistence-backed queries).
+    // Used by PAPI and commands. Resolves via current env or explicit.
+    public java.util.concurrent.CompletableFuture<Integer> getMyWorthRank(java.util.UUID owner, org.bukkit.World.Environment env) {
+        String rankKey = owner.toString() + ":worth:" + (env != null ? env.name() : "NORMAL");
+        Integer cached = myRankLRU.get(rankKey);
+        if (cached != null) {
+            return java.util.concurrent.CompletableFuture.completedFuture(cached);
+        }
+        com.thenerdcj.island.Island island = plugin.getIslandManager().getIsland(owner, env);
+        if (island == null) return java.util.concurrent.CompletableFuture.completedFuture(0);
+        return plugin.getIslandManager().getMyWorthRank(island.getGridPosition()).thenApply(r -> {
+            if (r != null && r > 0) myRankLRU.put(rankKey, r);  // cache recent my-rank result (LRU bounded)
+            return r;
+        });
+    }
+    public java.util.concurrent.CompletableFuture<Integer> getMyLevelRank(java.util.UUID owner, org.bukkit.World.Environment env) {
+        String rankKey = owner.toString() + ":level:" + (env != null ? env.name() : "NORMAL");
+        Integer cached = myRankLRU.get(rankKey);
+        if (cached != null) {
+            return java.util.concurrent.CompletableFuture.completedFuture(cached);
+        }
+        com.thenerdcj.island.Island island = plugin.getIslandManager().getIsland(owner, env);
+        if (island == null) return java.util.concurrent.CompletableFuture.completedFuture(0);
+        return plugin.getIslandManager().getMyLevelRank(island.getGridPosition()).thenApply(r -> {
+            if (r != null && r > 0) myRankLRU.put(rankKey, r);
+            return r;
+        });
+    }
+
+    /**
+     * Refresh persisted rank snapshots for islands currently in the top caches (worth + level).
+     * Uses list positions as the authoritative ranks (no extra COUNTs) and cross-references the other cache for the secondary rank.
+     * Called from cache population paths and global pre-warm task.
+     * This + the per-island save on calc/prestige + the backfill task gives good coverage for O(1) my-ranks.
+     */
+    public void refreshRankSnapshotsFromTops() {
+        try {
+            var dao = (plugin.getDatabaseManager() != null) ? plugin.getDatabaseManager().getIslandDAO() : null;
+            if (dao == null) return;
+
+            java.util.Map<java.util.UUID, Integer> levelRankByOwner = new java.util.HashMap<>();
+            if (cachedTopLevel != null) {
+                for (int i = 0; i < cachedTopLevel.size(); i++) {
+                    levelRankByOwner.put(cachedTopLevel.get(i).owner, i + 1);
+                }
+            }
+            java.util.Map<java.util.UUID, Integer> worthRankByOwner = new java.util.HashMap<>();
+            if (cachedTopWorth != null) {
+                for (int i = 0; i < cachedTopWorth.size(); i++) {
+                    worthRankByOwner.put(cachedTopWorth.get(i).owner, i + 1);
+                }
+            }
+
+            if (cachedTopWorth != null) {
+                for (int i = 0; i < cachedTopWorth.size(); i++) {
+                    var e = cachedTopWorth.get(i);
+                    int wr = i + 1;
+                    int lr = levelRankByOwner.getOrDefault(e.owner, 0);
+                    dao.saveIslandRankSnapshotByOwner(e.owner, e.dimension != null ? e.dimension : "NORMAL", wr, lr);
+                }
+            }
+            if (cachedTopLevel != null) {
+                for (int i = 0; i < cachedTopLevel.size(); i++) {
+                    var e = cachedTopLevel.get(i);
+                    int lr = i + 1;
+                    int wr = worthRankByOwner.getOrDefault(e.owner, 0);
+                    dao.saveIslandRankSnapshotByOwner(e.owner, e.dimension != null ? e.dimension : "NORMAL", wr, lr);
+                }
+            }
+        } catch (Exception ex) {
+            plugin.getLogger().fine("[IslandWorth] refreshRankSnapshotsFromTops non-fatal: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Trigger backfill for islands with worth data but missing rank snapshots.
+     * Delegates to DAO which finds candidates (worth>0 and last_* <=0) and fires getMy* (which compute+save).
+     * Run from low-freq global task (30min) or delayed on startup.
+     * The window stamps from tops cover hot islands for "free"; this covers the long tail without per-access COUNT cost after first.
+     */
+    public void backfillMissingRankSnapshots(int maxBatch) {
+        var dao = (plugin.getDatabaseManager() != null) ? plugin.getDatabaseManager().getIslandDAO() : null;
+        if (dao != null) {
+            dao.backfillMissingRankSnapshots(maxBatch);
+        }
+    }
+
     public static class IslandTopEntry {
         public final UUID owner;
         public final double worth;
         public final int level;
         public final int memberCount;
         public final String displayName;
+        public final String dimension;  // for accurate multi-dim snapshot stamping and future use (added for rank backfill task)
 
         public IslandTopEntry(UUID owner, double worth, int level, int memberCount, String displayName) {
+            this(owner, worth, level, memberCount, displayName, "NORMAL");
+        }
+
+        public IslandTopEntry(UUID owner, double worth, int level, int memberCount, String displayName, String dimension) {
             this.owner = owner;
             this.worth = worth;
             this.level = level;
             this.memberCount = memberCount;
             this.displayName = displayName;
+            this.dimension = (dimension != null ? dimension : "NORMAL");
         }
+
+        public String getDimension() { return dimension; }
     }
 }

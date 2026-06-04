@@ -97,6 +97,10 @@ public class IslandManager {
      * Only honored for actual donors. Purely cosmetic.
      */
     public CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension, boolean donorRerollPersonality) {
+        if (plugin.getSeasonManager() != null && plugin.getSeasonManager().isResetInProgress()) {
+            plugin.getThreadSafety().sendMessageSafely(player, "§cSeasonal reset in progress. Please wait a moment and try again.");
+            return CompletableFuture.completedFuture(false);
+        }
         // === TASK 1: ENFORCE DIM LEVEL GATES (before allocating grid position - prevents waste/leaks) ===
         // Uses main island XP level (from skills/play, not worth). Config driven. Play-to-Win: cannot buy/skip, must grind main.
         // Cross-refs: Island.hasUnlocked* (soft), BiomeSelectionGUI (display), IslandCommand (pre-check), Island (level/xp).
@@ -140,6 +144,11 @@ public class IslandManager {
                                 }
 
                                 cacheIsland(player.getUniqueId(), island);
+
+                                // Init persisted member_count snapshot (0 for new owner-only island)
+                                if (databaseManager.getIslandDAO() != null) {
+                                    databaseManager.getIslandDAO().saveIslandMemberCount(pos, 0);
+                                }
 
                                 // Task 1: mark unlocked for this dim now that gate passed (for hasUnlocked* queries + persistence roundtrips)
                                 if (dimension != World.Environment.NORMAL) {
@@ -259,6 +268,19 @@ public class IslandManager {
         return databaseManager.getIslandDAO().getTopIslandsByWorth(limit, offset);
     }
 
+    public java.util.concurrent.CompletableFuture<java.util.List<com.thenerdcj.database.TopIslandEntry>> getTopIslandsByMemberCount(int limit, int offset) {
+        return databaseManager.getIslandDAO().getTopIslandsByMemberCount(limit, offset);
+    }
+
+    // Efficient my-rank queries (persistence-backed COUNT on worth/levels tables, no full tops materialization).
+    // For PAPI my_xxx_rank and /is rank. Global ranks (matches tops leaderboards).
+    public java.util.concurrent.CompletableFuture<Integer> getMyWorthRank(GridPosition pos) {
+        return databaseManager.getIslandDAO().getMyWorthRank(pos);
+    }
+    public java.util.concurrent.CompletableFuture<Integer> getMyLevelRank(GridPosition pos) {
+        return databaseManager.getIslandDAO().getMyLevelRank(pos);
+    }
+
     public Island getIslandAt(Location location) {
         GridPosition pos = gridManager.getGridPosition(location);
         return getIslandByPosition(pos);
@@ -356,6 +378,14 @@ public class IslandManager {
         }
 
         island.addMember(player.getUniqueId(), IslandRank.GUEST);
+        // Persist member + update count snapshot for O(1) aggregates (member_count)
+        GridPosition pos = island.getGridPosition();
+        plugin.getDatabaseManager().addIslandMember(
+            pos.x(), pos.z(), island.getDimension().name(), 
+            player.getUniqueId(), IslandRank.GUEST.name()
+        );
+        plugin.getDatabaseManager().getIslandDAO().saveIslandMemberCount(pos, island.getMemberCount());
+        if (plugin.getIslandWorthManager() != null) plugin.getIslandWorthManager().markMembersTopsDirty();
         MessageUtil.sendMessage(player, "§aYou joined " + inviter.getName() + "'s island party!");
         MessageUtil.sendMessage(inviter, "§a" + player.getName() + " joined your island!");
     }
@@ -376,6 +406,11 @@ public class IslandManager {
             return;
         }
         island.removeMember(target);
+        // Persist remove + update member_count snapshot
+        GridPosition pos = island.getGridPosition();
+        plugin.getDatabaseManager().removeIslandMember(pos.x(), pos.z(), island.getDimension().name(), target);
+        plugin.getDatabaseManager().getIslandDAO().saveIslandMemberCount(pos, island.getMemberCount());
+        if (plugin.getIslandWorthManager() != null) plugin.getIslandWorthManager().markMembersTopsDirty();
         MessageUtil.sendMessage(kicker, "§aPlayer kicked from the party.");
     }
 
@@ -385,7 +420,13 @@ public class IslandManager {
             MessageUtil.sendMessage(player, "§cOwners cannot leave. Use /is disband instead.");
             return;
         }
-        island.removeMember(player.getUniqueId());
+        UUID leaving = player.getUniqueId();
+        island.removeMember(leaving);
+        // Persist remove + snapshot
+        GridPosition pos = island.getGridPosition();
+        plugin.getDatabaseManager().removeIslandMember(pos.x(), pos.z(), island.getDimension().name(), leaving);
+        plugin.getDatabaseManager().getIslandDAO().saveIslandMemberCount(pos, island.getMemberCount());
+        if (plugin.getIslandWorthManager() != null) plugin.getIslandWorthManager().markMembersTopsDirty();
         MessageUtil.sendMessage(player, "§aYou left the island party.");
     }
 
@@ -398,8 +439,15 @@ public class IslandManager {
         for (UUID member : new ArrayList<>(island.getMembers().keySet())) {
             if (!member.equals(player.getUniqueId())) {
                 island.removeMember(member);
+                // Persist individual removes (for accuracy)
+                GridPosition pos = island.getGridPosition();
+                plugin.getDatabaseManager().removeIslandMember(pos.x(), pos.z(), island.getDimension().name(), member);
             }
         }
+        // Final snapshot (owner only now)
+        GridPosition pos = island.getGridPosition();
+        plugin.getDatabaseManager().getIslandDAO().saveIslandMemberCount(pos, 1);
+        if (plugin.getIslandWorthManager() != null) plugin.getIslandWorthManager().markMembersTopsDirty();
         MessageUtil.sendMessage(player, "§aIsland party disbanded.");
     }
 
@@ -559,6 +607,17 @@ public class IslandManager {
         long cooldownMillis = 12 * 60 * 60 * 1000L;
         long timeLeft = cooldownMillis - (System.currentTimeMillis() - lastReset);
         return timeLeft <= 0 ? 0 : (int) Math.ceil(timeLeft / (60.0 * 60 * 1000));
+    }
+
+    /**
+     * Called by SeasonManager after full seasonal wipe (Option B).
+     * Clears in-memory island caches so next joins/creates see clean state.
+     */
+    public void clearCachesForNewSeason() {
+        positionToIslandCache.clear();
+        playerIslands.clear();
+        lastCombatTime.clear();
+        plugin.getLogger().info("[IslandManager] Cleared island caches for new season.");
     }
 
     /**

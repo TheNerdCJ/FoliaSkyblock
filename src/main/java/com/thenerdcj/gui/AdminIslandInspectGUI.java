@@ -29,8 +29,8 @@ import java.util.concurrent.CompletableFuture;
  * Data loaded via IslandDAO (bank/settings/worth/prestige/collections promoted), CosmeticDAO, BalanceDAO, PunishmentDAO.
  * Bug reports for the player are available separately via BugReportDAO (or /isadmin reports + /bug reports for staff triage).
  * Uses .join() for admin/staff tool (infrequent); production GUIs prefer full async + ThreadSafety.runOnMainThread.
- * TODO (follow-up): pagination for long lists (collections, furniture, logs - tags/puns/collections/furniture paged; more like overhead/emotes/logs follow); richer async non-join loads (data in runAsync background, build/open on main via ThreadSafety; no blocking in open caller); teleport action etc.
- * Pagination complete: target persisted + page nav re-opens with updated page + async reload. More lists (collections, furniture, puns/full logs, overhead, emotes, skills, structures, quests, slayer, minions) paged for large scale data compression (enhanced page size for full puns this pass; structures/quests/slayer/minions added this pass).
+ * TODO (follow-up): richer async non-join loads (data in runAsync background, build/open on main via ThreadSafety; no blocking in open caller); teleport action etc. (pagination largely complete per passes below).
+ * Pagination complete (advanced across passes + this cycle via related tops GUI): target persisted + page nav re-opens with updated page + async reload + pure CF. More lists (collections, furniture, puns/full logs, overhead, emotes, skills, structures, quests, slayer, minions + now player IslandTopGUI offset pages) paged for large scale data compression (enhanced page size for full puns; structures/quests/slayer/minions + tops integration this/prior pass). Stale list in old TODO text cleaned.
  */
 public class AdminIslandInspectGUI implements Listener {
 

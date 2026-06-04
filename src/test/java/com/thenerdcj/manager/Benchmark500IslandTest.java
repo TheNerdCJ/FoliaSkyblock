@@ -55,7 +55,7 @@ class Benchmark500IslandTest {
         // Minimal tables
         try (java.sql.Statement s = h2Conn.createStatement()) {
             s.executeUpdate("CREATE TABLE IF NOT EXISTS islands (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_uuid TEXT NOT NULL, grid_x INTEGER, grid_z INTEGER, dimension TEXT NOT NULL, biome TEXT, level INTEGER DEFAULT 1, last_reset INTEGER DEFAULT 0, generation_seed BIGINT DEFAULT 0, UNIQUE(owner_uuid, dimension))");
-            s.executeUpdate("CREATE TABLE IF NOT EXISTS island_worth (grid_x INTEGER, grid_z INTEGER, dimension TEXT, worth REAL, worth_level INTEGER, last_calculated INTEGER, PRIMARY KEY (grid_x, grid_z, dimension))");
+            s.executeUpdate("CREATE TABLE IF NOT EXISTS island_worth (grid_x INTEGER, grid_z INTEGER, dimension TEXT, worth REAL, worth_level INTEGER, last_calculated INTEGER, last_worth_rank INTEGER DEFAULT 0, last_level_rank INTEGER DEFAULT 0, member_count INTEGER DEFAULT 0, prestige_level INTEGER DEFAULT 0, PRIMARY KEY (grid_x, grid_z, dimension))");
         }
 
         worthManager = new IslandWorthManager(plugin);

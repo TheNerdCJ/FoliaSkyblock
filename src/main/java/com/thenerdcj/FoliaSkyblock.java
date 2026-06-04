@@ -170,6 +170,9 @@ public class FoliaSkyblock extends JavaPlugin {
     private com.thenerdcj.manager.CollectionManager collectionManager;
     private com.thenerdcj.gui.CollectionsGUI collectionsGUI;
 
+    // Seasonal resets (full Option B impl: DB wipe + staggered Region clear + grants + safety)
+    private com.thenerdcj.season.SeasonManager seasonManager;
+
     // Task 4: Museum system (Hypixel depth)
     private com.thenerdcj.manager.MuseumManager museumManager;
     private com.thenerdcj.gui.MuseumGUI museumGUI;
@@ -177,6 +180,7 @@ public class FoliaSkyblock extends JavaPlugin {
     // Player Skill System (MCMMO-inspired per-player skills with abilities, anti-cheat safe)
     private com.thenerdcj.skills.PlayerSkillManager playerSkillManager;
     private com.thenerdcj.gui.SkillGUI skillGUI;
+    private com.thenerdcj.gui.IslandTopGUI islandTopGUI;
 
     // ==================== GUI INSTANCES ====================
     private TradeGUI tradeGUI;
@@ -375,7 +379,7 @@ public class FoliaSkyblock extends JavaPlugin {
             }
         }, 20 * 60 * 5L, 20 * 60 * 5L);
 
-        // Global tops/leaderboards for large scale (1000+ islands): use DB paginated + event-driven (dirty flags like topsDirty, auctionsDirty) + per-island RegionScheduler for any island-specific refresh (e.g., at island center via runAtLocation). 
+        // Global tops/leaderboards for large scale (1000+ islands): use DB paginated + event-driven (dirty flags like topsDirty in rating + worthTopsDirty/levelTopsDirty/membersTopsDirty in worth manager) + short TTL result caching in IslandWorthManager + pre-warm of first pages here + per-island RegionScheduler for any island-specific refresh (e.g., at island center via runAtLocation). 
         // Example: stagger global top refresh to avoid global hot path.
         threadSafety.runRepeatingOnMainThread(() -> {
             if (islandRatingManager != null) {
@@ -412,6 +416,20 @@ public class FoliaSkyblock extends JavaPlugin {
                 islandRatingManager.getTopRatedIslands(5, 5).thenAccept(page2Tops -> {
                     // page 2 sample; in production can drive paged leaderboard GUIs or partial refreshes.
                 });
+
+                // Pre-warm worth / level / members tops caches (event-driven + TTL in IslandWorthManager) for /is top GUI, PAPI, etc.
+                // Calling the getters triggers cache refresh if dirty/expired (short TTL + dirty sinks).
+                // Ties into "Top result caching + event-driven", "pre-warm top pages in Folia global tops task (staggered)".
+                if (islandWorthManager != null) {
+                    islandWorthManager.getTopIslandsByWorth(20, 0); // pre-warm default worth tops (used by IslandTopGUI)
+                    islandWorthManager.getTopIslandsByLevel(10, 0);
+                    islandWorthManager.getTopIslandsByMemberCount(10, 0);
+                    // Note: the getters handle the actual refresh + clearDirty internally when miss.
+                    // For full stagger on the top islands themselves, the per-pos runAtLocation above can be extended in future.
+                    // Also refresh rank snapshots from the (now populated) top windows.
+                    islandWorthManager.refreshRankSnapshotsFromTops();
+                }
+
                 if (start != 0) {
                     long ns = System.nanoTime() - start;
                     if (ns > 1_000_000L && islandWorthManager.isProfileHotPaths()) {
@@ -421,7 +439,20 @@ public class FoliaSkyblock extends JavaPlugin {
             }
         }, 20 * 60 * 10L, 20 * 60 * 10L);
 
-        // Note: for global leaderboards/tops on large scale (1000+ islands), prefer per-island RegionScheduler staggering where possible (e.g. refresh per-island data at center) + DB paginated queries + event-driven invalidation via dirty flags (auctionsDirty, topsDirty, etc.) instead of periodic global. See IMPROVEMENTS suggestions for "per-island RegionScheduler for globals/leaderboards", "staggered RegionScheduler for more (e.g. global tops, leaderboards)", "For 1000+ islands: make leaderboard/top queries fully DB paginated". HologramManager and rating use some GlobalRegion for tops; can layer Region at island centers for locality.
+        // Periodic rank snapshot backfill/refresh task (the "Periodic or event-driven full rank snapshot backfill/refresh task" next step).
+        // Low-freq GlobalRegion task: calls refresh from current top caches (position-based stamps, no COUNT cost for hot islands)
+        // + backfillMissing which finds islands with worth>0 but no last_*_rank and fires the getMy* (which do one-time COUNT + persist snapshot).
+        // Complements per-island saves on calc/prestige, window stamps on cache populate, and TopGUITest coverage.
+        // Frequency low (30min) to keep work compressed for 1000+ islands. Initial delay to let startup settle.
+        // Event-driven aspect: cache gets in pre-warm/GUI/PAPI also trigger refreshRankSnapshotsFromTops.
+        threadSafety.runRepeatingOnMainThread(() -> {
+            if (islandWorthManager != null) {
+                islandWorthManager.refreshRankSnapshotsFromTops();
+                islandWorthManager.backfillMissingRankSnapshots(100);  // batch the long-tail
+            }
+        }, 20 * 60 * 2L, 20 * 60 * 30L);
+
+        // Note: for global leaderboards/tops on large scale (1000+ islands), prefer per-island RegionScheduler staggering where possible (e.g. refresh per-island data at center) + DB paginated queries + event-driven invalidation via dirty flags (auctionsDirty, topsDirty, worthTopsDirty etc.) + short-TTL result caching (IslandWorthManager) + pre-warm here instead of pure periodic global. See IMPROVEMENTS suggestions for "per-island RegionScheduler for globals/leaderboards", "staggered RegionScheduler for more (e.g. global tops, leaderboards)", "For 1000+ islands: make leaderboard/top queries fully DB paginated", "Top result caching + event-driven". HologramManager and rating use some GlobalRegion for tops; can layer Region at island centers for locality.
 
         // Wardrobe
         this.wardrobeManager = new com.thenerdcj.wardrobe.WardrobeManager(this);
@@ -505,6 +536,9 @@ public class FoliaSkyblock extends JavaPlugin {
         this.collectionManager = new com.thenerdcj.manager.CollectionManager(this);
         this.collectionsGUI = new com.thenerdcj.gui.CollectionsGUI(this);
 
+        // Seasonal resets (full Option B: data wipe + RegionScheduler plot clears + grant support)
+        this.seasonManager = new com.thenerdcj.season.SeasonManager(this);
+
         // Task 4: Museum (Hypixel-aligned collection sink/display + tokens for cosmetics)
         this.museumManager = new com.thenerdcj.manager.MuseumManager(this);
         this.museumGUI = new com.thenerdcj.gui.MuseumGUI(this);
@@ -512,6 +546,7 @@ public class FoliaSkyblock extends JavaPlugin {
         // Player Skills (MCMMO reference, Folia + anti-cheat safe)
         this.playerSkillManager = new com.thenerdcj.skills.PlayerSkillManager(this);
         this.skillGUI = new com.thenerdcj.gui.SkillGUI(this);
+        this.islandTopGUI = new com.thenerdcj.gui.IslandTopGUI(this);
 
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.DeathEffectListener(this), this);
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.ChatBubbleListener(this), this);
@@ -984,6 +1019,8 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.manager.CollectionManager getCollectionManager() { return collectionManager; }
     public com.thenerdcj.gui.CollectionsGUI getCollectionsGUI() { return collectionsGUI; }
 
+    public com.thenerdcj.season.SeasonManager getSeasonManager() { return seasonManager; }
+
     // Task 4 getters
     public com.thenerdcj.manager.MuseumManager getMuseumManager() { return museumManager; }
     public com.thenerdcj.gui.MuseumGUI getMuseumGUI() { return museumGUI; }
@@ -991,6 +1028,7 @@ public class FoliaSkyblock extends JavaPlugin {
     // Player Skills
     public com.thenerdcj.skills.PlayerSkillManager getPlayerSkillManager() { return playerSkillManager; }
     public com.thenerdcj.gui.SkillGUI getSkillGUI() { return skillGUI; }
+    public com.thenerdcj.gui.IslandTopGUI getIslandTopGUI() { return islandTopGUI; }
 
     // ==================== CONFIG VALIDATION ====================
     private void validateConfiguration() {

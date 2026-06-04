@@ -2,6 +2,7 @@ package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
+import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -41,7 +42,25 @@ public class DimensionIslandListener implements Listener {
             if (island != null) {
                 player.sendMessage("§aWelcome back! Your island is level §e" + island.getLevel());
             } else {
-                player.sendMessage("§eYou don't have an island yet! Use §b/island create§e to begin.");
+                // Post-seasonal reset (or brand new player): force teleport to protected spawn area.
+                // This ensures a clean "first join again" experience after wipes. Cosmetics persist via DB.
+                String seasonNote = "";
+                if (plugin.getSeasonManager() != null) {
+                    seasonNote = " §6(Season " + plugin.getSeasonManager().getCurrentSeason() + ")";
+                }
+                player.sendMessage("§eYou don't have an island yet" + seasonNote + "! Use §b/is create§e to begin the new season. Your cosmetics and unlocks carry over.");
+
+                // Teleport to global spawn (grid 0,0 protected area on main world) - same scheduler region
+                try {
+                    String worldName = plugin.getConfig().getString("worlds.overworld", "skyblock");
+                    World mainWorld = Bukkit.getWorld(worldName);
+                    if (mainWorld != null && plugin.getGridManager() != null) {
+                        org.bukkit.Location spawn = plugin.getGridManager().getSpawnCenterLocation(mainWorld);
+                        if (spawn != null) {
+                            player.teleport(spawn);
+                        }
+                    }
+                } catch (Exception ignored) {}
             }
         });
     }

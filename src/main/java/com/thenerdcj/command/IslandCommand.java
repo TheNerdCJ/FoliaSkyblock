@@ -190,6 +190,11 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
             case "top":
                 handleIslandTop(player, args);
                 break;
+            case "rank":
+            case "myrank":
+                // Direct /is rank support (efficient my ranks, persistence-backed)
+                handleIslandTop(player, new String[]{"top", "rank"}); // reuses the rank branch
+                break;
 
             case "visit":
                 handleVisit(player, args);
@@ -473,6 +478,8 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
             pos.x(), pos.z(), island.getDimension().name(), 
             target.getUniqueId(), newRank.name()
         );
+        // Update persisted aggregate snapshot for O(1) (member_count in island_worth)
+        plugin.getDatabaseManager().getIslandDAO().saveIslandMemberCount(pos, island.getMemberCount());
 
         MessageUtil.sendMessage(player, "§aPromoted §e" + target.getName() + " §ato §b" + newRank.name());
         if (target.isOnline()) {
@@ -683,26 +690,39 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     // ==================== Island Top / Leaderboards (Worth System) ====================
     private void handleIslandTop(Player player, String[] args) {
-        MessageUtil.sendMessage(player, "§6§l=== Island Leaderboards ===");
-        MessageUtil.sendMessage(player, "§e/is top value §7- Top by island worth");
-        MessageUtil.sendMessage(player, "§e/is top level §7- Top by worth level");
-        MessageUtil.sendMessage(player, "§e/is top members §7- Top by member count");
-        MessageUtil.sendMessage(player, "§e/is worth recalculate §7- Force recalc your island worth");
-        MessageUtil.sendMessage(player, "§7Full GUI coming soon...");
-
+        // Open the paged IslandTopGUI (compression for large servers: no chat flood, server-side DB pagination via offset, GUI list rendering).
+        // Replaces previous text + "Full GUI coming soon..." placeholder. Category support for value/level/members (alt cats use worth-top buffer + in-mem sort for now; deep per-cat pagination can layer on same offset pattern).
+        com.thenerdcj.gui.IslandTopGUI.Category cat = com.thenerdcj.gui.IslandTopGUI.Category.WORTH;
         if (args.length > 1) {
             String type = args[1].toLowerCase();
-
-            if (type.equals("value") || type.equals("worth")) {
-                plugin.getIslandWorthManager().getTopIslandsByWorth(10).thenAccept(list -> {
-                    plugin.getThreadSafety().runOnMainThread(() -> {
-                        MessageUtil.sendMessage(player, "§aTop Islands by Worth (async cached):");
-                        MessageUtil.sendMessage(player, "§7(Real data populates as islands are scanned)");
-                    });
-                });
+            if (type.equals("level")) {
+                cat = com.thenerdcj.gui.IslandTopGUI.Category.LEVEL;
+            } else if (type.equals("members") || type.equals("member")) {
+                cat = com.thenerdcj.gui.IslandTopGUI.Category.MEMBERS;
             } else if (type.equals("recalculate") || type.equals("recalc")) {
                 handleWorthRecalculate(player);
+                return;
+            } else if (type.equals("rank") || type.equals("myrank") || type.equals("my_rank")) {
+                // New: efficient my ranks (persistence-backed COUNT, no full list load). Complements the paged tops GUI.
+                showMyRanks(player);
+                return;
             }
+            // value/worth or default -> WORTH
+        }
+        MessageUtil.sendMessage(player, "§aOpening Island Top GUI (paged, DB-backed for large scale)...");
+        plugin.getIslandTopGUI().open(player, cat, 0);
+    }
+
+    private void showMyRanks(Player player) {
+        MessageUtil.sendMessage(player, "§6§l=== Your Island Ranks (global leaderboards) ===");
+        try {
+            int worthRank = plugin.getIslandWorthManager().getMyWorthRank(player.getUniqueId(), player.getWorld().getEnvironment()).join();
+            int levelRank = plugin.getIslandWorthManager().getMyLevelRank(player.getUniqueId(), player.getWorld().getEnvironment()).join();
+            MessageUtil.sendMessage(player, "§eWorth rank: §f#" + (worthRank > 0 ? worthRank : "N/A"));
+            MessageUtil.sendMessage(player, "§eLevel rank: §f#" + (levelRank > 0 ? levelRank : "N/A"));
+            MessageUtil.sendMessage(player, "§7(Computed efficiently from persisted island_worth / levels; see /is top for full lists)");
+        } catch (Exception e) {
+            MessageUtil.sendMessage(player, "§cCould not compute ranks right now.");
         }
     }
 

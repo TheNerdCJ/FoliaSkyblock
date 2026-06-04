@@ -137,4 +137,11 @@ public class MuseumManager {
         // Now returns count map for per-donation + count/rarity support (GUI can adapt)
         return Collections.unmodifiableMap(museumDonations.getOrDefault(islandKey, Collections.emptyMap()));
     }
+
+    /** Seasonal reset hook (museum data wiped at DB). */
+    public void clearForNewSeason() {
+        museumDonations.clear();
+        museumTokens.clear();
+        plugin.getLogger().info("[MuseumManager] Cleared museum caches for new season.");
+    }
 }

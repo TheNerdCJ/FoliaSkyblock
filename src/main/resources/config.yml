@@ -17,6 +17,24 @@ island:
   # Worth level (from block value) is separate for economy/tops; see IslandWorthManager. Explicit tie in Island.getProgressionLevel() / sync.
   # Default starter items are handled in IslandManager.java
 
+# Seasonal server-wide resets (Option B full impl: data wipe + staggered RegionScheduler plot clears for fresh competitive seasons every ~3 months).
+# Enables seasonal events while preserving donor cosmetics (player_* tables via CosmeticDAO already survive).
+# Trigger is manual via /isadmin season reset <season-id> CONFIRM [--dry-run] for safety.
+seasonal:
+  enabled: true
+  # When wiping, also reset personal player_balances (chest shop money)? Default false = keep player economy, always wipe island economy.
+  wipe-player-balances: false
+  # Radius around island center to clear blocks/entities during physical reset pass (covers gen terrain + buffer). 300 is safe for 256 base + upgrades.
+  clear-radius: 300
+  # Number of plots to process per clear batch before a short delay (stagger to reduce lag on 1000+ islands).
+  clear-batch-size: 8
+  # Ticks to wait between clear batches (via GlobalRegionScheduler delayed chaining).
+  clear-batch-delay-ticks: 40
+  # Pre-reset announcement window (if you set a target date externally; the reset itself is admin-triggered).
+  announce-before-days: 14
+  # Default length hint (informational; not auto-enforced).
+  default-length-months: 3
+
   # Party system config (for XP balancing - ensures solo vs party progression speed feels fair, per design spec and Hypixel reference)
   party:
     max-size: 4

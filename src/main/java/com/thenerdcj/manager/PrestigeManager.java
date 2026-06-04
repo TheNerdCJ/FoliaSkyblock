@@ -177,6 +177,19 @@ public class PrestigeManager {
 
         prestigeLevels.put(key, newLevel);
 
+        // Prestige change affects worth display (multipliers in tops/leaderboards), so dirty the tops caches for event-driven refresh.
+        if (plugin.getIslandWorthManager() != null) {
+            plugin.getIslandWorthManager().markWorthTopsDirty();
+            plugin.getIslandWorthManager().markLevelTopsDirty();
+            plugin.getIslandWorthManager().markMembersTopsDirty();
+        }
+
+        // Also refresh the persisted rank snapshot for this island (ranks change with prestige).
+        if (plugin.getDatabaseManager() != null && plugin.getDatabaseManager().getIslandDAO() != null && island != null) {
+            GridPosition gpos = island.getGridPosition();
+            plugin.getDatabaseManager().getIslandDAO().getMyWorthRank(gpos); // fire-and-forget; updates snapshot
+        }
+
         // === THE RESET (high-endgame feel) ===
         int oldIslandLevel = island.getLevel();
         island.setLevel(1);
@@ -189,6 +202,10 @@ public class PrestigeManager {
         // Persist prestige + level reset
         plugin.getDatabaseManager().saveIslandPrestige(key, newLevel);
         plugin.getDatabaseManager().saveIslandLevel(key, 1, 0.0); // reuse existing island_levels table
+        // Update persisted aggregate snapshot for O(1) (prestige_level in island_worth)
+        if (island.getGridPosition() != null) {
+            plugin.getDatabaseManager().getIslandDAO().saveIslandPrestigeLevel(island.getGridPosition(), newLevel);
+        }
 
         // Grant rewards
         grantPrestigeRewards(island, performer, newLevel);
@@ -512,5 +529,13 @@ public class PrestigeManager {
 
     public enum PrestigeMultiplierType {
         XP, WORTH, MONEY_EARN, BOOSTER_EFFECTIVENESS
+    }
+
+    /**
+     * Seasonal reset hook (prestige data is island-bound and deleted by the DAO wipe).
+     */
+    public void clearForNewSeason() {
+        prestigeLevels.clear();
+        plugin.getLogger().info("[PrestigeManager] Cleared prestige level cache for new season.");
     }
 }

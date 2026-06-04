@@ -547,4 +547,11 @@ public class MinionManager {
             while (it.hasNext() && toRemove > 0) { it.next(); it.remove(); toRemove--; }
         }
     }
+
+    /** Seasonal reset hook (minion assignments wiped at DB; ownership skins preserved). */
+    public void clearForNewSeason() {
+        // Use existing cleanup logic; full maps are package-private in this impl.
+        cleanupCaches();
+        plugin.getLogger().info("[MinionManager] Cleared minion caches for new season (via cleanup + DB wipe).");
+    }
 }
