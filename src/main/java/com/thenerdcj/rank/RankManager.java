@@ -1,6 +1,7 @@
 package com.thenerdcj.rank;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -79,7 +80,7 @@ public class RankManager {
             }
         }
 
-        plugin.getLogger().info("§aLoaded " + rankDataMap.size() + " dynamic ranks from ranks.yml");
+        MessageUtil.info(plugin.getLogger(), "§aLoaded " + rankDataMap.size() + " dynamic ranks from ranks.yml");
     }
 
     private void loadPlayerRanks() {
@@ -260,7 +261,7 @@ public class RankManager {
     public void reloadRanks() {
         loadRankConfig();
         playerRankIds.clear();
-        plugin.getLogger().info("§aAll ranks reloaded from ranks.yml (LuckPerms-style dynamic system)");
+        MessageUtil.info(plugin.getLogger(), "§aAll ranks reloaded from ranks.yml (LuckPerms-style dynamic system)");
     }
 
     public void saveRankConfig() {

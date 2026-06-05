@@ -3,6 +3,7 @@ package com.thenerdcj.bazaar;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.bazaar.BazaarItem;
 import com.thenerdcj.bazaar.BazaarOrder;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -52,7 +53,7 @@ public class BazaarManager {
                     sellOrders.computeIfAbsent(order.getMaterial(), k -> new ArrayList<>()).add(order);
                 }
             }
-            plugin.getLogger().info("§aLoaded " + orders.size() + " bazaar orders");
+            MessageUtil.info(plugin.getLogger(), "§aLoaded " + orders.size() + " bazaar orders");
         });
     }
 

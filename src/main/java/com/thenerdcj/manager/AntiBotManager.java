@@ -1,6 +1,7 @@
 package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -58,11 +59,11 @@ public class AntiBotManager {
             try {
                 blockedNamePatterns.add(Pattern.compile(regex, Pattern.CASE_INSENSITIVE));
             } catch (Exception e) {
-                plugin.getLogger().warning("§cInvalid regex in anticheat.yml: " + regex);
+                MessageUtil.warning(plugin.getLogger(), "§cInvalid regex in anticheat.yml: " + regex);
             }
         }
 
-        plugin.getLogger().info("§aAntiBotManager loaded with " + blockedNamePatterns.size() + " blocked name patterns.");
+        MessageUtil.info(plugin.getLogger(), "§aAntiBotManager loaded with " + blockedNamePatterns.size() + " blocked name patterns.");
     }
 
     /**
@@ -80,7 +81,7 @@ public class AntiBotManager {
             long timeSinceDisconnect = now - lastDisconnect;
             if (timeSinceDisconnect < config.getInt("antibot.reconnect-cooldown-seconds", 8) * 1000L) {
                 plugin.getServer().getAsyncScheduler().runNow(plugin, task ->
-                        plugin.getLogger().warning("§c[AntiBot] Rapid reconnect detected: " + player.getName())
+                        MessageUtil.warning(plugin.getLogger(), "§c[AntiBot] Rapid reconnect detected: " + player.getName())
                 );
                 return true;
             }
@@ -92,7 +93,7 @@ public class AntiBotManager {
 
         if (loginCount > config.getInt("antibot.max-logins-per-ip-per-minute", 6)) {
             plugin.getServer().getAsyncScheduler().runNow(plugin, task ->
-                    plugin.getLogger().warning("§c[AntiBot] Login flood from IP " + ip)
+                    MessageUtil.warning(plugin.getLogger(), "§c[AntiBot] Login flood from IP " + ip)
             );
             return true;
         }
@@ -101,7 +102,7 @@ public class AntiBotManager {
         for (Pattern pattern : blockedNamePatterns) {
             if (pattern.matcher(player.getName()).matches()) {
                 plugin.getServer().getAsyncScheduler().runNow(plugin, task ->
-                        plugin.getLogger().warning("§c[AntiBot] Blocked bot name: " + player.getName())
+                        MessageUtil.warning(plugin.getLogger(), "§c[AntiBot] Blocked bot name: " + player.getName())
                 );
                 return true;
             }

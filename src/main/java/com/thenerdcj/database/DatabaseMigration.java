@@ -1,6 +1,7 @@
 package com.thenerdcj.database;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -42,14 +43,14 @@ public class DatabaseMigration {
         try (Connection conn = getConnection()) {
             createSchemaVersionTable(conn);
             int currentVersion = getCurrentVersion(conn);
-            plugin.getLogger().info("§6[DB] Current schema version: " + currentVersion + " (target: " + CURRENT_SCHEMA_VERSION + ")");
+            MessageUtil.info(plugin.getLogger(), "§6[DB] Current schema version: " + currentVersion + " (target: " + CURRENT_SCHEMA_VERSION + ")");
 
             if (currentVersion < CURRENT_SCHEMA_VERSION) {
                 for (int v = currentVersion + 1; v <= CURRENT_SCHEMA_VERSION; v++) {
                     runMigrationForVersion(conn, v);
                 }
                 updateSchemaVersion(conn, CURRENT_SCHEMA_VERSION);
-                plugin.getLogger().info("§a[DB] Database migrations completed to version " + CURRENT_SCHEMA_VERSION);
+                MessageUtil.info(plugin.getLogger(), "§a[DB] Database migrations completed to version " + CURRENT_SCHEMA_VERSION);
             }
         } catch (SQLException e) {
             plugin.getLogger().severe("[DB] Migration failed: " + e.getMessage());
@@ -80,7 +81,7 @@ public class DatabaseMigration {
     }
 
     private void runMigrationForVersion(Connection conn, int version) throws SQLException {
-        plugin.getLogger().info("§e[DB] Running migration to version " + version + "...");
+        MessageUtil.info(plugin.getLogger(), "§e[DB] Running migration to version " + version + "...");
         switch (version) {
             case 1:
                 executeIfNotExists(conn, "ALTER TABLE island_prestige ADD COLUMN last_prestiged INTEGER DEFAULT 0");
@@ -106,7 +107,7 @@ public class DatabaseMigration {
                 try {
                     conn.createStatement().executeUpdate("DROP INDEX IF EXISTS idx_islands_owner_unique");
                     conn.createStatement().executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_islands_owner_dim ON islands(owner_uuid, dimension)");
-                    plugin.getLogger().info("§a[DB Migration v5] Ensured composite unique index on islands(owner_uuid, dimension) for multi-dimension support.");
+                    MessageUtil.info(plugin.getLogger(), "§a[DB Migration v5] Ensured composite unique index on islands(owner_uuid, dimension) for multi-dimension support.");
                 } catch (SQLException ex) {
                     plugin.getLogger().warning("[DB Migration v5] Could not fully apply islands unique constraint fix (may require manual DB maintenance if old data conflicts): " + ex.getMessage());
                 }
@@ -115,31 +116,31 @@ public class DatabaseMigration {
                 // Add generation_seed column for donor "reroll personality/style" feature on per-dimension resets.
                 // Default 0 means "use pure position-derived seed" (backward compatible for existing islands).
                 executeIfNotExists(conn, "ALTER TABLE islands ADD COLUMN generation_seed BIGINT DEFAULT 0");
-                plugin.getLogger().info("§a[DB Migration v6] Added generation_seed column for donor island personality rerolls.");
+                MessageUtil.info(plugin.getLogger(), "§a[DB Migration v6] Added generation_seed column for donor island personality rerolls.");
                 break;
             case 7:
                 // Core Collections system: new table is created via IF NOT EXISTS in DatabaseManager.initDatabase(),
                 // but ensure index and log the feature.
                 executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_island_collections_key ON island_collections(island_key)");
-                plugin.getLogger().info("§a[DB Migration v7] Core Collections system (island_collections) ready for unique item discovery tracking.");
+                MessageUtil.info(plugin.getLogger(), "§a[DB Migration v7] Core Collections system (island_collections) ready for unique item discovery tracking.");
                 break;
             case 8:
                 // Player Skill System: table created in initDatabase IF NOT EXISTS, ensure index.
                 executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_player_skills_uuid ON player_skills(uuid)");
-                plugin.getLogger().info("§a[DB Migration v8] Player skills system (player_skills) ready - MCMMO-style per-player progression.");
+                MessageUtil.info(plugin.getLogger(), "§a[DB Migration v8] Player skills system (player_skills) ready - MCMMO-style per-player progression.");
                 break;
             case 10:
                 // Bug reporting system: ensure table exists for upgrades (created in initDatabase too).
                 executeIfNotExists(conn, "CREATE TABLE IF NOT EXISTS bug_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, reporter_uuid TEXT NOT NULL, reporter_name TEXT, category TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'OPEN', created_at INTEGER NOT NULL, resolved_at INTEGER, resolved_by_uuid TEXT, staff_notes TEXT)");
                 executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_bug_reports_status_created ON bug_reports(status, created_at)");
-                plugin.getLogger().info("§a[DB Migration v10] Bug reports table ready.");
+                MessageUtil.info(plugin.getLogger(), "§a[DB Migration v10] Bug reports table ready.");
                 break;
             case 11:
                 // Persisted rank snapshots on island_worth for fast O(1) my-rank (compression for large servers + frequent PAPI / /is rank).
                 // Columns added via IF NOT EXISTS in initDatabase compat block too (for running servers without full migration).
                 executeIfNotExists(conn, "ALTER TABLE island_worth ADD COLUMN last_worth_rank INTEGER DEFAULT 0");
                 executeIfNotExists(conn, "ALTER TABLE island_worth ADD COLUMN last_level_rank INTEGER DEFAULT 0");
-                plugin.getLogger().info("§a[DB Migration v11] Added last_worth_rank / last_level_rank columns to island_worth for persisted rank snapshots.");
+                MessageUtil.info(plugin.getLogger(), "§a[DB Migration v11] Added last_worth_rank / last_level_rank columns to island_worth for persisted rank snapshots.");
                 break;
             case 12:
                 // Persisted aggregates for O(1)/near-O(1) (member count snapshot + prestige level snapshot on island_worth).
@@ -147,7 +148,7 @@ public class DatabaseMigration {
                 // Columns added via IF NOT EXISTS in init too.
                 executeIfNotExists(conn, "ALTER TABLE island_worth ADD COLUMN member_count INTEGER DEFAULT 0");
                 executeIfNotExists(conn, "ALTER TABLE island_worth ADD COLUMN prestige_level INTEGER DEFAULT 0");
-                plugin.getLogger().info("§a[DB Migration v12] Added member_count / prestige_level columns to island_worth for persisted aggregates.");
+                MessageUtil.info(plugin.getLogger(), "§a[DB Migration v12] Added member_count / prestige_level columns to island_worth for persisted aggregates.");
                 break;
             case 13:
                 // Seasonal resets (full Option B impl): meta for current_season, seasons history table, player_seasonal_grants for event/donor cosmetic releases audit.
@@ -159,7 +160,7 @@ public class DatabaseMigration {
                 executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_seasonal_grants_season ON player_seasonal_grants(season_id)");
                 executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_seasons_started ON seasons(started_at)");
                 executeIfNotExists(conn, "ALTER TABLE islands ADD COLUMN created_season TEXT");
-                plugin.getLogger().info("§a[DB Migration v13] Seasonal resets schema: server_meta + seasons + player_seasonal_grants + islands.created_season (compat).");
+                MessageUtil.info(plugin.getLogger(), "§a[DB Migration v13] Seasonal resets schema: server_meta + seasons + player_seasonal_grants + islands.created_season (compat).");
                 break;
             default:
                 break;

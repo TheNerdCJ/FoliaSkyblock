@@ -1,6 +1,7 @@
 package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
@@ -76,7 +77,7 @@ public class CombatListener implements Listener {
                 player.getScheduler().run(plugin, scheduledTask -> {
                     if (player.isOnline()) {
                         player.setHealth(0);
-                        plugin.getLogger().info("§c" + player.getName() + " combat logged and was killed.");
+                        MessageUtil.info(plugin.getLogger(), "§c" + player.getName() + " combat logged and was killed.");
                     }
                 }, null);
             } else {
@@ -84,7 +85,7 @@ public class CombatListener implements Listener {
                 plugin.getThreadSafety().runOnMainThread(() -> {
                     if (player.isOnline()) {
                         player.setHealth(0);
-                        plugin.getLogger().info("§c" + player.getName() + " combat logged and was killed.");
+                        MessageUtil.info(plugin.getLogger(), "§c" + player.getName() + " combat logged and was killed.");
                     }
                 });
             }

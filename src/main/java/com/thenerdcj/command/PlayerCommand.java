@@ -6,6 +6,8 @@ import com.thenerdcj.util.MessageUtil;
 import com.thenerdcj.manager.TeleportRequestManager;
 import com.thenerdcj.rank.RankData; // Important import
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -39,13 +41,16 @@ public class PlayerCommand implements CommandExecutor, TabCompleter {
 
         switch (cmd) {
             case "spawn":
-                player.teleport(Bukkit.getWorld("world").getSpawnLocation());
-                MessageUtil.sendMessage(player, "§aTeleported to spawn (unclaimable default 0,0).");
+                handleSpawn(player);
                 break;
 
             case "home":
-                player.teleport(plugin.getIslandManager().getIslandHome(player));
-                MessageUtil.sendMessage(player, "§aTeleported to your island home.");
+                com.thenerdcj.island.Island homeIsland = plugin.getIslandManager().getIslandForPlayer(player);
+                if (homeIsland == null) {
+                    MessageUtil.sendMessage(player, "§cYou don't have an island yet. Use §b/is create§c.");
+                } else {
+                    plugin.getIslandManager().teleportToIslandHome(player, homeIsland);
+                }
                 break;
 
             // ========== EXPANDED TPA SYSTEM ==========
@@ -199,6 +204,23 @@ public class PlayerCommand implements CommandExecutor, TabCompleter {
         // Alternative (just prefix):
         // RankData data = plugin.getRankManager().getPlayerRankData(uuid);
         // return data != null ? org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getPrefix()) : "§7";
+    }
+
+    private void handleSpawn(Player player) {
+        if (plugin.getWorldManager() == null) {
+            MessageUtil.sendMessage(player, "§cSpawn is not available right now.");
+            return;
+        }
+        if (!plugin.getWorldManager().isHubSpawnReady()) {
+            MessageUtil.sendMessage(player, "§cSpawn hub is still generating. Please wait a moment.");
+            return;
+        }
+        Location spawn = plugin.getWorldManager().getHubSpawnLocation();
+        if (spawn == null || spawn.getWorld() == null) {
+            MessageUtil.sendMessage(player, "§cCould not find the spawn world.");
+            return;
+        }
+        plugin.getIslandManager().teleportPlayerToIslandSpawn(player, null, spawn, true);
     }
 
     private void sendHelpMenu(Player player) {

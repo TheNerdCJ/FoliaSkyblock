@@ -175,8 +175,9 @@ public class Island {
         return new Location(world, centerX, baseY, centerZ);
     }
 
+    /** Custom home set via /is sethome; null until then — use IslandManager.getIslandHomeLocation for warps. */
     public Location getSpawnLocation() {
-        return spawnLocation != null ? spawnLocation : getCenter(null);
+        return spawnLocation;
     }
 
     public void setSpawnLocation(Location location) {

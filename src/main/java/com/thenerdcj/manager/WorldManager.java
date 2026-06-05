@@ -1,6 +1,8 @@
 package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.island.generator.VoidChunkGenerator;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -13,6 +15,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
@@ -26,10 +30,15 @@ public class WorldManager {
     private final FoliaSkyblock plugin;
     private static final int SPAWN_Y = 100;
 
+    /** False until hub spawn island generation finishes (or is detected as already built). */
+    private volatile boolean hubSpawnReady;
+
     // Consistent world names (matches FoliaSkyblock.getSkyblockWorld())
     private static final String OVERWORLD_NAME = "skyblock";
     private static final String NETHER_NAME = "skyblock_nether";
     private static final String END_NAME = "skyblock_end";
+    /** Hidden marker placed when hub generation completes (not used by vanilla spawn selection). */
+    private static final Material SPAWN_COMPLETE_MARKER = Material.LODESTONE;
 
     public WorldManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -39,7 +48,13 @@ public class WorldManager {
      * Initialize all custom Skyblock void worlds
      */
     public void initializeWorlds() {
-        plugin.getLogger().info("§6[WorldManager] Initializing custom void worlds...");
+        MessageUtil.info(plugin.getLogger(), "§6[WorldManager] Initializing custom void worlds...");
+        hubSpawnReady = !isSpawnPlatformGenerationEnabled();
+
+        if (plugin.isFolia()) {
+            initializeWorldsOnFolia();
+            return;
+        }
 
         CompletableFuture<World> overworldFuture = createVoidWorldAsync(OVERWORLD_NAME, World.Environment.NORMAL);
         CompletableFuture<World> netherFuture = createVoidWorldAsync(NETHER_NAME, World.Environment.NETHER);
@@ -47,9 +62,8 @@ public class WorldManager {
 
         CompletableFuture.allOf(overworldFuture, netherFuture, endFuture)
                 .thenRun(() -> {
-                    plugin.getLogger().info("§a[WorldManager] All custom worlds initialized successfully.");
+                    MessageUtil.info(plugin.getLogger(), "§a[WorldManager] All custom worlds initialized successfully.");
 
-                    // Generate spawn platform after overworld is ready
                     overworldFuture.thenAccept(world -> {
                         if (world != null) {
                             generateSpawnPlatform(world);
@@ -57,16 +71,169 @@ public class WorldManager {
                     });
                 })
                 .exceptionally(ex -> {
-                    plugin.getLogger().log(Level.SEVERE, "§c[WorldManager] Failed to initialize worlds!", ex);
+                    MessageUtil.log(plugin.getLogger(), Level.SEVERE, "§c[WorldManager] Failed to initialize worlds!", ex);
                     return null;
                 });
+    }
+
+    /**
+     * Folia does not support {@link WorldCreator#createWorld()} from the global region scheduler.
+     * Resolve worlds from config/bukkit.yml instead and only build spawn on an existing overworld.
+     */
+    private static final int FOLIA_WORLD_RESOLVE_MAX_ATTEMPTS = 40;
+    private volatile boolean foliaWorldInitCompleted;
+
+    private void initializeWorldsOnFolia() {
+        foliaWorldInitCompleted = false;
+        attemptInitializeWorldsOnFolia(0);
+    }
+
+    private void attemptInitializeWorldsOnFolia(int attempt) {
+        World overworld = resolveSkyblockWorld(World.Environment.NORMAL);
+        World nether = resolveSkyblockWorld(World.Environment.NETHER);
+        World end = resolveSkyblockWorld(World.Environment.THE_END);
+
+        if (overworld == null && attempt < FOLIA_WORLD_RESOLVE_MAX_ATTEMPTS) {
+            if (attempt == 0) {
+                MessageUtil.info(plugin.getLogger(), "§e[WorldManager] Waiting for server level/dimensions to finish loading...");
+            }
+            plugin.getThreadSafety().runOnMainThreadLater(
+                    () -> attemptInitializeWorldsOnFolia(attempt + 1), 5L);
+            return;
+        }
+
+        if (overworld == null) {
+            MessageUtil.warning(plugin.getLogger(), "§c[WorldManager] Overworld never loaded — cannot generate spawn hub. "
+                    + "Allowing joins without spawn gate.");
+            hubSpawnReady = true;
+            return;
+        }
+
+        logResolvedWorlds(overworld, nether, end);
+
+        if (overworld != null && !foliaWorldInitCompleted) {
+            foliaWorldInitCompleted = true;
+            generateSpawnPlatform(overworld);
+        }
+    }
+
+    private void logResolvedWorlds(World overworld, World nether, World end) {
+        if (overworld == null) {
+            MessageUtil.warning(plugin.getLogger(), "§e[WorldManager] Overworld not found. Set worlds.overworld to your server level-name "
+                    + "(server.properties level-name, e.g. skyblock). Loaded worlds: " + describeLoadedWorlds());
+            return;
+        }
+
+        MessageUtil.info(plugin.getLogger(), "§a[WorldManager] Overworld: " + overworld.getName() + " (" + overworld.getEnvironment() + ")");
+
+        if (nether == null) {
+            MessageUtil.warning(plugin.getLogger(), "§e[WorldManager] Nether dimension not loaded yet. "
+                    + "On 26.1+ this is usually inside level '" + levelName() + "/dimensions/minecraft/the_nether' — "
+                    + "visit nether once or ensure bukkit.yml lists the dimension.");
+        } else {
+            MessageUtil.info(plugin.getLogger(), "§a[WorldManager] Nether: " + nether.getName() + " (" + nether.getEnvironment() + ")");
+        }
+
+        if (end == null) {
+            MessageUtil.warning(plugin.getLogger(), "§e[WorldManager] End dimension not loaded yet. "
+                    + "On 26.1+ this is usually inside level '" + levelName() + "/dimensions/minecraft/the_end'.");
+        } else {
+            MessageUtil.info(plugin.getLogger(), "§a[WorldManager] End: " + end.getName() + " (" + end.getEnvironment() + ")");
+        }
+
+        if (overworld != null && nether != null && end != null) {
+            MessageUtil.info(plugin.getLogger(), "§a[WorldManager] All Skyblock dimensions resolved on Folia.");
+        }
+    }
+
+    private String describeLoadedWorlds() {
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (World world : Bukkit.getWorlds()) {
+            if (!first) sb.append(", ");
+            sb.append(world.getName()).append('/').append(world.getEnvironment());
+            first = false;
+        }
+        if (first) sb.append("none");
+        return sb.append(']').toString();
+    }
+
+    /**
+     * Resolves a Skyblock dimension. Supports both legacy multi-folder worlds (skyblock_nether) and
+     * modern single-level layouts (level-name skyblock with dimensions/ subfolders on 26.1+).
+     */
+    public World resolveSkyblockWorld(World.Environment environment) {
+        if (environment == null) {
+            return null;
+        }
+
+        for (String candidate : worldNameCandidates(environment)) {
+            World world = Bukkit.getWorld(candidate);
+            if (world != null && world.getEnvironment() == environment) {
+                return world;
+            }
+        }
+
+        String levelName = levelName();
+        World levelMatch = null;
+        World anyEnvMatch = null;
+
+        for (World world : Bukkit.getWorlds()) {
+            if (world.getEnvironment() != environment) {
+                continue;
+            }
+            anyEnvMatch = world;
+            if (world.getName().equalsIgnoreCase(levelName)) {
+                levelMatch = world;
+            }
+        }
+
+        if (levelMatch != null) {
+            return levelMatch;
+        }
+
+        if (anyEnvMatch != null) {
+            plugin.getLogger().fine("[WorldManager] Resolved " + environment + " via environment fallback: "
+                    + anyEnvMatch.getName());
+            return anyEnvMatch;
+        }
+
+        return null;
+    }
+
+    /** Server level-name (server.properties level-name / primary overworld folder). */
+    public String levelName() {
+        return plugin.getConfig().getString("worlds.overworld", OVERWORLD_NAME);
+    }
+
+    private java.util.List<String> worldNameCandidates(World.Environment environment) {
+        String level = levelName();
+        java.util.List<String> names = new java.util.ArrayList<>();
+        switch (environment) {
+            case NETHER -> {
+                names.add(plugin.getConfig().getString("worlds.nether", NETHER_NAME));
+                names.add(NETHER_NAME);
+                names.add(level);
+            }
+            case THE_END -> {
+                names.add(plugin.getConfig().getString("worlds.end", END_NAME));
+                names.add(END_NAME);
+                names.add("skyblock_the_end");
+                names.add(level);
+            }
+            default -> {
+                names.add(level);
+                names.add(OVERWORLD_NAME);
+            }
+        }
+        return names.stream().filter(n -> n != null && !n.isBlank()).distinct().toList();
     }
 
     /**
      * Returns the main overworld (skyblock world)
      */
     public World getMainWorld() {
-        return Bukkit.getWorld(OVERWORLD_NAME);
+        return resolveSkyblockWorld(World.Environment.NORMAL);
     }
 
     /**
@@ -102,7 +269,7 @@ public class WorldManager {
                 return worldFuture.get();
 
             } catch (Exception e) {
-                plugin.getLogger().log(Level.SEVERE, "§cFailed to create world: " + worldName, e);
+                MessageUtil.log(plugin.getLogger(), Level.SEVERE, "§cFailed to create world: " + worldName, e);
                 return null;
             }
         }, runnable -> plugin.getThreadSafety().runAsync(runnable));
@@ -115,13 +282,215 @@ public class WorldManager {
      * Still fully procedural + random variants for replayability.
      * Runs on RegionScheduler for Folia safety.
      */
+    public boolean isHubSpawnReady() {
+        return hubSpawnReady;
+    }
+
+    public boolean isSpawnPlatformGenerationEnabled() {
+        return plugin.getConfig().getBoolean("spawn-platform.enabled", true);
+    }
+
+    public boolean shouldBlockJoinUntilHubSpawnReady() {
+        return isSpawnPlatformGenerationEnabled()
+                && plugin.getConfig().getBoolean("spawn-platform.block-join-until-ready", true);
+    }
+
+    public int spawnCenterX() {
+        return plugin.getConfig().getInt("spawn-platform.center-x", 0);
+    }
+
+    public int spawnCenterY() {
+        return plugin.getConfig().getInt("spawn-platform.center-y", SPAWN_Y);
+    }
+
+    public int spawnCenterZ() {
+        return plugin.getConfig().getInt("spawn-platform.center-z", 0);
+    }
+
+    public int spawnPlayerYOffset() {
+        return plugin.getConfig().getInt("spawn-platform.player-y-offset", 4);
+    }
+
+    /**
+     * Standing location for /spawn, first join, and {@link World#setSpawnLocation(Location)}.
+     */
+    public Location getHubSpawnLocation(World world) {
+        if (world == null) {
+            return null;
+        }
+        int cx = spawnCenterX();
+        int cy = spawnCenterY();
+        int cz = spawnCenterZ();
+        float yaw = (float) plugin.getConfig().getDouble("spawn-platform.yaw", 0.0);
+        float pitch = (float) plugin.getConfig().getDouble("spawn-platform.pitch", 0.0);
+        return new Location(world, cx + 0.5, cy + spawnPlayerYOffset(), cz + 0.5, yaw, pitch);
+    }
+
+    public Location getHubSpawnLocation() {
+        return getHubSpawnLocation(resolveSkyblockWorld(World.Environment.NORMAL));
+    }
+
+    private void completeHubSpawn(World world) {
+        Location spawn = getHubSpawnLocation(world);
+        if (spawn == null) {
+            return;
+        }
+        world.setSpawnLocation(spawn);
+        hubSpawnReady = true;
+        MessageUtil.info(plugin.getLogger(), "§a[WorldManager] Hub spawn ready at "
+                + spawn.getBlockX() + ", " + spawn.getBlockY() + ", " + spawn.getBlockZ()
+                + " (world: " + world.getName() + ")");
+    }
+
     public void generateSpawnPlatform(World world) {
         if (world == null || world.getEnvironment() != World.Environment.NORMAL) return;
+        if (!isSpawnPlatformGenerationEnabled()) {
+            completeHubSpawn(world);
+            return;
+        }
 
-        plugin.getLogger().info("§6[WorldManager] Generating detailed spawn platform/island at 0,0...");
+        hubSpawnReady = false;
+        int cx = spawnCenterX();
+        int cy = spawnCenterY();
+        int cz = spawnCenterZ();
 
-        plugin.getThreadSafety().runAtLocation(new Location(world, 0, SPAWN_Y, 0), () -> {
-            buildSpawnStructure(world, 0, SPAWN_Y, 0);
+        if (plugin.isFolia()) {
+            // Block reads/writes must run on the owning region thread, not during onEnable on the global server thread.
+            Location anchor = new Location(world, cx, cy, cz);
+            plugin.getThreadSafety().runAtLocation(anchor, () -> generateSpawnPlatformOnRegionThread(world, cx, cy, cz));
+            return;
+        }
+
+        if (plugin.getConfig().getBoolean("spawn-platform.skip-if-built", true) && isSpawnPlatformBuilt(world, cx, cy, cz)) {
+            markSpawnPlatformBuilt(world, cx, cy, cz);
+            completeHubSpawn(world);
+            MessageUtil.info(plugin.getLogger(), "§e[WorldManager] Spawn platform already present — skipping generation.");
+            return;
+        }
+
+        MessageUtil.info(plugin.getLogger(), "§6[WorldManager] Generating detailed spawn platform/island at 0,0...");
+        plugin.getThreadSafety().runAtLocation(new Location(world, cx, cy, cz), () -> buildSpawnStructure(world, cx, cy, cz));
+    }
+
+    private void generateSpawnPlatformOnRegionThread(World world, int cx, int cy, int cz) {
+        if (plugin.getConfig().getBoolean("spawn-platform.skip-if-built", true) && isSpawnPlatformBuilt(world, cx, cy, cz)) {
+            markSpawnPlatformBuilt(world, cx, cy, cz);
+            completeHubSpawn(world);
+            MessageUtil.info(plugin.getLogger(), "§e[WorldManager] Spawn platform already present — skipping generation.");
+            return;
+        }
+
+        MessageUtil.info(plugin.getLogger(), "§6[WorldManager] Generating detailed spawn platform/island at 0,0...");
+        preloadSpawnChunks(world, cx, cy, cz, spawnRadius(), () -> generateSpawnPlatformBatched(world, cx, cy, cz));
+    }
+
+    private int spawnRadius() {
+        return Math.max(8, plugin.getConfig().getInt("spawn-platform.radius", 55));
+    }
+
+    private long spawnBatchDelayTicks() {
+        return Math.max(1L, plugin.getConfig().getLong("spawn-platform.batch-delay-ticks", 1L));
+    }
+
+    private long spawnPhaseDelayTicks() {
+        return Math.max(1L, plugin.getConfig().getLong("spawn-platform.phase-delay-ticks", 5L));
+    }
+
+    private int spawnRowsPerTick() {
+        return Math.max(1, plugin.getConfig().getInt("spawn-platform.rows-per-tick", 3));
+    }
+
+    private boolean isSpawnPlatformBuilt(World world, int cx, int cy, int cz) {
+        return world.getBlockAt(cx, cy + 10, cz).getType() == SPAWN_COMPLETE_MARKER;
+    }
+
+    private void markSpawnPlatformBuilt(World world, int cx, int cy, int cz) {
+        world.getBlockAt(cx, cy + 10, cz).setType(SPAWN_COMPLETE_MARKER);
+    }
+
+    private void preloadSpawnChunks(World world, int blockX, int blockY, int blockZ, int radius, Runnable onReady) {
+        int chunkRadius = (radius >> 4) + 2;
+        int centerChunkX = blockX >> 4;
+        int centerChunkZ = blockZ >> 4;
+        Location anchor = new Location(world, blockX, blockY, blockZ);
+        List<CompletableFuture<org.bukkit.Chunk>> futures = new ArrayList<>();
+        for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
+            for (int dz = -chunkRadius; dz <= chunkRadius; dz++) {
+                futures.add(world.getChunkAtAsync(centerChunkX + dx, centerChunkZ + dz));
+            }
+        }
+        CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                .whenComplete((ignored, ex) -> {
+                    if (ex != null) {
+                        MessageUtil.log(plugin.getLogger(), Level.WARNING, "§e[WorldManager] Spawn chunk preload incomplete; generation may be slower.", ex);
+                    }
+                    plugin.getThreadSafety().runAtLocation(anchor, onReady);
+                });
+    }
+
+    private void generateSpawnPlatformBatched(World world, int cx, int cy, int cz) {
+        int radius = spawnRadius();
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        Location anchor = new Location(world, cx, cy, cz);
+
+        Runnable finishPhase = () -> finishSpawnPlatform(world, cx, cy, cz, radius, random);
+        Runnable npcPhase = () -> {
+            buildSpawnNpcAndCrateAreas(world, cx, cy, cz, radius, random, () -> {});
+            scheduleSpawnPhase(anchor, finishPhase);
+        };
+        Runnable centerPhase = () -> {
+            buildSpawnCenterAndPavilions(world, cx, cy, cz, random, () -> {});
+            scheduleSpawnPhase(anchor, npcPhase);
+        };
+        Runnable innerRingPhase = () -> batchInnerRingRows(world, cx, cy, cz, random, -18, anchor,
+                () -> scheduleSpawnPhase(anchor, centerPhase));
+
+        batchBasePlatformRows(world, cx, cy, cz, radius, random, -radius, anchor,
+                () -> scheduleSpawnPhase(anchor, innerRingPhase));
+    }
+
+    private void scheduleSpawnPhase(Location anchor, Runnable task) {
+        plugin.getThreadSafety().runAtLocationLater(anchor, task, spawnPhaseDelayTicks());
+    }
+
+    private void batchBasePlatformRows(World world, int cx, int cy, int cz, int radius, ThreadLocalRandom random,
+                                       int nextX, Location anchor, Runnable onComplete) {
+        plugin.getThreadSafety().runAtLocation(anchor, () -> {
+            int rowsPerTick = spawnRowsPerTick();
+            int endX = Math.min(nextX + rowsPerTick - 1, radius);
+            for (int x = nextX; x <= endX; x++) {
+                for (int z = -radius; z <= radius; z++) {
+                    placeBasePlatformColumn(world, cx, cy, cz, x, z, radius, random);
+                }
+            }
+            if (endX < radius) {
+                plugin.getThreadSafety().runAtLocationLater(anchor,
+                        () -> batchBasePlatformRows(world, cx, cy, cz, radius, random, endX + 1, anchor, onComplete),
+                        spawnBatchDelayTicks());
+            } else {
+                onComplete.run();
+            }
+        });
+    }
+
+    private void batchInnerRingRows(World world, int cx, int cy, int cz, ThreadLocalRandom random,
+                                    int nextX, Location anchor, Runnable onComplete) {
+        final int innerRadius = 18;
+        plugin.getThreadSafety().runAtLocation(anchor, () -> {
+            int rowsPerTick = spawnRowsPerTick();
+            int endX = Math.min(nextX + rowsPerTick - 1, innerRadius);
+            for (int x = nextX; x <= endX; x++) {
+                for (int z = -innerRadius; z <= innerRadius; z++) {
+                    placeInnerRingColumn(world, cx, cy, cz, x, z, innerRadius);
+                }
+            }
+            if (endX < innerRadius) {
+                plugin.getThreadSafety().runAtLocationLater(anchor,
+                        () -> batchInnerRingRows(world, cx, cy, cz, random, endX + 1, anchor, onComplete),
+                        spawnBatchDelayTicks());
+            } else {
+                onComplete.run();
+            }
         });
     }
 
@@ -129,83 +498,89 @@ public class WorldManager {
 
     private void buildSpawnStructure(World world, int cx, int cy, int cz) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        int radius = 55;  // Larger for detailed hub with many NPC areas (inspired by PMC skyblock spawns like Bluerocks 300x300, Atlas, Duskhaven etc. with 10-20+ NPC/hologram/crate spots)
+        int radius = spawnRadius();
 
-        // --- Tiered base platform with outer wall, steps, and detailed texturing (more detailed spawn island inspired by PMC skyblock hubs) ---
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                double dist = Math.sqrt(x * x + z * z);
-                if (dist > radius) continue;
-
-                // Deep base layers for solidity + interest, with some height variation on edges
-                int baseY = (dist > radius - 5) ? -5 : -6;
-                for (int y = baseY; y <= 0; y++) {
-                    Block b = world.getBlockAt(cx + x, cy + y, cz + z);
-                    if (y <= -6) b.setType(Material.DEEPSLATE);
-                    else if (y == -5) b.setType(Material.COBBLED_DEEPSLATE);
-                    else if (y <= -3) b.setType(Material.STONE_BRICKS);
-                    else if (y == -2) b.setType(Material.MOSSY_STONE_BRICKS);
-                    else b.setType(Material.STONE);
-                }
-
-                // Varied top surface with grass/moss patches, andesite accents for natural/detailed look
-                Block top = world.getBlockAt(cx + x, cy + 1, cz + z);
-                double r = random.nextDouble();
-                if (dist < 6) {
-                    top.setType(Material.POLISHED_ANDESITE);
-                } else if (r < 0.1) {
-                    top.setType(Material.MOSS_BLOCK);
-                } else if (r < 0.22) {
-                    top.setType(Material.GRASS_BLOCK);
-                } else if (r < 0.32) {
-                    top.setType(Material.MOSSY_STONE_BRICKS);
-                } else if (r < 0.4 && dist > 15) {
-                    top.setType(Material.TUFF);
-                } else {
-                    top.setType(Material.STONE_BRICKS);
-                }
-
-                // Outer decorative wall/rim with battlements and some stairs for detail (PMC style)
-                if (dist > radius - 3 && dist <= radius) {
-                    Block wallBase = world.getBlockAt(cx + x, cy + 2, cz + z);
-                    wallBase.setType(Material.STONE_BRICK_WALL);
-                    // Simple wall, detailed enough without full side config for perf
-                    if (random.nextDouble() < 0.25) {
-                        world.getBlockAt(cx + x, cy + 3, cz + z).setType(Material.STONE_BRICKS);
-                    }
-                    // Add occasional crenellations
-                    if (Math.abs(x) % 4 == 0 || Math.abs(z) % 4 == 0) {
-                        world.getBlockAt(cx + x, cy + 4, cz + z).setType(Material.STONE_BRICK_SLAB);
-                    }
-                }
+                placeBasePlatformColumn(world, cx, cy, cz, x, z, radius, random);
             }
         }
 
-        // Inner ring with PROPER detailed stairs and slabs for tiering (key for PMC detailed builds)
         for (int x = -18; x <= 18; x++) {
             for (int z = -18; z <= 18; z++) {
-                double dist = Math.sqrt(x*x + z*z);
-                if (dist > 18) continue;
-                Block stepBlock = world.getBlockAt(cx + x, cy + 2, cz + z);
-                if (dist > 10) {
-                    stepBlock.setType(Material.STONE_BRICK_STAIRS);
-                    Stairs stairs = (Stairs) stepBlock.getBlockData();
-                    // Orient stairs outward-ish for nice tier look
-                    if (Math.abs(x) > Math.abs(z)) {
-                        stairs.setFacing(x > 0 ? BlockFace.WEST : BlockFace.EAST);
-                    } else {
-                        stairs.setFacing(z > 0 ? BlockFace.NORTH : BlockFace.SOUTH);
-                    }
-                    stairs.setHalf(Bisected.Half.BOTTOM);
-                    stepBlock.setBlockData(stairs);
-                } else if (dist > 7) {
-                    stepBlock.setType(Material.STONE_BRICK_SLAB);
-                } else {
-                    stepBlock.setType(Material.POLISHED_ANDESITE);
-                }
+                placeInnerRingColumn(world, cx, cy, cz, x, z, 18);
             }
         }
 
+        buildSpawnCenterAndPavilions(world, cx, cy, cz, random, () -> {});
+        buildSpawnNpcAndCrateAreas(world, cx, cy, cz, radius, random, () -> {});
+        finishSpawnPlatform(world, cx, cy, cz, radius, random);
+    }
+
+    private void placeBasePlatformColumn(World world, int cx, int cy, int cz, int x, int z, int radius, ThreadLocalRandom random) {
+        double dist = Math.sqrt(x * x + z * z);
+        if (dist > radius) return;
+
+        int baseY = (dist > radius - 5) ? -5 : -6;
+        for (int y = baseY; y <= 0; y++) {
+            Block b = world.getBlockAt(cx + x, cy + y, cz + z);
+            if (y <= -6) b.setType(Material.DEEPSLATE);
+            else if (y == -5) b.setType(Material.COBBLED_DEEPSLATE);
+            else if (y <= -3) b.setType(Material.STONE_BRICKS);
+            else if (y == -2) b.setType(Material.MOSSY_STONE_BRICKS);
+            else b.setType(Material.STONE);
+        }
+
+        Block top = world.getBlockAt(cx + x, cy + 1, cz + z);
+        double r = random.nextDouble();
+        if (dist < 6) {
+            top.setType(Material.POLISHED_ANDESITE);
+        } else if (r < 0.1) {
+            top.setType(Material.MOSS_BLOCK);
+        } else if (r < 0.22) {
+            top.setType(Material.GRASS_BLOCK);
+        } else if (r < 0.32) {
+            top.setType(Material.MOSSY_STONE_BRICKS);
+        } else if (r < 0.4 && dist > 15) {
+            top.setType(Material.TUFF);
+        } else {
+            top.setType(Material.STONE_BRICKS);
+        }
+
+        if (dist > radius - 3 && dist <= radius) {
+            Block wallBase = world.getBlockAt(cx + x, cy + 2, cz + z);
+            wallBase.setType(Material.STONE_BRICK_WALL);
+            if (random.nextDouble() < 0.25) {
+                world.getBlockAt(cx + x, cy + 3, cz + z).setType(Material.STONE_BRICKS);
+            }
+            if (Math.abs(x) % 4 == 0 || Math.abs(z) % 4 == 0) {
+                world.getBlockAt(cx + x, cy + 4, cz + z).setType(Material.STONE_BRICK_SLAB);
+            }
+        }
+    }
+
+    private void placeInnerRingColumn(World world, int cx, int cy, int cz, int x, int z, int innerRadius) {
+        double dist = Math.sqrt(x * x + z * z);
+        if (dist > innerRadius) return;
+        Block stepBlock = world.getBlockAt(cx + x, cy + 2, cz + z);
+        if (dist > 10) {
+            stepBlock.setType(Material.STONE_BRICK_STAIRS);
+            Stairs stairs = (Stairs) stepBlock.getBlockData();
+            if (Math.abs(x) > Math.abs(z)) {
+                stairs.setFacing(x > 0 ? BlockFace.WEST : BlockFace.EAST);
+            } else {
+                stairs.setFacing(z > 0 ? BlockFace.NORTH : BlockFace.SOUTH);
+            }
+            stairs.setHalf(Bisected.Half.BOTTOM);
+            stepBlock.setBlockData(stairs);
+        } else if (dist > 7) {
+            stepBlock.setType(Material.STONE_BRICK_SLAB);
+        } else {
+            stepBlock.setType(Material.POLISHED_ANDESITE);
+        }
+    }
+
+    private void buildSpawnCenterAndPavilions(World world, int cx, int cy, int cz, ThreadLocalRandom random, Runnable ignored) {
         // Central feature (random, now much more detailed)
         int variant = random.nextInt(4);
         switch (variant) {
@@ -259,7 +634,9 @@ public class WorldManager {
                 world.getBlockAt(sx, cy + 3, sz).setType(Material.FLOWER_POT);
             }
         }
+    }
 
+    private void buildSpawnNpcAndCrateAreas(World world, int cx, int cy, int cz, int radius, ThreadLocalRandom random, Runnable ignored) {
         // === DEDICATED NPC / INTERACTIVE AREAS (many clear pads for automatic NPC spawning) ===
         // Inspired by PMC skyblock hubs (e.g. "15x Places for NPC's", "11 NPC & hologram spots", "places for NPCs, crates, tops, information").
         // Each pad is raised, bordered with stairs/walls/fences for visual definition, flat clear center (for ArmorStand/Villager NPCs with space in front for players),
@@ -308,11 +685,13 @@ public class WorldManager {
             }
             buildEnhancedPath(world, cx, cy + 1, cz, px, pz, random);
         }
+    }
 
+    private void finishSpawnPlatform(World world, int cx, int cy, int cz, int radius, ThreadLocalRandom random) {
         addDetailedDecorations(world, cx, cy + 2, cz, radius, random);
-
-        world.setSpawnLocation(cx, cy + 4, cz);
-        plugin.getLogger().info("§a[WorldManager] Detailed spawn island/platform generated (variant: " + variant + ", radius: " + radius + ")");
+        markSpawnPlatformBuilt(world, cx, cy, cz);
+        completeHubSpawn(world);
+        MessageUtil.info(plugin.getLogger(), "§a[WorldManager] Detailed spawn island/platform generated (radius: " + radius + ")");
     }
 
     // --- Detailed feature builders for richer spawn island ---
@@ -657,18 +1036,4 @@ public class WorldManager {
         });
     }
 
-    private static class VoidChunkGenerator extends ChunkGenerator {
-        @Override
-        public ChunkData generateChunkData(World world, java.util.Random random, int x, int z, BiomeGrid biome) {
-            return createChunkData(world);
-        }
-
-        @Override public boolean shouldGenerateNoise() { return false; }
-        @Override public boolean shouldGenerateSurface() { return false; }
-        @Override public boolean shouldGenerateBedrock() { return false; }
-        @Override public boolean shouldGenerateCaves() { return false; }
-        @Override public boolean shouldGenerateDecorations() { return false; }
-        @Override public boolean shouldGenerateMobs() { return false; }
-        @Override public boolean shouldGenerateStructures() { return false; }
-    }
 }

@@ -40,7 +40,8 @@ public class ChallengeManager {
         updateThemedWeek();
 
         // Update theme every 7 days (use ThreadSafety for Folia compatibility)
-        plugin.getThreadSafety().runRepeatingOnMainThread(this::updateThemedWeek, 0L, 12096000L);
+        // 12096000 ticks = 7 days; initial 1 tick (Folia rejects 0 initial delay)
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::updateThemedWeek, 1L, 12096000L);
     }
 
     /**

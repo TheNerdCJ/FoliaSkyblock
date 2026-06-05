@@ -6,6 +6,7 @@ import com.thenerdcj.island.Island;
 import com.thenerdcj.island.Island.Skill;
 import com.thenerdcj.island.IslandMilestoneCompleteEvent;
 import com.thenerdcj.island.IslandSkillLevelUpEvent;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 
 import java.util.*;
@@ -87,7 +88,7 @@ public class ProgressionManager {
 
             // Optional: Fire skill level up event or give rewards
             Bukkit.getPluginManager().callEvent(new IslandSkillLevelUpEvent(island, skill, progress.level));
-            plugin.getLogger().info("§a[Progression] Island skill level up: " + skill + " → Lvl " + progress.level);
+            MessageUtil.info(plugin.getLogger(), "§a[Progression] Island skill level up: " + skill + " → Lvl " + progress.level);
         }
 
         // Persist asynchronously
@@ -161,7 +162,7 @@ public class ProgressionManager {
             island.addXp(bonusXp);
         }
 
-        plugin.getLogger().info("§a[Progression] Milestone completed: " + milestoneId + " on island " + islandKey);
+        MessageUtil.info(plugin.getLogger(), "§a[Progression] Milestone completed: " + milestoneId + " on island " + islandKey);
     }
 
     // Example predefined milestones (expand in config or enum later)

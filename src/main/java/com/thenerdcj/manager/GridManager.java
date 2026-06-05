@@ -179,9 +179,17 @@ public class GridManager {
      */
     public Location getSpawnCenterLocation(World world) {
         if (world == null) return null;
+        if (plugin.getWorldManager() != null) {
+            Location hub = plugin.getWorldManager().getHubSpawnLocation(world);
+            if (hub != null) {
+                return hub;
+            }
+        }
         int baseY = plugin.getConfig().getInt("island.base-y", 80);
-        // Center of grid (0,0)
-        return new Location(world, islandSize / 2.0, baseY, islandSize / 2.0);
+        return new Location(world, plugin.getConfig().getInt("spawn-platform.center-x", 0) + 0.5,
+                plugin.getConfig().getInt("spawn-platform.center-y", 100)
+                        + plugin.getConfig().getInt("spawn-platform.player-y-offset", 4),
+                plugin.getConfig().getInt("spawn-platform.center-z", 0) + 0.5);
     }
 
     public boolean isIslandLocation(Location loc) {

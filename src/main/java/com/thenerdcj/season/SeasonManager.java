@@ -231,12 +231,13 @@ public class SeasonManager {
     }
 
     private World getWorldForDimension(org.bukkit.World.Environment env) {
-        String name = switch (env) {
-            case NETHER -> plugin.getConfig().getString("worlds.nether", "skyblock_nether");
-            case THE_END -> plugin.getConfig().getString("worlds.end", "skyblock_end");
-            default -> plugin.getConfig().getString("worlds.overworld", "skyblock");
-        };
-        return Bukkit.getWorld(name);
+        if (plugin.getWorldManager() != null) {
+            return plugin.getWorldManager().resolveSkyblockWorld(env);
+        }
+        return Bukkit.getWorlds().stream()
+                .filter(w -> w.getEnvironment() == env)
+                .findFirst()
+                .orElse(null);
     }
 
     private void finishReset(String seasonId, int gridsCleared, String actorName, long startTs) {

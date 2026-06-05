@@ -53,7 +53,7 @@ public class HologramManager {
                     }
                 }
             }
-            plugin.getLogger().info("§a[HologramManager] Loaded and spawned " + holoList.size() + " persistent holograms.");
+            MessageUtil.info(plugin.getLogger(), "§a[HologramManager] Loaded and spawned " + holoList.size() + " persistent holograms.");
         }).exceptionally(ex -> {
             plugin.getLogger().log(Level.WARNING, "Failed to load holograms", ex);
             return null;

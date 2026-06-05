@@ -147,9 +147,9 @@ public class IslandBrowseMainGUI extends BaseGUI {
             try {
                 GridPosition pos = GridPosition.fromString(posStr);
                 Island island = plugin.getIslandManager().getIslandByPosition(pos);
-                if (island != null && island.getSpawnLocation() != null) {
+                if (island != null) {
                     player.closeInventory();
-                    player.teleport(island.getSpawnLocation());
+                    plugin.getIslandManager().teleportToIslandHome(player, island);
                     String ownerName = Bukkit.getOfflinePlayer(island.getOwnerUuid()).getName();
                     player.sendMessage("§aTeleported to §e" + (ownerName != null ? ownerName : "island") + "§a!");
                 }

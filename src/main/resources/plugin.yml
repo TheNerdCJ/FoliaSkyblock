@@ -2,6 +2,7 @@ name: FoliaSkyblock
 version: ${project.version}
 main: com.thenerdcj.FoliaSkyblock
 api-version: 1.21
+load: STARTUP
 folia-supported: true
 author: TheNerdCJ
 softdepend: [PlaceholderAPI]  # task 2: PAPI expansion for stats (levels, worth, balances, tops) - no hard dep, graceful if absent. Matches competitor ecosystems (Iridium/Superior use PAPI heavily).
@@ -185,7 +186,7 @@ commands:
     aliases: [collection, coll]
 
   skills:
-    description: View your per-player skills (MCMMO-inspired: Mining, Woodcutting, etc. with abilities)
+    description: "View your per-player skills (MCMMO-inspired: Mining, Woodcutting, etc. with abilities)"
     usage: /<command>
     aliases: [skill, mcstats]
 
@@ -204,6 +205,184 @@ commands:
     description: Admin tools for fixing islands and balances
     usage: /<command> <subcommand> ...
     permission: foliasb.admin
+
+  slayer:
+    description: Open the Slayer progression menu
+    usage: /<command>
+
+  trail:
+    description: Open particle trail cosmetics
+    usage: /<command>
+
+  particles:
+    description: Open particle trail cosmetics
+    usage: /<command>
+
+  pets:
+    description: Open the pet management menu
+    usage: /<command>
+
+  tags:
+    description: Open cosmetic tag selection
+    usage: /<command>
+
+  wings:
+    description: Open elytra wing cosmetics
+    usage: /<command>
+
+  runes:
+    description: Open rune management
+    usage: /<command>
+
+  deatheffects:
+    description: Open death effect cosmetics
+    usage: /<command>
+    aliases: [death]
+
+  backpackskins:
+    description: Open backpack skin cosmetics
+    usage: /<command>
+    aliases: [backpacks]
+
+  powerorbskins:
+    description: Open power orb skin cosmetics
+    usage: /<command>
+    aliases: [orbskins]
+
+  structures:
+    description: Open island structure catalog
+    usage: /<command>
+    aliases: [structure]
+
+  quests:
+    description: Open quest log and refresh dailies
+    usage: /<command>
+    aliases: [quest, dailies]
+
+  overhead:
+    description: Open overhead cosmetic options
+    usage: /<command>
+
+  nametag:
+    description: Toggle overhead nametag visibility
+    usage: /<command>
+
+  staff:
+    description: Staff command panel
+    usage: /<command> <subcommand>
+    permission: foliasb.staff
+
+  fly:
+    description: Toggle fly mode
+    permission: foliasb.staff
+    usage: /<command>
+
+  god:
+    description: Toggle god mode
+    permission: foliasb.staff
+    usage: /<command>
+
+  heal:
+    description: Heal yourself or a player
+    permission: foliasb.staff
+    usage: /<command> [player]
+
+  speed:
+    description: Set walk/fly speed
+    permission: foliasb.staff
+    usage: /<command> <speed> [player]
+
+  gm:
+    description: Change gamemode
+    permission: foliasb.staff
+    usage: /<command> <mode> [player]
+
+  gamemode:
+    description: Change gamemode
+    permission: foliasb.staff
+    usage: /<command> <mode> [player]
+
+  tp:
+    description: Teleport to a player
+    permission: foliasb.staff
+    usage: /<command> <player>
+
+  tphere:
+    description: Teleport a player to you
+    permission: foliasb.staff
+    usage: /<command> <player>
+
+  tppos:
+    description: Teleport to coordinates
+    permission: foliasb.staff
+    usage: /<command> <x> <y> <z> [world]
+
+  ban:
+    description: Ban a player
+    permission: foliasb.staff
+    usage: /<command> <player> [reason]
+
+  tempban:
+    description: Temporarily ban a player
+    permission: foliasb.staff
+    usage: /<command> <player> <duration> [reason]
+
+  kick:
+    description: Kick a player
+    permission: foliasb.staff
+    usage: /<command> <player> [reason]
+
+  warn:
+    description: Warn a player
+    permission: foliasb.staff
+    usage: /<command> <player> <reason>
+
+  invsee:
+    description: View a player inventory
+    permission: foliasb.staff
+    usage: /<command> <player>
+
+  endersee:
+    description: View a player ender chest
+    permission: foliasb.staff
+    usage: /<command> <player>
+
+  freeze:
+    description: Freeze a player
+    permission: foliasb.staff
+    usage: /<command> <player>
+
+  sc:
+    description: Staff chat
+    permission: foliasb.staff
+    usage: /<command> <message>
+    aliases: [staffchat]
+
+  broadcast:
+    description: Broadcast a message
+    permission: foliasb.staff
+    usage: /<command> <message>
+
+  announce:
+    description: Server announcement
+    permission: foliasb.staff
+    usage: /<command> <message>
+
+  clear:
+    description: Clear inventory
+    permission: foliasb.staff
+    usage: /<command> [player]
+
+  repair:
+    description: Repair held items
+    permission: foliasb.staff
+    usage: /<command>
+
+  holo:
+    description: Manage holograms
+    permission: foliasb.staff
+    usage: /<command>
+    aliases: [hologram]
 
 permissions:
   folia.skyblock.wardrobe:

@@ -2,6 +2,7 @@ package com.thenerdcj.island.generator;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.island.IslandSpawnFinder;
 import org.bukkit.*;
 import org.bukkit.block.Biome;
 import org.bukkit.block.Block;
@@ -64,20 +65,25 @@ public class IslandGenerator {
 
         plugin.getServer().getRegionScheduler().execute(plugin, center, () -> {
             generateIslandStructure(center, finalBiome, island.getDimension(), template, seed, sizeLevelFinal);
+            Location spawn = IslandSpawnFinder.findNear(center, template, 12);
+            island.setSpawnLocation(spawn);
+            if (player != null && player.isOnline()) {
+                // Snap to safe pad after terrain (no chat — create already warped the player)
+                plugin.getIslandManager().teleportPlayerToIslandSpawn(player, island, spawn, false);
+            }
             placeStarterChest(center, finalBiome, player, seed);
             setBiomeInChunk(center, finalBiome);
         });
     }
 
     private World getWorldForDimension(World.Environment dimension) {
-        // Aligned with WorldManager + FoliaSkyblock.getSkyblockWorld() for consistency across the entire plugin.
-        // All custom void worlds must use: skyblock, skyblock_nether, skyblock_end
-        String worldName = switch (dimension) {
-            case NETHER -> plugin.getConfig().getString("worlds.nether", "skyblock_nether");
-            case THE_END -> plugin.getConfig().getString("worlds.end", "skyblock_end");
-            default -> plugin.getConfig().getString("worlds.overworld", "skyblock");
-        };
-        return Bukkit.getWorld(worldName);
+        if (plugin.getWorldManager() != null) {
+            return plugin.getWorldManager().resolveSkyblockWorld(dimension);
+        }
+        return Bukkit.getWorlds().stream()
+                .filter(w -> w.getEnvironment() == dimension)
+                .findFirst()
+                .orElse(null);
     }
 
     private Biome determineFinalBiome(Biome chosenBiome, boolean isDonor, World.Environment dimension, BiomeTemplate template) {

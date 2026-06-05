@@ -8,6 +8,7 @@ import com.thenerdcj.island.Island;
 import com.thenerdcj.island.Island.Skill;
 import com.thenerdcj.island.IslandUpgrade;
 import com.thenerdcj.mission.Mission;
+import com.thenerdcj.util.MessageUtil;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.Bukkit;
@@ -256,9 +257,9 @@ public class DatabaseManager {
             }
 
             if (jdbcUrlOverride != null) {
-                plugin.getLogger().info("§a[Database] Test DB initialized (" + config.getJdbcUrl() + ").");
+                MessageUtil.info(plugin.getLogger(), "§a[Database] Test DB initialized (" + config.getJdbcUrl() + ").");
             } else {
-                plugin.getLogger().info("§a[Database] SQLite + Caching initialized successfully.");
+                MessageUtil.info(plugin.getLogger(), "§a[Database] SQLite + Caching initialized successfully.");
             }
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Database initialization failed", e);
@@ -2017,7 +2018,7 @@ public class DatabaseManager {
         }
         dirtySkills.clear();
 
-        plugin.getLogger().info("§a[Database] Dirty caches flushed to disk.");
+        MessageUtil.info(plugin.getLogger(), "§a[Database] Dirty caches flushed to disk.");
     }
     // ==================== ISLAND UPGRADES PERSISTENCE ====================
 

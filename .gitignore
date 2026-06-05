@@ -22,3 +22,6 @@ Thumbs.db
 # Maven shade build artifact (do not commit)
 dependency-reduced-pom.xml
 dependency-reduced-pom.xml.bak
+
+# Local MCP tool descriptors (not part of the plugin)
+mcps/

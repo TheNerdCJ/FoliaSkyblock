@@ -1,6 +1,7 @@
 package com.thenerdcj.boss;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -17,7 +18,7 @@ public class SlayerAchievementManager {
 
     public SlayerAchievementManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        plugin.getLogger().info("§a[SlayerAchievements] Achievement system initialized");
+        MessageUtil.info(plugin.getLogger(), "§a[SlayerAchievements] Achievement system initialized");
     }
 
     public int getProgress(UUID playerUuid, SlayerAchievement achievement) {

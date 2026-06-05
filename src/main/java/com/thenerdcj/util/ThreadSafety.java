@@ -49,10 +49,17 @@ public final class ThreadSafety {
         }
     }
 
+    /** Folia requires initial delay and period > 0 for fixed-rate tasks. */
+    private static long foliaSafeTicks(long ticks) {
+        return Math.max(1L, ticks);
+    }
+
     public void runRepeatingOnMainThread(Runnable task, long initialDelayTicks, long periodTicks) {
         if (task == null) return;
+        long initial = foliaSafeTicks(initialDelayTicks);
+        long period = foliaSafeTicks(periodTicks);
         if (isFolia()) {
-            plugin.getServer().getGlobalRegionScheduler().runAtFixedRate(plugin, t -> task.run(), initialDelayTicks, periodTicks);
+            plugin.getServer().getGlobalRegionScheduler().runAtFixedRate(plugin, t -> task.run(), initial, period);
         } else {
             Bukkit.getScheduler().runTaskTimer(plugin, task, initialDelayTicks, periodTicks);
         }
@@ -100,8 +107,10 @@ public final class ThreadSafety {
 
     public void runRepeatingForEntity(Entity entity, Runnable task, long initialDelayTicks, long periodTicks) {
         if (task == null || entity == null || !entity.isValid()) return;
+        long initial = foliaSafeTicks(initialDelayTicks);
+        long period = foliaSafeTicks(periodTicks);
         if (isFolia()) {
-            entity.getScheduler().runAtFixedRate(plugin, t -> task.run(), null, initialDelayTicks, periodTicks);
+            entity.getScheduler().runAtFixedRate(plugin, t -> task.run(), null, initial, period);
         } else {
             Bukkit.getScheduler().runTaskTimer(plugin, task, initialDelayTicks, periodTicks);
         }
@@ -115,8 +124,10 @@ public final class ThreadSafety {
      */
     public Object runRepeatingForPlayer(Player player, Runnable task, long initialDelayTicks, long periodTicks) {
         if (task == null || player == null || !player.isOnline()) return null;
+        long initial = foliaSafeTicks(initialDelayTicks);
+        long period = foliaSafeTicks(periodTicks);
         if (isFolia()) {
-            return player.getScheduler().runAtFixedRate(plugin, t -> task.run(), null, initialDelayTicks, periodTicks);
+            return player.getScheduler().runAtFixedRate(plugin, t -> task.run(), null, initial, period);
         } else {
             return Bukkit.getScheduler().runTaskTimer(plugin, task, initialDelayTicks, periodTicks);
         }

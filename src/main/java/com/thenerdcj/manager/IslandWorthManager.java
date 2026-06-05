@@ -204,11 +204,9 @@ public class IslandWorthManager {
         }
 
         // Folia-safe async worth calculation using proper chunk async loading + ChunkSnapshot (thread-safe reads)
-        String worldName = "skyblock";
-        if (island.getDimension() == World.Environment.NETHER) worldName = "skyblock_nether";
-        else if (island.getDimension() == World.Environment.THE_END) worldName = "skyblock_end";
-
-        World world = Bukkit.getWorld(worldName);
+        World world = plugin.getWorldManager() != null
+                ? plugin.getWorldManager().resolveSkyblockWorld(island.getDimension())
+                : Bukkit.getWorlds().stream().filter(w -> w.getEnvironment() == island.getDimension()).findFirst().orElse(null);
         if (world == null) {
             return CompletableFuture.completedFuture(0.0);
         }
@@ -476,7 +474,10 @@ public class IslandWorthManager {
             int level = calculateWorthLevel(worth);
 
             // Per-island RegionScheduler example for Folia perf (from optimization suggestions): schedule the final update at island center region to avoid global contention.
-            Location center = island.getCenter(Bukkit.getWorld(island.getDimension() == World.Environment.NORMAL ? "skyblock" : (island.getDimension() == World.Environment.NETHER ? "skyblock_nether" : "skyblock_end")));
+            World dimWorld = plugin.getWorldManager() != null
+                    ? plugin.getWorldManager().resolveSkyblockWorld(island.getDimension())
+                    : Bukkit.getWorlds().stream().filter(w -> w.getEnvironment() == island.getDimension()).findFirst().orElse(null);
+            Location center = island.getCenter(dimWorld);
             if (center != null) {
                 plugin.getThreadSafety().runAtLocation(center, () -> {
                     // Future: persist + fire events + update caches if needed

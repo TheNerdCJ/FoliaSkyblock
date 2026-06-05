@@ -16,6 +16,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
+import com.thenerdcj.util.MessageUtil;
 import com.thenerdcj.util.SoundUtil;
 
 import java.io.File;
@@ -71,7 +72,7 @@ public class TradeGUI implements Listener {
                 plugin.getLogger().warning("Failed to load trade item: " + key);
             }
         }
-        plugin.getLogger().info("§aLoaded " + tradeItems.size() + " trade items from trades.yml");
+        MessageUtil.info(plugin.getLogger(), "§aLoaded " + tradeItems.size() + " trade items from trades.yml");
     }
 
     /**

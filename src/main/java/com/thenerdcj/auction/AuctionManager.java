@@ -2,6 +2,7 @@ package com.thenerdcj.auction;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.auction.Auction;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -49,7 +50,7 @@ public class AuctionManager {
                     activeAuctions.put(auction.getId(), auction);
                 }
             }
-            plugin.getLogger().info("§aLoaded " + activeAuctions.size() + " active auctions");
+            MessageUtil.info(plugin.getLogger(), "§aLoaded " + activeAuctions.size() + " active auctions");
         });
     }
 

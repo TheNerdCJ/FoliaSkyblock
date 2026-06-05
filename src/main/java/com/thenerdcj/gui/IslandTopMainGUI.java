@@ -204,9 +204,9 @@ public class IslandTopMainGUI extends BaseGUI {
         if (island == null) {
             island = plugin.getIslandManager().getIsland(owner, org.bukkit.World.Environment.NORMAL);
         }
-        if (island != null && island.getSpawnLocation() != null) {
+        if (island != null) {
             player.closeInventory();
-            player.teleport(island.getSpawnLocation());
+            plugin.getIslandManager().teleportToIslandHome(player, island);
             String name = Bukkit.getOfflinePlayer(owner).getName();
             player.sendMessage("§aTeleported to top island of §e"
                     + (name != null ? name : owner.toString().substring(0, 8)) + "§a.");

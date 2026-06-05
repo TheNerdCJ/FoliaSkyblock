@@ -170,11 +170,16 @@ public class IslandManager {
                                     plugin.getQuestManager().generateWeeklyQuests(island.getId());
                                 }
 
-                                // Use RegionScheduler for generation when possible
                                 runGenerationOnRegionScheduler(player, island, biome, isDonor);
 
-                                MessageUtil.sendMessage(player, "§a§lIsland created in " + dimension.name() + "!");
-                                MessageUtil.sendMessage(player, "§7Complete your §b/quests §7to earn rewards and unlock a free starter cosmetic trail!");
+                                final Island created = island;
+                                final Player onlinePlayer = player;
+                                plugin.getThreadSafety().runOnMainThread(() -> {
+                                    if (!onlinePlayer.isOnline()) return;
+                                    MessageUtil.sendMessage(onlinePlayer, "§a§lIsland created in " + dimension.name() + "!");
+                                    MessageUtil.sendMessage(onlinePlayer, "§7Complete your §b/quests §7to earn rewards and unlock a free starter cosmetic trail!");
+                                    teleportToIslandCenterImmediate(onlinePlayer, created);
+                                });
                                 return true;
                             });
                 });
@@ -239,9 +244,36 @@ public class IslandManager {
     }
 
     // ==================== GETTERS ====================
+
+    /**
+     * Returns the player's island for a dimension (memory first, then database).
+     */
     public Island getIsland(UUID owner, World.Environment dimension) {
+        if (owner == null || dimension == null) return null;
+
         Map<World.Environment, Island> map = playerIslands.get(owner);
-        return (map != null) ? map.get(dimension) : null;
+        if (map != null) {
+            Island cached = map.get(dimension);
+            if (cached != null) {
+                return cached;
+            }
+        }
+
+        Island fromDb = databaseManager.getIslandByOwner(owner, dimension);
+        if (fromDb != null) {
+            cacheIsland(owner, fromDb);
+        }
+        return fromDb;
+    }
+
+    /** Resolves which island a command should target (current dimension, then overworld fallback). */
+    public Island getIslandForPlayer(Player player) {
+        if (player == null) return null;
+        Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            island = getIsland(player.getUniqueId(), World.Environment.NORMAL);
+        }
+        return island;
     }
 
     public boolean isWithinUpgradedIslandArea(Location location) {
@@ -317,18 +349,180 @@ public class IslandManager {
     }
 
     // ==================== TELEPORT ====================
-    public void teleportToIsland(Player player, UUID owner) {
-        Island island = getIsland(owner, player.getWorld().getEnvironment());
-        if (island != null && island.getSpawnLocation() != null) {
-            player.teleport(island.getSpawnLocation());
-        } else {
-            MessageUtil.sendMessage(player, "§cNo island found in this dimension.");
+
+    /**
+     * Resolves the location players should warp to (custom /is sethome or island grid center).
+     */
+    public Location getIslandHomeLocation(Island island) {
+        if (island == null) return null;
+        Location custom = island.getSpawnLocation();
+        if (custom != null && custom.getWorld() != null) {
+            return custom.clone();
         }
+        World world = plugin.getSkyblockWorld(island.getDimension());
+        if (world == null) return null;
+        Location center = island.getCenter(world);
+        return center != null ? center.clone() : null;
+    }
+
+    /**
+     * Returns a best-effort home location without reading blocks (Folia-safe from any thread).
+     * For accurate terrain-aware placement use {@link #teleportToIslandHome}.
+     */
+    public Location getSafeIslandHomeLocation(Island island) {
+        Location base = getIslandHomeLocation(island);
+        return base != null ? toStandingLocation(base) : null;
+    }
+
+    /** Must run on the region thread that owns {@code anchor}. */
+    public Location resolveSafeStandingOnRegionThread(Location anchor) {
+        if (anchor == null || anchor.getWorld() == null) return null;
+        Location found = IslandSpawnFinder.findNearCenter(anchor);
+        if (found == null) {
+            return toStandingLocation(anchor);
+        }
+        found.setPitch(anchor.getPitch());
+        found.setYaw(anchor.getYaw());
+        return found;
+    }
+
+    private Location resolveSpawnOnRegionThread(Island island, World world) {
+        Location custom = island.getSpawnLocation();
+        if (custom != null && custom.getWorld() == world) {
+            return resolveSafeStandingOnRegionThread(custom);
+        }
+        Location center = island.getCenter(world);
+        return center != null ? resolveSafeStandingOnRegionThread(center) : null;
+    }
+
+    private static Location toStandingLocation(Location anchor) {
+        Location loc = anchor.clone();
+        loc.setX(loc.getBlockX() + 0.5);
+        loc.setZ(loc.getBlockZ() + 0.5);
+        if (loc.getY() == Math.floor(loc.getY())) {
+            loc.setY(loc.getY() + 1.0);
+        }
+        return loc;
+    }
+
+    /** Warp to grid center before terrain exists; refined after generation on the island region thread. */
+    public void teleportToIslandCenterImmediate(Player player, Island island) {
+        if (player == null || island == null || !player.isOnline()) return;
+        World world = plugin.getSkyblockWorld(island.getDimension());
+        if (world == null) {
+            MessageUtil.sendMessage(player, "§cCould not find your island world. Ask staff if this persists.");
+            return;
+        }
+        Location center = island.getCenter(world);
+        if (center == null) {
+            MessageUtil.sendMessage(player, "§cCould not resolve your island location.");
+            return;
+        }
+        teleportPlayerToIslandSpawn(player, island, toStandingLocation(center), true);
+    }
+
+    public void teleportToIsland(Player player, UUID owner) {
+        teleportToIsland(player, owner, player.getWorld().getEnvironment());
+    }
+
+    public void teleportToIsland(Player player, UUID owner, World.Environment dimension) {
+        Island island = getIsland(owner, dimension);
+        if (island == null && owner.equals(player.getUniqueId())) {
+            island = getIsland(owner, World.Environment.NORMAL);
+        }
+        if (island == null) {
+            MessageUtil.sendMessage(player, "§cNo island found in this dimension. Use §b/is create §cif you have not claimed one yet.");
+            return;
+        }
+        teleportToIslandHome(player, island);
+    }
+
+    public void teleportToIslandHome(Player player, Island island) {
+        if (player == null || island == null) return;
+        if (!player.isOnline()) return;
+
+        World world = plugin.getSkyblockWorld(island.getDimension());
+        if (world == null) {
+            MessageUtil.sendMessage(player, "§cCould not find your island world. Ask staff if this persists.");
+            plugin.getLogger().warning("[IslandManager] Teleport failed for " + player.getName()
+                    + " — world missing for dimension " + island.getDimension());
+            return;
+        }
+
+        Location anchor = island.getSpawnLocation();
+        if (anchor == null || anchor.getWorld() == null || !anchor.getWorld().equals(world)) {
+            anchor = island.getCenter(world);
+        }
+        if (anchor == null) {
+            MessageUtil.sendMessage(player, "§cCould not resolve your island spawn. Try again in a moment.");
+            return;
+        }
+
+        final Location regionAnchor = anchor.clone();
+        plugin.getThreadSafety().runAtLocation(regionAnchor, () -> {
+            Location dest = resolveSpawnOnRegionThread(island, world);
+            if (dest == null || dest.getWorld() == null) {
+                plugin.getThreadSafety().runForEntity(player, () ->
+                        MessageUtil.sendMessage(player, "§cCould not resolve your island spawn. Try again in a moment."));
+                return;
+            }
+            teleportPlayerToIslandSpawn(player, island, dest, true);
+        });
+    }
+
+    /**
+     * Folia-safe cross-region teleport (player entity thread; {@link Player#teleportAsync} loads destination chunks).
+     */
+    public void teleportPlayerToIslandSpawn(Player player, Island island, Location dest, boolean announce) {
+        if (player == null || dest == null || dest.getWorld() == null) {
+            return;
+        }
+
+        final Location target = dest.clone();
+        target.setX(target.getBlockX() + 0.5);
+        target.setZ(target.getBlockZ() + 0.5);
+        if (Float.isNaN(target.getPitch())) {
+            target.setPitch(player.getLocation().getPitch());
+        }
+        if (Float.isNaN(target.getYaw())) {
+            target.setYaw(player.getLocation().getYaw());
+        }
+
+        plugin.getThreadSafety().runForEntity(player, () -> {
+            if (!player.isOnline()) return;
+            try {
+                player.teleportAsync(target).whenComplete((success, err) -> {
+                    plugin.getThreadSafety().runForEntity(player, () -> finishIslandTeleport(player, island, target, success, announce));
+                });
+            } catch (NoSuchMethodError | UnsupportedOperationException ex) {
+                finishIslandTeleport(player, island, target, player.teleport(target), announce);
+            }
+        });
+    }
+
+    public void teleportPlayerToIslandSpawn(Player player, Island island, Location dest) {
+        teleportPlayerToIslandSpawn(player, island, dest, true);
+    }
+
+    private void finishIslandTeleport(Player player, Island island, Location target, Boolean asyncSuccess, boolean announce) {
+        if (!player.isOnline()) return;
+        if (!Boolean.TRUE.equals(asyncSuccess)) {
+            player.teleport(target);
+        }
+        if (announce) {
+            MessageUtil.sendMessage(player, "§aTeleported to your island!");
+        }
+        plugin.getThreadSafety().runOnMainThreadLater(() -> {
+            if (player.isOnline() && plugin.getBorderVisualManager() != null) {
+                plugin.getBorderVisualManager().updatePlayerWorldBorder(player, island);
+            }
+        }, 15L);
     }
 
     public Location getIslandHome(Player player) {
-        Island island = getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-        return (island != null) ? island.getSpawnLocation() : player.getWorld().getSpawnLocation();
+        Island island = getIslandForPlayer(player);
+        Location home = getSafeIslandHomeLocation(island);
+        return home != null ? home : player.getWorld().getSpawnLocation();
     }
 
     // ==================== PARTY SYSTEM ====================
@@ -640,16 +834,8 @@ public class IslandManager {
 
     // ==================== GENERATION SCHEDULER ====================
     private void runGenerationOnRegionScheduler(Player player, Island island, Biome biome, boolean isDonor) {
-        World world = plugin.getSkyblockWorld(island.getDimension());
-        if (world == null) {
-            plugin.getIslandGenerator().generateIsland(island, player, biome, isDonor);
-            return;
-        }
-
-        plugin.getServer().getRegionScheduler().execute(plugin, world,
-                island.getGridPosition().getX(), island.getGridPosition().getZ(), () -> {
-                    plugin.getIslandGenerator().generateIsland(island, player, biome, isDonor);
-                });
+        // IslandGenerator schedules work on the island's block region (not grid indices).
+        plugin.getIslandGenerator().generateIsland(island, player, biome, isDonor);
     }
 
     // ==================== UTILITY ====================

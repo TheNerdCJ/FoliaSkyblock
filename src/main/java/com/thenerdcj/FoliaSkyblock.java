@@ -41,12 +41,21 @@ import com.thenerdcj.enchant.EnchantmentManager;
 import com.thenerdcj.skills.PlayerSkillManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import com.thenerdcj.island.generator.VoidChunkGenerator;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
+import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public class FoliaSkyblock extends JavaPlugin {
+
+    @Override
+    public ChunkGenerator getDefaultWorldGenerator(@NotNull String worldName, @Nullable String id) {
+        return new VoidChunkGenerator();
+    }
 
     // ==================== MANAGERS ====================
     private DatabaseManager databaseManager;
@@ -229,6 +238,10 @@ public class FoliaSkyblock extends JavaPlugin {
         saveDefaultConfig();
         validateConfiguration();
 
+        // Schedulers must exist before managers that register repeating tasks in constructors
+        this.threadSafety = new ThreadSafety(this);
+        this.nameCache = new NameCache(this);
+
         // === Core Managers ===
         this.databaseManager = new DatabaseManager(this);
         databaseManager.initDatabase();
@@ -243,9 +256,6 @@ public class FoliaSkyblock extends JavaPlugin {
         this.questLogGUI = new QuestLogGUI(this);
         this.bossManager = new BossManager(this);
         this.antiCheatManager = new AntiCheatManager(this);
-
-        this.threadSafety = new ThreadSafety(this);
-        this.nameCache = new NameCache(this);
 
         this.islandUpgradeManager = new IslandUpgradeManager(this);
         this.islandOreGenerator = new IslandOreGenerator(this, gridManager, islandUpgradeManager);
@@ -583,6 +593,7 @@ public class FoliaSkyblock extends JavaPlugin {
 
         // World + Holograms
         this.worldManager = new WorldManager(this);
+        Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.SpawnJoinListener(this), this);
         this.worldManager.initializeWorlds();
         MessageUtil.info(getLogger(), "§e[WorldManager] Creating custom void worlds for Skyblock...");
 
@@ -592,9 +603,9 @@ public class FoliaSkyblock extends JavaPlugin {
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
             try {
                 new com.thenerdcj.placeholder.FoliaSkyblockExpansion(this).register();
-                getLogger().info("§a[PlaceholderAPI] FoliaSkyblock expansion registered successfully.");
+                MessageUtil.info(getLogger(), "§a[PlaceholderAPI] FoliaSkyblock expansion registered successfully.");
             } catch (Exception e) {
-                getLogger().warning("§c[PlaceholderAPI] Failed to register expansion: " + e.getMessage());
+                MessageUtil.warning(getLogger(), "§c[PlaceholderAPI] Failed to register expansion: " + e.getMessage());
             }
         }
 
@@ -952,12 +963,7 @@ public class FoliaSkyblock extends JavaPlugin {
     // ==================== HELPERS ====================
     public World getSkyblockWorld(World.Environment environment) {
         if (worldManager == null) return null;
-        return switch (environment) {
-            case NORMAL -> Bukkit.getWorld("skyblock");
-            case NETHER -> Bukkit.getWorld("skyblock_nether");
-            case THE_END -> Bukkit.getWorld("skyblock_end");
-            default -> null;
-        };
+        return worldManager.resolveSkyblockWorld(environment);
     }
 
     public boolean isFolia() {

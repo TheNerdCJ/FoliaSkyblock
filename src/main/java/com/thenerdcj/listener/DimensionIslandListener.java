@@ -33,6 +33,12 @@ public class DimensionIslandListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
+        if (plugin.getWorldManager() != null
+                && plugin.getWorldManager().shouldBlockJoinUntilHubSpawnReady()
+                && !plugin.getWorldManager().isHubSpawnReady()) {
+            return;
+        }
+
         // Load all islands for this player across all dimensions
         plugin.getIslandManager().loadPlayerIslands(player);
 
@@ -50,19 +56,20 @@ public class DimensionIslandListener implements Listener {
                 }
                 player.sendMessage("§eYou don't have an island yet" + seasonNote + "! Use §b/is create§e to begin the new season. Your cosmetics and unlocks carry over.");
 
-                // Teleport to global spawn (grid 0,0 protected area on main world) - same scheduler region
-                try {
-                    String worldName = plugin.getConfig().getString("worlds.overworld", "skyblock");
-                    World mainWorld = Bukkit.getWorld(worldName);
-                    if (mainWorld != null && plugin.getGridManager() != null) {
-                        org.bukkit.Location spawn = plugin.getGridManager().getSpawnCenterLocation(mainWorld);
-                        if (spawn != null) {
-                            player.teleport(spawn);
-                        }
-                    }
-                } catch (Exception ignored) {}
+                teleportToHubSpawn(player);
             }
         });
+    }
+
+    private void teleportToHubSpawn(Player player) {
+        if (plugin.getWorldManager() == null || !plugin.getWorldManager().isHubSpawnReady()) {
+            return;
+        }
+        org.bukkit.Location spawn = plugin.getWorldManager().getHubSpawnLocation();
+        if (spawn == null || spawn.getWorld() == null) {
+            return;
+        }
+        plugin.getIslandManager().teleportPlayerToIslandSpawn(player, null, spawn, false);
     }
 
     @EventHandler(priority = EventPriority.HIGH)

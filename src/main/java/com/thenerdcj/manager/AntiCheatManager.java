@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.anticheat.NeuralCheatDetector;
 import com.thenerdcj.anticheat.PlayerBehaviorProfile;
 import com.thenerdcj.island.generator.IslandOreGenerator;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -186,7 +187,7 @@ public class AntiCheatManager {
         this.plugin = plugin;
         loadConfig();
         startCleanupTask();
-        plugin.getLogger().info("§a[AntiCheat] Updated Anti-Cheat Manager initialized (fastbreak + xray + Folia ready)");
+        MessageUtil.info(plugin.getLogger(), "§a[AntiCheat] Updated Anti-Cheat Manager initialized (fastbreak + xray + Folia ready)");
     }
 
     private void loadConfig() {
@@ -799,7 +800,7 @@ public class AntiCheatManager {
             }
             out.println("=== End of shutdown log ===");
             out.println();
-            plugin.getLogger().info("§a[AntiCheatManager] Violation logs saved to anticheat-violations.log for staff audit (Play to Win anti-exploit).");
+            MessageUtil.info(plugin.getLogger(), "§a[AntiCheatManager] Violation logs saved to anticheat-violations.log for staff audit (Play to Win anti-exploit).");
             // Task: auto export JSON profiles for Neural retrain
             try {
                 java.io.File jsonFile = new java.io.File(plugin.getDataFolder(), "anticheat-profiles-export.json");

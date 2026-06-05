@@ -310,7 +310,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleHome(Player player, String[] args) {
-        UUID targetUuid = player.getUniqueId();
+        final UUID targetUuid;
         if (args.length > 1) {
             Player target = Bukkit.getPlayer(args[1]);
             if (target == null || !target.isOnline()) {
@@ -319,14 +319,26 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
             }
             targetUuid = target.getUniqueId();
             // Future: add visit permission check here if islands can be private
+        } else {
+            targetUuid = player.getUniqueId();
         }
 
-        // Uses current world dimension to locate the target's island in same dim
-        plugin.getIslandManager().teleportToIsland(player, targetUuid);
+        if (targetUuid.equals(player.getUniqueId())) {
+            Island own = plugin.getIslandManager().getIslandForPlayer(player);
+            if (own == null) {
+                MessageUtil.sendMessage(player, "§cYou don't have an island yet. Use §b/is create§c.");
+                return;
+            }
+            plugin.getIslandManager().teleportToIslandHome(player, own);
+        } else {
+            plugin.getIslandManager().teleportToIsland(player, targetUuid);
+        }
 
         // Apply nice border visuals after teleport (WorldBorder + particles)
         plugin.getThreadSafety().runOnMainThreadLater(() -> {
-            Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+            Island island = targetUuid.equals(player.getUniqueId())
+                    ? plugin.getIslandManager().getIslandForPlayer(player)
+                    : plugin.getIslandManager().getIsland(targetUuid, player.getWorld().getEnvironment());
             if (island != null && plugin.getBorderVisualManager() != null) {
                 plugin.getBorderVisualManager().updatePlayerWorldBorder(player, island);
             }

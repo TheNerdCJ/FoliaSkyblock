@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.cosmetic.MinionSkinManager;
 import com.thenerdcj.cosmetic.MinionSkin;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -85,7 +86,7 @@ public class MinionManager {
         }
 
         // Production multipliers could be loaded similarly into a map if needed
-        plugin.getLogger().info("§a[Minions] Loaded " + FUEL_VALUES.size() + " fuel values from config.");
+        MessageUtil.info(plugin.getLogger(), "§a[Minions] Loaded " + FUEL_VALUES.size() + " fuel values from config.");
     }
 
     public int getMaxMinionSlots(String islandId) {
