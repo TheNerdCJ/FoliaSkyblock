@@ -143,7 +143,18 @@ A high-performance, Play-to-Win Skyblock plugin for the latest Folia API. It mus
 
 **Current Version Target:** 1.2.0 (Production-Ready for Large Folia Servers)
 
-**Latest Progress (June 2026 Comprehensive Audit + Cosmetics/Enchants Session):**
+**Latest Progress (June 4, 2026 — Maintenance & Config/Ore-Gen/DB Pass):**
+- **COMPLETED:** `config.yml` — moved `island.party`, `island.worth`, `island.perf`, `island.upkeep` out from under `seasonal:` (was silently disabling all worth/block values and party multipliers from config).
+- **COMPLETED:** Ore generator — merged `CobbleGeneratorListener` into `IslandOreGenerator` (single `BlockFormEvent` listener); fixed PDC namespace (`plugin` key + legacy `foliasb` read); fixed cache key `island.getId()`; registered in `FoliaSkyblock`.
+- **COMPLETED:** Startup config validation — detects mis-nested `seasonal.*` island keys and empty `island.worth.block-worth`.
+- **COMPLETED:** `IslandDAO.getIslandUpgradeLevel` + `DatabaseManager` delegation; minion save/load promoted to `IslandDAO`; `IslandCommand` promote member DB args fixed.
+- **COMPLETED:** `IslandUpgradeGUI` migrated to `GUIUtils` + PDC `upgrade_type` clicks (no display-name parsing).
+- **COMPLETED:** `DatabaseCriticalFlowsTest` — in-memory SQLite (production dialect), all **10/10** tests green; upgrade/minion/bank/worth/collection roundtrips.
+- **COMPLETED:** IslandDAO persistence — `saveIslandWorth`, `saveIslandCollection`, `saveIslandBankBalance`, `saveIslandSettings` return `CompletableFuture<Boolean>` (fix fire-and-forget race in tests).
+- **COMPLETED:** `IslandUpgradeGUI` → GUIUtils + PDC; minion DAO promotion; `DBOperations` H2/SQLite dialect flag.
+- **mvn:** `clean compile` + `DatabaseCriticalFlowsTest` BUILD SUCCESS.
+
+**Prior Progress (June 2026 Comprehensive Audit + Cosmetics/Enchants Session):**
 - Massive feature & polish completion: Full cosmetics systems (housing/furniture set bonuses + pride visuals, overhead titles expansion with name-based frames/particles, emotes + triggers + /emote list, accessories, minion per-assignment UX, collections synergy feeding cosmetics, death messages). 
 - Major functional upgrade: Custom enchants now have real effects (10+ implemented: Execute, Life Steal, Thunderbolt, Replenish, Harvesting + 3 new like Dragon Hunter/Overload/Cubism), PDC storage (authoritative), EnchantEffectListener (Folia-safe via ThreadSafety), prestige book rewards. 
 - Anvil "Too Expensive!" limit fully removed (RepairCost=0 forced on all results + custom hybrid costs with economy balance).
@@ -245,8 +256,8 @@ See new "Currently Prioritized Next" section at the end for what to tackle now.
 | Dual Economy (Player + Island) | Good           | Harden mutation methods |
 | Island Leveling + Boss Progression | Partial     | Tie more tightly to dimension unlocks |
 | Party XP Balancing             | Partial        | Make multiplier formula excellent and documented |
-| Per-dimension island reset     | Needs Work     | UI + safety checks |
-| Donor biome on first creation only | Partial     | Enforce "reset required for change" |
+| Per-dimension island reset     | **Good**       | GUI + boss safety + per-dim reset table — **COMPLETED** |
+| Donor biome on first creation only | Partial     | Enforce "reset required for change" on reroll without reset |
 | Built-in Anti-Cheat            | Good foundation| Expand per detailed guide in class |
 | LuckPerms-style Ranks + Permissions | Exists     | Improve integration & UI |
 | Island Trading System          | Exists (Bazaar + Auction) | Add buyouts, taxes, history |
@@ -405,19 +416,30 @@ Compare: now exceeds Iridium/Superior in Folia + explicit party/XP config + muse
 
 All mvn clean compile BUILD SUCCESS after each + final. Full report in audit style. No P2W introduced, all design followed, competitors referenced (Iridium/Superior/Skyllia/Hypixel YT).
 
-## Updated remaining gaps (post 1-8)
-- Full DAO move for all remaining inline (fuel, worth full) + Flyway.
-- PAPI full tops from DB paginated.
-- Museum persist + spend shop + link to /collections.
-- Schematic full paste (add WE provided dep + impl).
-- Size: wire to gen radius too.
-- More AC Neural real training from prod logs.
-- Admin spawn GUI full (separate).
-- Real large benchmark script (500 islands load test).
-- Wiki.md full (this + YT guides).
-- LuckPerms optional bridge.
+## Updated remaining gaps (post 1-8) — June 4, 2026 refresh
+
+**COMPLETED since last list:**
+- Config `island.*` vs `seasonal.*` nesting (worth/party/perf/upkeep now load correctly).
+- Ore generator listener merge + anticheat PDC alignment.
+- `IslandDAO.getIslandUpgradeLevel` + minion persistence delegation.
+- `IslandUpgradeGUI` → GUIUtils + PDC.
+- H2 `DatabaseCriticalFlowsTest` setup syntax + upgrade DAO roundtrip.
+
+**Still open (prioritized):**
+- Full DAO move for remaining inline in `DatabaseManager` (~85 `getConnection` sites: fuel batches, members, auctions cleanup, schema init stays centralized).
+- Flyway or versioned migration runner (replace ad-hoc `DatabaseMigration` only for new deploys).
+- PAPI full tops from DB paginated (`getTopIslandsByWorth(limit, offset)` consumers).
+- Museum persist + spend shop + link to `/collections`.
+- Schematic full paste (WorldEdit softdepend + paste impl).
+- Size upgrade → wire `ISLAND_SIZE` radius into `IslandGenerator` regen border consistently.
+- More AC Neural training from anonymized prod violation logs.
+- Real large benchmark script (500+ island load test artifact in CI).
+- Wiki.md full (player + admin + seasonal).
+- LuckPerms optional bridge (rank sync).
 - More slayer pets/drops variety.
-See full code for applied diffs. mvn clean package ready.
+- GUI migration: ~45 GUIs still not on `BaseGUI` (Wardrobe, Pet, Trade, Bazaar partial, cosmetic GUIs).
+
+See full code for applied diffs. `mvn clean package` ready after June 4 pass.
    - **HologramListGUI** (hologram management list with per-hologram actions) — Deep modernization completed:
      - All manual ItemStack + meta blocks (hologram list items in loop, close button, refreshAll) converted to `GUIUtils.createItem` + `attachHologramPDC(...)` helper.
      - Title now uses `MessageUtil.legacy`.
@@ -1224,7 +1246,7 @@ All mvn BUILD SUCCESS. Spawn now has ample, detailed NPC areas + overall much ri
 
 **Added to suggestions list below for tracking.**
 
-**Status:** Design complete and documented. Awaiting user approval on option/scope before any .java edits (per prior loop contract for new directions). No build impact yet.
+**Status:** **COMPLETED (impl shipped).** `SeasonManager` + `IslandDAO.performSeasonalIslandWipe()` + config `seasonal.*` + admin command with CONFIRM/dry-run. Donor/cosmetic `player_*` tables preserved per design. See [SEASONAL_RESETS_DESIGN.md](./SEASONAL_RESETS_DESIGN.md).
 
 ---
 
@@ -1247,8 +1269,10 @@ All mvn BUILD SUCCESS. Spawn now has ample, detailed NPC areas + overall much ri
 - **Cosmetic GUI template:** Extract `CosmeticPickerMainGUI` abstract base (header, NONE slot 18, grid 19–44, wardrobe back) to dedupe Backpack/Minion/PowerOrb migrations.
 - **(DONE)** Per-chunk chest shop hydrate cooldown (`hydrate-shops-chunk-cooldown-ms`, default 60s).
 - **(DONE)** Island shop purchase coalescer + PAPI `%foliaskyblock_shop_purchase_pending%` + `/isadmin flushwrites` drains queue.
-- **(NEXT)** Shop purchase coalesce warn threshold (mirror `coalesce-pending-warn-threshold` for seasonal shop spam).
+- **(DONE)** Shop purchase coalesce warn threshold (`coalesce-shop-purchase-warn-threshold`).
 - **(NEXT)** Worth delta table + gzip cold snapshots (see Optimization backlog § Persistence).
 - **(NEXT)** Bazaar/Auction full `BaseGUI` migration (split browse vs anvil/confirm sub-GUIs; largest remaining GUI bucket).
 - **(DONE)** Booster/Prestige `*MainGUI` + coordinator listeners registered in `FoliaSkyblock`.
 - **(NEXT)** `TradingGUI` shared helper: `createTradingNav` + `requireHolder` for Bazaar browse-only view extraction.
+- **(from main merge)** Minion persistence retained in `IslandDAO`; `IslandProtectionListener` on main preserved via merge.
+- **(NEXT)** `DatabaseManager` H2 `newDBOps` / `sqlSurrogateKeyColumn()` bridge from main (if H2 tests re-enabled).

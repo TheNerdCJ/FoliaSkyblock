@@ -312,6 +312,52 @@ public class IslandDAO extends BaseDAO {
         });
     }
 
+    public CompletableFuture<Boolean> saveMinionData(String islandKey, int minionType, int level) {
+        return supplyAsync(() -> {
+            try {
+                return withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "INSERT OR REPLACE INTO island_minions (island_key, minion_type, level) VALUES (?, ?, ?)")) {
+                        ps.setString(1, islandKey);
+                        ps.setInt(2, minionType);
+                        ps.setInt(3, level);
+                        ps.executeUpdate();
+                        return true;
+                    } catch (SQLException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+            } catch (Exception e) {
+                plugin.getLogger().warning("[IslandDAO] saveMinionData failed: " + e.getMessage());
+                return false;
+            }
+        });
+    }
+
+    public CompletableFuture<Map<Integer, Integer>> loadMinionData(String islandKey) {
+        return supplyAsync(() -> {
+            Map<Integer, Integer> data = new HashMap<>();
+            try {
+                return withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT minion_type, level FROM island_minions WHERE island_key = ?")) {
+                        ps.setString(1, islandKey);
+                        ResultSet rs = ps.executeQuery();
+                        while (rs.next()) {
+                            data.put(rs.getInt("minion_type"), rs.getInt("level"));
+                        }
+                    } catch (SQLException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                    return data;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().warning("[IslandDAO] loadMinionData failed: " + e.getMessage());
+                return data;
+            }
+        });
+    }
+
     public CompletableFuture<Map<IslandUpgrade, Integer>> loadIslandUpgrades(String islandKey) {
         return supplyAsync(() -> {
             Map<IslandUpgrade, Integer> map = new EnumMap<>(IslandUpgrade.class);

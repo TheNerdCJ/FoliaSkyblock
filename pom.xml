@@ -91,6 +91,14 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- In-memory SQLite for integration tests (matches production INSERT OR REPLACE dialect) -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.45.3.0</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- MockBukkit is available via the "with-mockbukkit" profile (see <profiles>) for realistic cycle tests. -->
 
     </dependencies>
