@@ -143,6 +143,10 @@ public class AntiCheatManager {
     private boolean xrayEnabled;
     private int xrayMaxPerMinute;
 
+    // Item/dupe rate (tuned to avoid false positives on normal pickup of drops)
+    private long itemRapidThresholdMs;
+    private int rapidItemViolationWeight;
+
     // Neural detector is experimental — disabled by default after Tier 3 review
     private boolean neuralDetectorEnabled;
 
@@ -218,6 +222,9 @@ public class AntiCheatManager {
 
         xrayEnabled = config.getBoolean("xray.enabled", true);
         xrayMaxPerMinute = config.getInt("xray.max-per-minute", 8);
+
+        itemRapidThresholdMs = config.getLong("dupe.item-rapid-threshold-ms", 400L);
+        rapidItemViolationWeight = config.getInt("dupe.rapid-item-violation-weight", 2);
 
         neuralDetectorEnabled = config.getBoolean("neural-detector.enabled", false); // Disabled by default after Tier 3 review
 
@@ -413,11 +420,24 @@ public class AntiCheatManager {
         long now = System.currentTimeMillis();
 
         Long lastAction = lastItemActionTime.get(uuid);
-        if (lastAction != null && (now - lastAction) < 150) {
-            if (isInSpawnProtectedArea(player.getLocation()) || isOnOwnIsland(player)) {
-                flagViolation(player, "Rapid Item Manipulation (Possible Dupe - ruins economy/trading)", 5);
+        long threshold = itemRapidThresholdMs;  // Configurable, default 400ms (was hardcoded 150ms which false-positived normal pickups)
+
+        if (lastAction != null && (now - lastAction) < threshold) {
+            // Rapid item actions (pickup/drop/inv) are common in legit play:
+            // - Farming mobs/blocks that drop multiple items close together
+            // - Quickly collecting several ground items
+            // - Normal inventory management
+            // Only treat as high-severity dupe risk in spawn protected area.
+            // On own island, much more lenient (or use lower weight).
+            if (isInSpawnProtectedArea(player.getLocation())) {
+                flagViolation(player, "Rapid Item Manipulation (Possible Dupe - ruins economy/trading)", rapidItemViolationWeight);
+            } else if (isOnOwnIsland(player)) {
+                // Legit farming on your own island — only light flag if extremely spammy
+                if ((now - lastAction) < (threshold / 2)) {  // e.g. <200ms is still very fast even for legit
+                    flagViolation(player, "Very Rapid Item Pickup on Island", Math.max(1, rapidItemViolationWeight - 1));
+                }
             } else {
-                flagViolation(player, "Suspicious Item Activity", 3);
+                flagViolation(player, "Suspicious Item Activity", 2);
             }
         }
         lastItemActionTime.put(uuid, now);
@@ -425,8 +445,10 @@ public class AntiCheatManager {
         if (itemCountDelta > 0) {
             recentItemGains.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
             List<Long> gains = recentItemGains.get(uuid);
-            if (gains.size() > 25) {
-                flagViolation(player, "Excessive Item Gain (Possible Duplication - bypasses progression)", 6);
+            // The >25 check is over a rolling 30s window (cleaned in task). Legit high-volume farms can hit this,
+            // but it's a secondary signal after the time check.
+            if (gains.size() > 30) {  // Slightly raised from 25 for more headroom on busy farms
+                flagViolation(player, "Excessive Item Gain (Possible Duplication - bypasses progression)", 5);
                 gains.clear();
             }
         }

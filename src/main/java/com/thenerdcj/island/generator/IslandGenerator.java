@@ -760,6 +760,11 @@ public class IslandGenerator {
             inv.addItem(new ItemStack(Material.SUGAR_CANE, 6));
             inv.addItem(new ItemStack(Material.BONE_MEAL, 12 + rand.nextInt(6)));
 
+            // Essential for cobble generator (classic Skyblock starter)
+            inv.addItem(new ItemStack(Material.WATER_BUCKET));
+            inv.addItem(new ItemStack(Material.WATER_BUCKET));
+            inv.addItem(new ItemStack(Material.LAVA_BUCKET));
+
             // Early game guide book (onboarding help, no power)
             ItemStack guide = new ItemStack(Material.WRITTEN_BOOK);
             if (guide.getItemMeta() instanceof org.bukkit.inventory.meta.BookMeta bookMeta) {

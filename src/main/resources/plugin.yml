@@ -5,7 +5,7 @@ api-version: 1.21
 load: STARTUP
 folia-supported: true
 author: TheNerdCJ
-softdepend: [PlaceholderAPI]  # task 2: PAPI expansion for stats (levels, worth, balances, tops) - no hard dep, graceful if absent. Matches competitor ecosystems (Iridium/Superior use PAPI heavily).
+softdepend: [PlaceholderAPI, WorldEdit]  # WorldEdit/FAWE for optional complex spawn schematics and island schematics. Graceful fallback to procedural.
 description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, economy, trading, Play-to-Win progression, and full EssentialsX-style QoL commands.
 
 commands:
@@ -301,6 +301,24 @@ commands:
     description: Change gamemode
     permission: foliasb.staff
     usage: /<command> <mode> [player]
+
+  # EssentialsX-style shortcuts (staff only)
+  gmc:
+    description: Set gamemode to creative
+    permission: foliasb.staff
+    usage: /gmc
+  gms:
+    description: Set gamemode to survival
+    permission: foliasb.staff
+    usage: /gms
+  gma:
+    description: Set gamemode to adventure
+    permission: foliasb.staff
+    usage: /gma
+  gmsp:
+    description: Set gamemode to spectator
+    permission: foliasb.staff
+    usage: /gmsp
 
   tp:
     description: Teleport to a player

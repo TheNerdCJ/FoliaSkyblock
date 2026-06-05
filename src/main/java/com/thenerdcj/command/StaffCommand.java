@@ -104,6 +104,24 @@ public class StaffCommand implements CommandExecutor {
                 }
                 break;
 
+            // EssentialsX-style direct shortcuts (no args needed)
+            case "gmc":
+                player.setGameMode(GameMode.CREATIVE);
+                player.sendMessage("§aGamemode set to §eCREATIVE");
+                break;
+            case "gms":
+                player.setGameMode(GameMode.SURVIVAL);
+                player.sendMessage("§aGamemode set to §eSURVIVAL");
+                break;
+            case "gma":
+                player.setGameMode(GameMode.ADVENTURE);
+                player.sendMessage("§aGamemode set to §eADVENTURE");
+                break;
+            case "gmsp":
+                player.setGameMode(GameMode.SPECTATOR);
+                player.sendMessage("§aGamemode set to §eSPECTATOR");
+                break;
+
             // === Teleport Tools ===
             case "tp":
                 if (args.length == 0) {

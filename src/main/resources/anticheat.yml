@@ -35,6 +35,12 @@ dupe:
     enabled: true
   cross-claim:
     enabled: true
+  # Item transaction (pickup/drop/inv move) rate limiting to catch dupes.
+  # Legitimate play (farming mobs, breaking blocks with many drops, quick inventory) can trigger very fast pickups.
+  # 150ms was too strict and caused false kicks on normal "pick up 3 items quickly".
+  # Recommended 300-500ms. Only high frequency + other signals should flag.
+  item-rapid-threshold-ms: 400
+  rapid-item-violation-weight: 2   # Lowered from 5 to reduce false positive kicks on legit play
 
 illegal-item:
   scan-enabled: true

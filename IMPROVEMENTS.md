@@ -1222,6 +1222,21 @@ All mvn BUILD SUCCESS (multiple during impl + final clean compile + test-compile
 
 All mvn BUILD SUCCESS. Spawn now has ample, detailed NPC areas + overall much richer PMC-style detail. Ready for NPC spawning logic integration.
 
+**Follow-up (cohesive roads + buildings + nature, not completely random):**  
+- User: "make the spawn design more complex. Rather than completely random, we want it to be cohesive with roads, paths, buildings and nature. Look over planetminecraft for examples"
+- Action: Major refactor of WorldManager spawn gen. Replaced radial random pads + 4 random central monuments + heavy 40x scatter decor with **planned village hub layout**:
+  - Central raised plaza (~25x) + grand multi-tier fountain as iconic focal point (fixed, detailed, lantern pillars, viewing pads).
+  - Wide paved main roads (cardinal N/S/E/W, 5-block, polished andesite + stone brick curbs) + square ring road at r~26 for connectivity and "boulevard" feel.
+  - 4+ deliberate small buildings along roads/districts: Market Stalls (open counters, barrels, spruce roofs), Welcome/Info Lodge + Nature Cabin (7x9 walls+sloped roofs, interiors with lecterns/tables, porches), Crate Hall (warehouse style with many barrels).
+  - Integrated NPC stages and crate plazas placed at logical spots (ring intersections, in front of market/crates) with borders, lecterns, lamps -- fewer but better integrated than previous 20+ random.
+  - Zoned nature park (NW quadrant): grass/moss surface override on base, 8-10 clustered trees (not full random), small pond with banks, grouped flower/fern beds, winding dirt/gravel trails connecting from west/north roads into the park.
+  - Cohesive accents: lamp posts along roads/buildings (wall + lantern), grouped flower beds + arches + benches near paths (not scattered everywhere), extra decor only in controlled roadside passes.
+- Randomness now limited to: slight variants in building details (roof mix, flower types), tree exact pos within nature slots, occasional extra plants/benches (replayable but layout 95% consistent every gen).
+- Preserves: Folia batched/region-safe phasing (base rows -> inner -> center plaza -> roads/districts -> finish), skip-if-built marker, configurable radius/center (bumped default 55->70 for space), void world compat, /spawn location, existing protection.
+- Result: Much more "real place" feel like good PMC skyblock hubs (medieval villages, Duskhaven castle+market+paths+nature, colorful lobbies with stands+landscaping) -- players will experience connected roads leading to buildings and a nice park, instead of random stuff everywhere.
+- mvn clean compile succeeded cleanly after changes + removal of dead old central builders.
+- Cross-ref: WorldManager.java (main logic + new helpers buildPavedRoadSegment, buildWindingTrail, buildMarketStalls, buildSmallLodge, buildNaturePark, buildCentralPlaza, addCohesiveRoadsideDecor etc.), config.yml (updated comment + radius), this doc.
+
 ---
 
 ## Seasonal Resets + Donor/Cosmetic Persistence (New Direction — June 2026)

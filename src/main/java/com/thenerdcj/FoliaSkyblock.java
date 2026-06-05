@@ -238,6 +238,11 @@ public class FoliaSkyblock extends JavaPlugin {
         saveDefaultConfig();
         validateConfiguration();
 
+        // === Auto-download missing soft dependencies (PlaceholderAPI, WorldEdit) ===
+        // Downloads latest versions to plugins/ folder if missing. Requires restart to load.
+        // This makes the plugin more self-contained for fresh servers.
+        new com.thenerdcj.util.DependencyDownloader(this).downloadMissingDependencies();
+
         // Schedulers must exist before managers that register repeating tasks in constructors
         this.threadSafety = new ThreadSafety(this);
         this.nameCache = new NameCache(this);
@@ -805,6 +810,11 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("speed", staffCmd);
         safeRegisterCommand("gm", staffCmd);
         safeRegisterCommand("gamemode", staffCmd);
+        // EssentialsX-style shortcuts for gamemode (staff only)
+        safeRegisterCommand("gmc", staffCmd);
+        safeRegisterCommand("gms", staffCmd);
+        safeRegisterCommand("gma", staffCmd);
+        safeRegisterCommand("gmsp", staffCmd);
         safeRegisterCommand("tp", staffCmd);
         safeRegisterCommand("tphere", staffCmd);
         safeRegisterCommand("tppos", staffCmd);
