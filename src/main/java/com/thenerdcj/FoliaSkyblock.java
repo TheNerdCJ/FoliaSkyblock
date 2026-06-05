@@ -16,6 +16,7 @@ import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.gui.*;
 import com.thenerdcj.hologram.HologramManager;
 import com.thenerdcj.island.generator.IslandGenerator;
+import com.thenerdcj.island.generator.IslandOreGenerator;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.listener.*;
@@ -70,6 +71,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private ChatManager chatManager;
     private WorldManager worldManager;
     private IslandGenerator islandGenerator;
+    private IslandOreGenerator islandOreGenerator;
     private HologramManager hologramManager;
     private TeleportRequestManager teleportRequestManager;
     private PunishmentManager punishmentManager;
@@ -88,6 +90,8 @@ public class FoliaSkyblock extends JavaPlugin {
     // Island Shop
     private IslandShopManager islandShopManager;
     private IslandShopGUI islandShopGUI;
+    private IslandBankGUI islandBankGUI;
+    private IslandSettingsGUI islandSettingsGUI;
 
     // Prestige System
     private PrestigeManager prestigeManager;
@@ -198,6 +202,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private PlayerSkillManager playerSkillManager;
     private SkillGUI skillGUI;
     private IslandTopGUI islandTopGUI;
+    private IslandBrowseGUI islandBrowseGUI;
 
     // ==================== GUI INSTANCES ====================
     private TradeGUI tradeGUI;
@@ -243,6 +248,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.nameCache = new NameCache(this);
 
         this.islandUpgradeManager = new IslandUpgradeManager(this);
+        this.islandOreGenerator = new IslandOreGenerator(this, gridManager, islandUpgradeManager);
         this.islandSettingsManager = new IslandSettingsManager(this);
         this.islandBankManager = new IslandBankManager(this);
         this.islandRatingManager = new IslandRatingManager(this);
@@ -266,6 +272,8 @@ public class FoliaSkyblock extends JavaPlugin {
         this.boosterGUI = new BoosterGUI(this);
         this.islandShopManager = new IslandShopManager(this);
         this.islandShopGUI = new IslandShopGUI(this);
+        this.islandBankGUI = new IslandBankGUI(this);
+        this.islandSettingsGUI = new IslandSettingsGUI(this);
 
         // Prestige + Border + Crates + Cosmetics
         this.prestigeManager = new PrestigeManager(this);
@@ -564,6 +572,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.playerSkillManager = new PlayerSkillManager(this);
         this.skillGUI = new SkillGUI(this);
         this.islandTopGUI = new IslandTopGUI(this);
+        this.islandBrowseGUI = new IslandBrowseGUI(this);
 
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.DeathEffectListener(this), this);
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.ChatBubbleListener(this), this);
@@ -627,6 +636,7 @@ public class FoliaSkyblock extends JavaPlugin {
     @Override
     public void onDisable() {
         if (hologramManager != null) hologramManager.cleanup();
+        if (chestShopManager != null) chestShopManager.flushCoalescedShopSaves();
         if (databaseManager != null) databaseManager.close();
         MessageUtil.info(getLogger(), "§e[FoliaSkyblock] Plugin disabled.");
     }
@@ -843,7 +853,7 @@ public class FoliaSkyblock extends JavaPlugin {
 
         pm.registerEvents(new IslandXPListener(this), this);
         pm.registerEvents(new ChallengeProgressListener(this), this);
-        pm.registerEvents(new CobbleGeneratorListener(this, gridManager, islandUpgradeManager), this);
+        pm.registerEvents(islandOreGenerator, this);
         pm.registerEvents(new com.thenerdcj.listener.CropGrowthListener(this, islandUpgradeManager), this);
         pm.registerEvents(new ChestShopListener(this), this);
         pm.registerEvents(new IslandProtectionListener(this), this);
@@ -855,6 +865,12 @@ public class FoliaSkyblock extends JavaPlugin {
         pm.registerEvents(new DimensionIslandListener(this), this);
         pm.registerEvents(new TPAListener(this, tpaListGUI), this);
         pm.registerEvents(auctionGUI, this);
+        if (boosterGUI != null) {
+            pm.registerEvents(boosterGUI, this);
+        }
+        if (prestigeGUI != null) {
+            pm.registerEvents(prestigeGUI, this);
+        }
         pm.registerEvents(new com.thenerdcj.listener.WardrobeListener(this), this);
         pm.registerEvents(new com.thenerdcj.listener.ShopTokenListener(this), this);
         pm.registerEvents(new com.thenerdcj.listener.SlayerGearListener(this), this);
@@ -881,11 +897,14 @@ public class FoliaSkyblock extends JavaPlugin {
     public WorldManager getWorldManager() { return worldManager; }
     public MinionManager getMinionManager() { return minionManager; }
     public IslandUpgradeManager getIslandUpgradeManager() { return islandUpgradeManager; }
+    public IslandOreGenerator getIslandOreGenerator() { return islandOreGenerator; }
 
     public IslandWorthManager getIslandWorthManager() { return islandWorthManager; }
     public com.thenerdcj.mission.MissionManager getMissionManager() { return missionManager; }
     public com.thenerdcj.booster.BoosterManager getBoosterManager() { return boosterManager; }
     public com.thenerdcj.gui.IslandShopGUI getIslandShopGUI() { return islandShopGUI; }
+    public com.thenerdcj.gui.IslandBankGUI getIslandBankGUI() { return islandBankGUI; }
+    public com.thenerdcj.gui.IslandSettingsGUI getIslandSettingsGUI() { return islandSettingsGUI; }
     public com.thenerdcj.manager.IslandShopManager getIslandShopManager() { return islandShopManager; }
     public com.thenerdcj.manager.PrestigeManager getPrestigeManager() { return prestigeManager; }
     public com.thenerdcj.gui.PrestigeGUI getPrestigeGUI() { return prestigeGUI; }
@@ -1046,20 +1065,38 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.skills.PlayerSkillManager getPlayerSkillManager() { return playerSkillManager; }
     public SkillGUI getSkillGUI() { return skillGUI; }
     public com.thenerdcj.gui.IslandTopGUI getIslandTopGUI() { return islandTopGUI; }
+    public com.thenerdcj.gui.IslandBrowseGUI getIslandBrowseGUI() { return islandBrowseGUI; }
 
     // ==================== CONFIG VALIDATION ====================
     private void validateConfiguration() {
         boolean hasIssues = false;
 
-        // Basic structure warnings (many sections use getXXX with defaults, but surface missing for admins)
+        // Detect legacy mis-nesting (party/worth were previously under seasonal:)
+        if (getConfig().contains("seasonal.party") || getConfig().contains("seasonal.worth")
+                || getConfig().contains("seasonal.perf") || getConfig().contains("seasonal.upkeep")) {
+            MessageUtil.severe(getLogger(),
+                    "§c[Config] island.party/worth/perf/upkeep appear under 'seasonal:' — move them under 'island:' (see default config.yml).");
+            hasIssues = true;
+        }
+
         String[] importantSections = {
             "island", "island.reset", "island.worth", "island.party", "island.perf", "island.upkeep",
-            "boosters", "reports", "worth" // worth may be under island.worth in current layout
+            "boosters", "reports", "seasonal"
         };
         for (String sec : importantSections) {
             if (!getConfig().contains(sec)) {
                 MessageUtil.warning(getLogger(), "§e[Config] Missing section/key '" + sec + "' in config.yml. Defaults will be used.");
+                if (sec.startsWith("island.")) {
+                    hasIssues = true;
+                }
             }
+        }
+
+        if (!getConfig().isConfigurationSection("island.worth.block-worth")
+                || getConfig().getConfigurationSection("island.worth.block-worth").getKeys(false).isEmpty()) {
+            MessageUtil.severe(getLogger(),
+                    "§c[Config] island.worth.block-worth is empty or missing — island worth/levels will not progress from blocks.");
+            hasIssues = true;
         }
 
         // Reports (new bug reporting system)

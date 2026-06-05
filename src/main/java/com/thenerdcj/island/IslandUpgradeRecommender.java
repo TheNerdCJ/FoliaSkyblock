@@ -138,7 +138,7 @@ public class IslandUpgradeRecommender {
         String islandId = island.getGridPosition().getX() + "," + island.getGridPosition().getZ();
 
         for (IslandUpgrade upgrade : IslandUpgrade.values()) {
-            int level = plugin.getIslandUpgradeManager().getUpgradeLevel(islandId, upgrade);
+            int level = plugin.getIslandUpgradeManager().getUpgradeLevel(island, upgrade);
             if (level > 0) {
                 levels.put(upgrade, level);
             }

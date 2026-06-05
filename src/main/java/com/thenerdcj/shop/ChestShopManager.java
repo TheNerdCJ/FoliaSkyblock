@@ -1,23 +1,27 @@
 package com.thenerdcj.shop;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.database.ChestShopDAO;
+import com.thenerdcj.database.ChestShopSaveCoalescer;
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
 import org.bukkit.block.Sign;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
 
 /**
  * ChestShopManager - Complete Chest Shop System
@@ -27,87 +31,179 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Sign format: [Shop] / Buy: X / Sell: Y / PlayerName
  * - Auto-correct sign format when player is nearby
  * - Prevents players from setting other players' names
- * - Database persistence
+ * - Database persistence via {@link ChestShopDAO}
  * - Async operations for Folia
  */
 public class ChestShopManager {
 
     private final FoliaSkyblock plugin;
+    private final ChestShopDAO chestShopDAO;
     private final Map<Location, ChestShop> activeShops = new ConcurrentHashMap<>();
+    /** In-memory chunk index for O(shops-in-chunk) lookups (lazy-load / region scans). */
+    private final Map<String, Set<Location>> shopsByChunk = new ConcurrentHashMap<>();
+    private final Set<Location> hydrating = ConcurrentHashMap.newKeySet();
+    private final int maxLoadedShops;
+    private final boolean lazyLoadShops;
+    private final boolean coalesceShopSaves;
+    private final ChestShopSaveCoalescer shopSaveCoalescer = new ChestShopSaveCoalescer();
+    private final Set<String> hydratingChunkKeys = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Long> lastChunkHydrateMs = new ConcurrentHashMap<>();
+    /** Per-chunk DB hydrate cooldown (allows re-hydrate after eviction, unlike a permanent set). */
+    private final Map<String, Long> chunkHydrateCooldownUntil = new ConcurrentHashMap<>();
+    private final boolean hydrateShopsOnChunkEnter;
+    private final long chunkHydrateDebounceMs;
+    private final long chunkHydrateCooldownMs;
 
     public ChestShopManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        loadAllShops();
+        this.chestShopDAO = plugin.getDatabaseManager().getChestShopDAO();
+        this.maxLoadedShops = plugin.getConfig() != null
+                ? plugin.getConfig().getInt("island.perf.max-chest-shops-loaded", 5000)
+                : 5000;
+        this.lazyLoadShops = plugin.getConfig() != null
+                && plugin.getConfig().getBoolean("island.perf.lazy-load-chest-shops", false);
+        this.coalesceShopSaves = plugin.getConfig() != null
+                && plugin.getConfig().getBoolean("island.perf.coalesce-chest-shop-saves", false);
+        this.hydrateShopsOnChunkEnter = plugin.getConfig() != null
+                && plugin.getConfig().getBoolean("island.perf.hydrate-shops-on-chunk-enter", true);
+        this.chunkHydrateDebounceMs = plugin.getConfig() != null
+                ? plugin.getConfig().getLong("island.perf.hydrate-shops-debounce-ms", 500L)
+                : 500L;
+        this.chunkHydrateCooldownMs = plugin.getConfig() != null
+                ? plugin.getConfig().getLong("island.perf.hydrate-shops-chunk-cooldown-ms", 60_000L)
+                : 60_000L;
+        if (lazyLoadShops) {
+            plugin.getLogger().info("[ChestShop] Lazy hydration enabled (shops load on interact, cap "
+                    + maxLoadedShops + " in memory).");
+            if (hydrateShopsOnChunkEnter) {
+                Bukkit.getPluginManager().registerEvents(new ShopChunkHydrateListener(), plugin);
+                plugin.getLogger().info("[ChestShop] Chunk-enter bulk hydrate enabled (loadByChunk).");
+            }
+        } else {
+            loadAllShops();
+        }
+        if (coalesceShopSaves && plugin.getThreadSafety() != null) {
+            long intervalMs = plugin.getConfig().getLong("island.perf.coalesce-shop-save-interval-ms", 500L);
+            long periodTicks = Math.max(1L, intervalMs / 50L);
+            plugin.getThreadSafety().runRepeatingOnMainThread(() ->
+                    plugin.getThreadSafety().runAsync(this::flushCoalescedShopSaves), periodTicks, periodTicks);
+            plugin.getLogger().info("[ChestShop] Save coalescing enabled (interval " + intervalMs + "ms).");
+        }
     }
 
-    /**
-     * Create the chest_shops table in database
-     */
-    public static void createTable(FoliaSkyblock plugin) {
-        String sql = """
-            CREATE TABLE IF NOT EXISTS chest_shops (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                world VARCHAR(64) NOT NULL,
-                x INTEGER NOT NULL,
-                y INTEGER NOT NULL,
-                z INTEGER NOT NULL,
-                owner_uuid VARCHAR(36) NOT NULL,
-                owner_name VARCHAR(16) NOT NULL,
-                item_type VARCHAR(64) NOT NULL,
-                buy_price DOUBLE NOT NULL,
-                sell_price DOUBLE NOT NULL,
-                stock INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(world, x, y, z)
-            )
-            """;
+    public int getPendingShopSaveCount() {
+        return shopSaveCoalescer.pendingCount();
+    }
 
-        try (Connection conn = plugin.getDatabaseManager().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.executeUpdate();
-            plugin.getLogger().info("§a[ChestShop] chest_shops table created/verified");
-        } catch (SQLException e) {
-            plugin.getLogger().severe("§c[ChestShop] Failed to create chest_shops table: " + e.getMessage());
+    public void flushCoalescedShopSaves() {
+        if (!shopSaveCoalescer.hasPending() || chestShopDAO == null) {
+            return;
+        }
+        var batch = shopSaveCoalescer.drain();
+        chestShopDAO.flushBatch(batch).thenAccept(ok -> {
+            if (!ok) {
+                shopSaveCoalescer.requeue(batch);
+            }
+        });
+    }
+
+    /** @deprecated Use {@link com.thenerdcj.database.DatabaseManager#createTables()}. */
+    @Deprecated
+    public static void createTable(FoliaSkyblock plugin) {
+        ChestShopDAO dao = plugin.getDatabaseManager().getChestShopDAO();
+        if (dao != null) {
+            dao.ensureTable();
+        }
+    }
+
+    private void loadAllShops() {
+        if (chestShopDAO == null) {
+            return;
+        }
+        chestShopDAO.loadAll().thenAccept(rows -> {
+            int loaded = ingestRows(rows, maxLoadedShops);
+            plugin.getLogger().info("[ChestShop] Loaded " + loaded + " chest shops");
+        }).exceptionally(ex -> {
+            plugin.getLogger().severe("[ChestShop] Failed to load shops: " + ex.getMessage());
+            return null;
+        });
+    }
+
+    private int ingestRows(List<ChestShopDAO.ChestShopRow> rows, int cap) {
+        int loaded = 0;
+        for (ChestShopDAO.ChestShopRow row : rows) {
+            if (loaded >= cap) {
+                plugin.getLogger().warning("[ChestShop] In-memory cap " + cap
+                        + " reached; extra shops remain DB-only until lazy hydration.");
+                break;
+            }
+            if (hydrateRow(row)) {
+                loaded++;
+            }
+        }
+        return loaded;
+    }
+
+    private boolean hydrateRow(ChestShopDAO.ChestShopRow row) {
+        World world = Bukkit.getWorld(row.world());
+        if (world == null) {
+            return false;
+        }
+        Location loc = new Location(world, row.x(), row.y(), row.z());
+        if (activeShops.containsKey(loc)) {
+            return false;
+        }
+        try {
+            ChestShop shop = new ChestShop(
+                    row.ownerUuid(),
+                    loc,
+                    loc,
+                    Material.valueOf(row.itemType()),
+                    (int) row.buyPrice(),
+                    (int) row.sellPrice(),
+                    row.stock());
+            indexShopLocation(loc, shop);
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            return false;
         }
     }
 
     /**
-     * Load all chest shops from database
+     * Ensures a shop at the sign location is in memory (lazy-load from DB when enabled).
      */
-    private void loadAllShops() {
-        String sql = "SELECT * FROM chest_shops";
-
-        CompletableFuture.runAsync(() -> {
-            try (Connection conn = plugin.getDatabaseManager().getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql);
-                 ResultSet rs = stmt.executeQuery()) {
-
-                while (rs.next()) {
-                    Location loc = new Location(
-                            Bukkit.getWorld(rs.getString("world")),
-                            rs.getInt("x"),
-                            rs.getInt("y"),
-                            rs.getInt("z")
-                    );
-
-                    if (loc.getWorld() != null) {
-                        ChestShop shop = new ChestShop(
-                                UUID.fromString(rs.getString("owner_uuid")),
-                                loc,
-                                loc,
-                                Material.valueOf(rs.getString("item_type")),
-                                (int)rs.getDouble("buy_price"),
-                                (int)rs.getDouble("sell_price"),
-                                rs.getInt("stock")
-                        );
-
-                        activeShops.put(loc, shop);
-                    }
-                }
-                plugin.getLogger().info("§a[ChestShop] Loaded " + activeShops.size() + " chest shops");
-            } catch (SQLException e) {
-                plugin.getLogger().severe("§c[ChestShop] Failed to load shops: " + e.getMessage());
+    public CompletableFuture<ChestShop> ensureShopAt(Location signLocation) {
+        if (signLocation == null || signLocation.getWorld() == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        ChestShop cached = activeShops.get(signLocation);
+        if (cached != null) {
+            return CompletableFuture.completedFuture(cached);
+        }
+        if (!lazyLoadShops || chestShopDAO == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if (!hydrating.add(signLocation)) {
+            return CompletableFuture.completedFuture(activeShops.get(signLocation));
+        }
+        return chestShopDAO.loadAt(
+                signLocation.getWorld().getName(),
+                signLocation.getBlockX(),
+                signLocation.getBlockY(),
+                signLocation.getBlockZ()
+        ).thenApply(opt -> {
+            hydrating.remove(signLocation);
+            if (opt.isEmpty()) {
+                return null;
             }
+            if (activeShops.size() < maxLoadedShops) {
+                hydrateRow(opt.get());
+            }
+            return activeShops.get(signLocation);
+        }).exceptionally(ex -> {
+            hydrating.remove(signLocation);
+            plugin.getLogger().warning("[ChestShop] Lazy hydrate failed: " + ex.getMessage());
+            return null;
         });
     }
 
@@ -138,7 +234,7 @@ public class ChestShopManager {
                 0
         );
 
-        activeShops.put(signLocation, shop);
+        indexShopLocation(signLocation, shop);
 
         // Save to database
         saveShopToDatabase(shop);
@@ -171,7 +267,7 @@ public class ChestShopManager {
                         shop.getSellPrice(),
                         newStock
                 );
-                activeShops.put(signLoc, updatedShop);
+                indexShopLocation(signLoc, updatedShop);
                 updateSignDisplay(signLoc, updatedShop);
                 saveShopToDatabase(updatedShop);
                 break;
@@ -183,7 +279,7 @@ public class ChestShopManager {
      * Handle player purchasing from shop - fully async where possible.
      */
     public CompletableFuture<Boolean> purchaseFromShop(Player buyer, Location signLocation, int amount) {
-        ChestShop shop = activeShops.get(signLocation);
+        return ensureShopAt(signLocation).thenCompose(shop -> {
         if (shop == null) {
             plugin.getThreadSafety().sendMessageSafely(buyer, "§cThis shop no longer exists!");
             return CompletableFuture.completedFuture(false);
@@ -229,7 +325,7 @@ public class ChestShopManager {
                                     shop.getSellPrice(),
                                     shop.getAmount() - amount
                             );
-                            activeShops.put(signLocation, updatedShop);
+                            indexShopLocation(signLocation, updatedShop);
                             updateSignDisplay(signLocation, updatedShop);
                             saveShopToDatabase(updatedShop);
 
@@ -257,13 +353,14 @@ public class ChestShopManager {
                         return true;
                     });
         });
+        });
     }
 
     /**
      * Handle player selling to shop - fully async where possible.
      */
     public CompletableFuture<Boolean> sellToShop(Player seller, Location signLocation, int amount) {
-        ChestShop shop = activeShops.get(signLocation);
+        return ensureShopAt(signLocation).thenCompose(shop -> {
         if (shop == null) {
             plugin.getThreadSafety().sendMessageSafely(seller, "§cThis shop no longer exists!");
             return CompletableFuture.completedFuture(false);
@@ -308,7 +405,7 @@ public class ChestShopManager {
                                     shop.getSellPrice(),
                                     shop.getAmount() + amount
                             );
-                            activeShops.put(signLocation, updatedShop);
+                            indexShopLocation(signLocation, updatedShop);
                             updateSignDisplay(signLocation, updatedShop);
                             saveShopToDatabase(updatedShop);
 
@@ -325,6 +422,7 @@ public class ChestShopManager {
                         return true;
                     });
         });
+        });
     }
 
     /**
@@ -332,7 +430,7 @@ public class ChestShopManager {
      */
     public void autoCorrectSignFormat(Player player, Sign sign) {
         Location loc = sign.getLocation();
-        ChestShop shop = activeShops.get(loc);
+        ensureShopAt(loc).thenAccept(shop -> {
         if (shop == null) return;
 
         // Only correct if player is the owner or has permission
@@ -340,8 +438,11 @@ public class ChestShopManager {
             return;
         }
 
-        updateSignDisplay(loc, shop);
-        player.sendMessage("§aSign format auto-corrected!");
+        plugin.getThreadSafety().runOnMainThread(() -> {
+            updateSignDisplay(loc, shop);
+            player.sendMessage("§aSign format auto-corrected!");
+        });
+        });
     }
 
     /**
@@ -430,31 +531,26 @@ public class ChestShopManager {
      * Save shop to database (async)
      */
     private void saveShopToDatabase(ChestShop shop) {
-        CompletableFuture.runAsync(() -> {
-            String sql = """
-                INSERT OR REPLACE INTO chest_shops 
-                (world, x, y, z, owner_uuid, owner_name, item_type, buy_price, sell_price, stock)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """;
-
-            try (Connection conn = plugin.getDatabaseManager().getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-                stmt.setString(1, shop.getSignLocation().getWorld().getName());
-                stmt.setInt(2, shop.getSignLocation().getBlockX());
-                stmt.setInt(3, shop.getSignLocation().getBlockY());
-                stmt.setInt(4, shop.getSignLocation().getBlockZ());
-                stmt.setString(5, shop.getOwner().toString());
-                stmt.setString(6, getOwnerName(shop));
-                stmt.setString(7, shop.getItemType().name());
-                stmt.setDouble(8, shop.getBuyPrice());
-                stmt.setDouble(9, shop.getSellPrice());
-                stmt.setInt(10, shop.getAmount());
-                stmt.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("§c[ChestShop] Failed to save shop: " + e.getMessage());
-            }
-        });
+        if (chestShopDAO == null || shop.getSignLocation().getWorld() == null) {
+            return;
+        }
+        Location loc = shop.getSignLocation();
+        ChestShopDAO.ChestShopRow row = new ChestShopDAO.ChestShopRow(
+                loc.getWorld().getName(),
+                loc.getBlockX(),
+                loc.getBlockY(),
+                loc.getBlockZ(),
+                shop.getOwner(),
+                getOwnerName(shop),
+                shop.getItemType().name(),
+                shop.getBuyPrice(),
+                shop.getSellPrice(),
+                shop.getAmount());
+        if (coalesceShopSaves) {
+            shopSaveCoalescer.queue(row);
+            return;
+        }
+        chestShopDAO.save(row);
     }
 
     /**
@@ -468,21 +564,11 @@ public class ChestShopManager {
      * Remove shop
      */
     public void removeShop(Location loc) {
-        activeShops.remove(loc);
-
-        CompletableFuture.runAsync(() -> {
-            String sql = "DELETE FROM chest_shops WHERE world = ? AND x = ? AND y = ? AND z = ?";
-            try (Connection conn = plugin.getDatabaseManager().getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
-                stmt.setString(1, loc.getWorld().getName());
-                stmt.setInt(2, loc.getBlockX());
-                stmt.setInt(3, loc.getBlockY());
-                stmt.setInt(4, loc.getBlockZ());
-                stmt.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("§c[ChestShop] Failed to delete shop: " + e.getMessage());
-            }
-        });
+        untrackShop(loc);
+        if (chestShopDAO == null || loc.getWorld() == null) {
+            return;
+        }
+        chestShopDAO.delete(loc.getWorld().getName(), loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
     }
 
     /**
@@ -492,5 +578,120 @@ public class ChestShopManager {
         return activeShops.values().stream()
                 .filter(shop -> shop.getOwner().equals(ownerUuid))
                 .toList();
+    }
+
+    /**
+     * Loaded shops in the chunk containing {@code location} (empty if none hydrated).
+     */
+    public List<ChestShop> getShopsInChunk(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return List.of();
+        }
+        Set<Location> locs = shopsByChunk.get(chunkKey(location));
+        if (locs == null || locs.isEmpty()) {
+            return List.of();
+        }
+        List<ChestShop> shops = new ArrayList<>(locs.size());
+        for (Location loc : locs) {
+            ChestShop shop = activeShops.get(loc);
+            if (shop != null) {
+                shops.add(shop);
+            }
+        }
+        return shops;
+    }
+
+    private static String chunkKey(Location loc) {
+        int cx = loc.getBlockX() >> 4;
+        int cz = loc.getBlockZ() >> 4;
+        return loc.getWorld().getName() + ':' + cx + ':' + cz;
+    }
+
+    private void untrackShop(Location loc) {
+        activeShops.remove(loc);
+        if (loc == null || loc.getWorld() == null) {
+            return;
+        }
+        Set<Location> set = shopsByChunk.get(chunkKey(loc));
+        if (set != null) {
+            set.remove(loc);
+            if (set.isEmpty()) {
+                shopsByChunk.remove(chunkKey(loc));
+            }
+        }
+    }
+
+    private void indexShopLocation(Location loc, ChestShop shop) {
+        if (loc == null || loc.getWorld() == null) {
+            return;
+        }
+        activeShops.put(loc, shop);
+        shopsByChunk.computeIfAbsent(chunkKey(loc), k -> ConcurrentHashMap.newKeySet()).add(loc);
+    }
+
+    /**
+     * Bulk-hydrates shops in the player's current chunk (lazy-load + memory cap).
+     */
+    public void hydrateChunkOnPlayerEnter(Player player) {
+        if (!lazyLoadShops || !hydrateShopsOnChunkEnter || chestShopDAO == null || player == null) {
+            return;
+        }
+        Location loc = player.getLocation();
+        if (loc.getWorld() == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Long last = lastChunkHydrateMs.get(player.getUniqueId());
+        if (last != null && now - last < chunkHydrateDebounceMs) {
+            return;
+        }
+        lastChunkHydrateMs.put(player.getUniqueId(), now);
+
+        String key = chunkKey(loc);
+        long nowMs = System.currentTimeMillis();
+        Long cooldownUntil = chunkHydrateCooldownUntil.get(key);
+        if (cooldownUntil != null && nowMs < cooldownUntil) {
+            return;
+        }
+        if (!hydratingChunkKeys.add(key)) {
+            return;
+        }
+        int cx = loc.getBlockX() >> 4;
+        int cz = loc.getBlockZ() >> 4;
+        chestShopDAO.loadByChunk(loc.getWorld().getName(), cx, cz).thenAccept(rows -> {
+            hydratingChunkKeys.remove(key);
+            chunkHydrateCooldownUntil.put(key, System.currentTimeMillis() + chunkHydrateCooldownMs);
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                int budget = maxLoadedShops - activeShops.size();
+                for (ChestShopDAO.ChestShopRow row : rows) {
+                    if (budget <= 0) {
+                        break;
+                    }
+                    if (hydrateRow(row)) {
+                        budget--;
+                    }
+                }
+            });
+        }).exceptionally(ex -> {
+            hydratingChunkKeys.remove(key);
+            chunkHydrateCooldownUntil.remove(key);
+            return null;
+        });
+    }
+
+    private final class ShopChunkHydrateListener implements Listener {
+        @EventHandler(ignoreCancelled = true)
+        public void onPlayerMove(PlayerMoveEvent event) {
+            if (event.getTo() == null) {
+                return;
+            }
+            Chunk from = event.getFrom().getChunk();
+            Chunk to = event.getTo().getChunk();
+            if (from.getX() == to.getX() && from.getZ() == to.getZ()
+                    && from.getWorld().equals(to.getWorld())) {
+                return;
+            }
+            hydrateChunkOnPlayerEnter(event.getPlayer());
+        }
     }
 }

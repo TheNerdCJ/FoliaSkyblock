@@ -17,8 +17,9 @@ public class DatabaseMigration {
     private final FoliaSkyblock plugin;
     private final DatabaseManager dbManager; // legacy path (current)
     private final DBOperations dbOps;        // future modular path
+    private final MigrationScriptRegistry scriptRegistry;
 
-    private static final int CURRENT_SCHEMA_VERSION = 13; // bumped for seasonal resets (Option B) + bug reports (v10) + aggregates/snapshots (v11/v12)
+    private static final int CURRENT_SCHEMA_VERSION = 15; // v15: chest_shops chunk index (lazy-load / region scans)
     // Note: DAO extractions (SkillDAO, IslandLevelDAO, prior ones) do not require schema bumps if tables pre-exist.
     // Migration system enhanced for DBOperations path + future Flyway-like. Tables still central for compat.
     // This completes "Finish DB modularization (remaining DAOs) + migration system (IMPROVEMENTS priority)".
@@ -27,12 +28,14 @@ public class DatabaseMigration {
         this.plugin = plugin;
         this.dbManager = dbManager;
         this.dbOps = null;
+        this.scriptRegistry = MigrationScriptRegistry.createDefault(plugin);
     }
 
     public DatabaseMigration(FoliaSkyblock plugin, DBOperations dbOps) {
         this.plugin = plugin;
         this.dbManager = null;
         this.dbOps = dbOps;
+        this.scriptRegistry = MigrationScriptRegistry.createDefault(plugin);
     }
 
     public void runMigrations() {
@@ -159,7 +162,10 @@ public class DatabaseMigration {
                 plugin.getLogger().info("§a[DB Migration v13] Seasonal resets schema: server_meta + seasons + player_seasonal_grants + islands.created_season (compat).");
                 break;
             default:
-                plugin.getLogger().warning("[DB] Unknown migration version: " + version);
+                break;
+        }
+        if (scriptRegistry != null) {
+            scriptRegistry.runRange(plugin, conn, version - 1, version);
         }
     }
 

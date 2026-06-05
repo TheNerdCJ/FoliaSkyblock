@@ -6,10 +6,7 @@ import com.thenerdcj.database.GridPosition;
 import org.bukkit.Location;
 import org.bukkit.World;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import com.thenerdcj.database.GridDAO;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,32 +53,16 @@ public class GridManager {
      * Loads all existing island grid positions from the database.
      */
     private void loadUsedPositions() {
-        String sql = "SELECT grid_x, grid_z, dimension FROM islands";
-
-        CompletableFuture.runAsync(() -> {
-            try (Connection conn = databaseManager.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql);
-                 ResultSet rs = stmt.executeQuery()) {
-
-                int count = 0;
-                while (rs.next()) {
-                    int x = rs.getInt("grid_x");
-                    int z = rs.getInt("grid_z");
-                    String dimStr = rs.getString("dimension");
-
-                    try {
-                        World.Environment dimension = World.Environment.valueOf(dimStr);
-                        GridPosition pos = new GridPosition(x, z, dimension);
-                        usedPositions.add(pos);
-                        count++;
-                    } catch (IllegalArgumentException ignored) {}
-                }
-
-                plugin.getLogger().info("[GridManager] Loaded " + count + " used island positions from database.");
-
-            } catch (SQLException e) {
-                plugin.getLogger().severe("[GridManager] Failed to load used positions: " + e.getMessage());
-            }
+        GridDAO gridDAO = databaseManager.getGridDAO();
+        if (gridDAO == null) {
+            return;
+        }
+        gridDAO.loadUsedGridPositions().thenAccept(loaded -> {
+            usedPositions.addAll(loaded);
+            plugin.getLogger().info("[GridManager] Loaded " + loaded.size() + " used island positions from database.");
+        }).exceptionally(ex -> {
+            plugin.getLogger().severe("[GridManager] Failed to load used positions: " + ex.getMessage());
+            return null;
         });
     }
 

@@ -42,7 +42,7 @@ public final class DBOperations {
      * On Folia, prefers the plugin AsyncScheduler when possible.
      */
     public <T> CompletableFuture<T> supplyAsync(Supplier<T> work) {
-        if (plugin.isFolia()) {
+        if (plugin.isFolia() && plugin.getServer() != null) {
             CompletableFuture<T> future = new CompletableFuture<>();
             plugin.getServer().getAsyncScheduler().runNow(plugin, task -> {
                 try {
@@ -52,10 +52,8 @@ public final class DBOperations {
                 }
             });
             return future;
-        } else {
-            // Fallback for non-Folia
-            return CompletableFuture.supplyAsync(work, legacyExecutor);
         }
+        return CompletableFuture.supplyAsync(work, legacyExecutor);
     }
 
     /**

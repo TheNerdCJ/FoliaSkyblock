@@ -51,6 +51,8 @@ public class AdminCommand implements CommandExecutor {
             MessageUtil.sendMessage(sender, "§7/isadmin season info         - Current season + reset status");
             MessageUtil.sendMessage(sender, "§7/isadmin season reset <id> [CONFIRM] [--dry-run]  - Full Option B seasonal wipe + staggered clears");
             MessageUtil.sendMessage(sender, "§7/isadmin season grant <cat> <id> <player|all|donors>  - Grant seasonal cosmetic (reuses player_* tables)");
+            MessageUtil.sendMessage(sender, "§7/isadmin flushwrites          - Force coalesced island DB writes (worth/bank/settings) to disk");
+            MessageUtil.sendMessage(sender, "§7/isadmin checkpoint           - SQLite WAL TRUNCATE checkpoint before host backup");
             return true;
         }
 
@@ -141,6 +143,16 @@ public class AdminCommand implements CommandExecutor {
                 handleSeasonCommand(sender, args);
                 break;
 
+            case "flushwrites":
+            case "flushdb":
+                handleFlushWrites(sender);
+                break;
+
+            case "checkpoint":
+            case "walcheckpoint":
+                handleCheckpoint(sender);
+                break;
+
             default:
                 MessageUtil.sendMessage(sender, "§cUnknown admin subcommand. Use /isadmin for help.");
         }
@@ -151,6 +163,43 @@ public class AdminCommand implements CommandExecutor {
     // Task batch: real runnable 500-island benchmark (admin debug). Times loads, worth, etc using testing helpers + H2 style.
     // Run via /isadmin benchmark . Logs timings. For large server validation (notes in config/perf).
     // Inter-class: uses IslandManager.createForTesting, WorthManager, etc. Folia safe (main thread sim small).
+    private void handleFlushWrites(CommandSender sender) {
+        int pendingIsland = plugin.getDatabaseManager().getPendingCoalescedWriteCount();
+        int pendingShopPurchases = plugin.getDatabaseManager().getPendingShopPurchaseCount();
+        int pendingChestShopSaves = plugin.getChestShopManager() != null
+                ? plugin.getChestShopManager().getPendingShopSaveCount() : 0;
+        if (plugin.getChestShopManager() != null) {
+            plugin.getChestShopManager().flushCoalescedShopSaves();
+        }
+        plugin.getDatabaseManager().flushCoalescedIslandWrites()
+                .thenCompose(v -> plugin.getDatabaseManager().flushCoalescedShopPurchases())
+                .thenRun(() -> MessageUtil.sendMessage(sender,
+                        "§a[DB] Flushed coalesced writes. Island: " + pendingIsland
+                                + ", shop purchases: " + pendingShopPurchases
+                                + ", chest shop saves: " + pendingChestShopSaves))
+                .exceptionally(ex -> {
+            MessageUtil.sendMessage(sender, "§c[DB] Flush failed: " + ex.getMessage());
+            return null;
+        });
+    }
+
+    private void handleCheckpoint(CommandSender sender) {
+        MessageUtil.sendMessage(sender, "§e[DB] Running WAL TRUNCATE checkpoint (flush pending writes first if needed)...");
+        if (plugin.getChestShopManager() != null) {
+            plugin.getChestShopManager().flushCoalescedShopSaves();
+        }
+        plugin.getDatabaseManager().flushCoalescedIslandWrites()
+                .thenCompose(v -> plugin.getDatabaseManager().flushCoalescedShopPurchases())
+                .thenCompose(v -> plugin.getDatabaseManager().runSqliteWalCheckpointTruncate())
+                .thenAccept(ok -> MessageUtil.sendMessage(sender, ok
+                        ? "§a[DB] WAL checkpoint complete. Safe to copy skyblock.db for backup."
+                        : "§c[DB] WAL checkpoint failed (not SQLite or DB unavailable)."))
+                .exceptionally(ex -> {
+                    MessageUtil.sendMessage(sender, "§c[DB] Checkpoint failed: " + ex.getMessage());
+                    return null;
+                });
+    }
+
     private void handleBenchmark(CommandSender sender) {
         sender.sendMessage("§e[BM] Starting 500-island load benchmark (scaled real-ish sim; see console for details)...");
         long start = System.currentTimeMillis();

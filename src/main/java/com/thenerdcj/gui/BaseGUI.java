@@ -61,11 +61,23 @@ public abstract class BaseGUI implements Listener {
         open(player, 0);
     }
 
+    protected int getInventorySize() {
+        return INVENTORY_SIZE;
+    }
+
+    protected int getInventorySize(Player player) {
+        return getInventorySize();
+    }
+
+    protected String formatTitle(Player player, int page) {
+        return getTitlePrefix() + " §7(Page " + (page + 1) + ")";
+    }
+
     public void open(Player player, int page) {
         playerPages.put(player.getUniqueId(), page);
 
-        String title = getTitlePrefix() + " §7(Page " + (page + 1) + ")";
-        Inventory gui = Bukkit.createInventory(null, INVENTORY_SIZE, MessageUtil.legacy(title));
+        String title = formatTitle(player, page);
+        Inventory gui = Bukkit.createInventory(null, getInventorySize(player), MessageUtil.legacy(title));
 
         addHeader(gui, player, page);
         populatePage(gui, player, page);

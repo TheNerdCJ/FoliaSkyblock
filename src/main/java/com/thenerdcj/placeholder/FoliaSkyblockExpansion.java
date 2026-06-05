@@ -158,6 +158,31 @@ public class FoliaSkyblockExpansion extends PlaceholderExpansion {
             return "0";
         }
 
+        if (params.equals("db_pending_writes") || params.equals("pending_coalesced_writes")) {
+            if (plugin.getDatabaseManager() != null) {
+                return String.valueOf(plugin.getDatabaseManager().getPendingCoalescedWriteCount());
+            }
+            return "0";
+        }
+        if (params.equals("db_flush_count") || params.equals("coalesced_flush_count")) {
+            if (plugin.getDatabaseManager() != null && plugin.getDatabaseManager().getIslandDAO() != null) {
+                return String.valueOf(plugin.getDatabaseManager().getIslandDAO().getCoalescedFlushCount());
+            }
+            return "0";
+        }
+        if (params.equals("shop_pending_saves") || params.equals("pending_shop_saves")) {
+            if (plugin.getChestShopManager() != null) {
+                return String.valueOf(plugin.getChestShopManager().getPendingShopSaveCount());
+            }
+            return "0";
+        }
+        if (params.equals("shop_purchase_pending") || params.equals("pending_shop_purchases")) {
+            if (plugin.getDatabaseManager() != null) {
+                return String.valueOf(plugin.getDatabaseManager().getPendingShopPurchaseCount());
+            }
+            return "0";
+        }
+
         // Party / other
         if (params.equals("party_size")) {
             Island island = plugin.getIslandManager().getIsland(uuid, env);

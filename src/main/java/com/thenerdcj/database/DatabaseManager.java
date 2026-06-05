@@ -64,6 +64,12 @@ public class DatabaseManager {
 
     // Task batch: Full inline-to-DAO for fuel (worth already in IslandDAO; fuel was direct inline in DBManager)
     private IslandFuelDAO islandFuelDAO;
+    private GridDAO gridDAO;
+    private ChestShopDAO chestShopDAO;
+
+    private final IslandPersistenceCoalescer islandPersistenceCoalescer;
+    private final IslandShopPurchaseCoalescer shopPurchaseCoalescer = new IslandShopPurchaseCoalescer();
+    private boolean coalesceShopPurchasesForTests;
 
     public IslandDAO getIslandDAO() {
         return islandDAO;
@@ -108,6 +114,10 @@ public class DatabaseManager {
     // Task batch: getter for fuel DAO (worth via getIslandDAO)
     public IslandFuelDAO getIslandFuelDAO() { return islandFuelDAO; }
 
+    public GridDAO getGridDAO() { return gridDAO; }
+
+    public ChestShopDAO getChestShopDAO() { return chestShopDAO; }
+
     // Seasonal reset delegation (Option B)
     public CompletableFuture<Integer> performSeasonalIslandWipe() {
         if (islandDAO != null) return islandDAO.performSeasonalIslandWipe();
@@ -131,6 +141,7 @@ public class DatabaseManager {
 
     public DatabaseManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
+        this.islandPersistenceCoalescer = new IslandPersistenceCoalescer();
         this.dbOps = new DBOperations(plugin, executor, () -> {
             try { return getConnection(); } catch (SQLException e) { throw new RuntimeException(e); }
         });
@@ -148,13 +159,17 @@ public class DatabaseManager {
         this.skillDAO = new SkillDAO(plugin, dbOps);
         this.islandLevelDAO = new IslandLevelDAO(plugin, dbOps);
         this.islandFuelDAO = new IslandFuelDAO(plugin, dbOps);
+        this.gridDAO = new GridDAO(plugin, dbOps);
+        this.chestShopDAO = new ChestShopDAO(plugin, dbOps);
+        wireIslandPersistenceCoalescer(false);
     }
 
     /**
-     * Test constructor - allows overriding the JDBC URL (e.g. for H2 in-memory DB).
+     * Test constructor - allows overriding the JDBC URL (e.g. SQLite :memory: for integration tests).
      */
     public DatabaseManager(FoliaSkyblock plugin, String jdbcUrl) {
         this.plugin = plugin;
+        this.islandPersistenceCoalescer = new IslandPersistenceCoalescer();
         this.jdbcUrlOverride = jdbcUrl;
         this.dbOps = new DBOperations(plugin, executor, () -> {
             try { return getConnection(); } catch (SQLException e) { throw new RuntimeException(e); }
@@ -173,17 +188,39 @@ public class DatabaseManager {
         this.skillDAO = new SkillDAO(plugin, dbOps);
         this.islandLevelDAO = new IslandLevelDAO(plugin, dbOps);
         this.islandFuelDAO = new IslandFuelDAO(plugin, dbOps);
+        this.gridDAO = new GridDAO(plugin, dbOps);
+        this.chestShopDAO = new ChestShopDAO(plugin, dbOps);
+        wireIslandPersistenceCoalescer(false);
+    }
+
+    private void wireIslandPersistenceCoalescer(boolean enabled) {
+        if (islandDAO != null) {
+            islandDAO.setPersistenceCoalescer(enabled ? islandPersistenceCoalescer : null);
+            islandDAO.setCoalesceWritesEnabled(enabled);
+        }
+    }
+
+    public CompletableFuture<Void> flushCoalescedIslandWrites() {
+        return islandDAO != null ? islandDAO.flushCoalescedWrites() : CompletableFuture.completedFuture(null);
+    }
+
+    public int getPendingCoalescedWriteCount() {
+        return islandPersistenceCoalescer != null ? islandPersistenceCoalescer.pendingCount() : 0;
+    }
+
+    /** Test / integration: jdbc override disables coalescing at init; call after {@link #initDatabase()}. */
+    public void enableCoalescedWritesForTests() {
+        wireIslandPersistenceCoalescer(true);
+    }
+
+    /** Test / integration: enable batched island shop purchase writes when config mock returns false. */
+    public void enableCoalescedShopPurchasesForTests() {
+        coalesceShopPurchasesForTests = true;
     }
 
     public void initDatabase() {
         HikariConfig config = new HikariConfig();
-
-        if (jdbcUrlOverride != null) {
-            config.setJdbcUrl(jdbcUrlOverride);
-            config.setDriverClassName("org.h2.Driver");
-        } else {
-            config.setJdbcUrl("jdbc:sqlite:" + plugin.getDataFolder() + "/skyblock.db");
-        }
+        configureJdbc(config);
 
         config.setMaximumPoolSize(20);
         config.setMinimumIdle(4);
@@ -195,18 +232,201 @@ public class DatabaseManager {
 
         try {
             dataSource = new HikariDataSource(config);
+            if (isSqliteUrl(config.getJdbcUrl())) {
+                applySqlitePragmas();
+            }
             createTables();
 
             // Run versioned migrations (step 1 of Database modularization)
             new DatabaseMigration(plugin, this).runMigrations();
 
+            boolean coalesce = jdbcUrlOverride == null;
+            if (coalesce && plugin.getConfig() != null) {
+                coalesce = plugin.getConfig().getBoolean("island.perf.coalesce-island-writes", true);
+            }
+            wireIslandPersistenceCoalescer(coalesce);
+            if (coalesce && plugin.getThreadSafety() != null) {
+                scheduleCoalescedWriteFlushes();
+            }
+            if (jdbcUrlOverride == null && isCoalesceIslandShopPurchasesEnabled() && plugin.getThreadSafety() != null) {
+                scheduleCoalescedShopPurchaseFlushes();
+            }
+            if (jdbcUrlOverride == null) {
+                scheduleSqliteMaintenance();
+            }
+
             if (jdbcUrlOverride != null) {
-                plugin.getLogger().info("§a[Database] H2 in-memory DB initialized for tests.");
+                plugin.getLogger().info("§a[Database] Test DB initialized (" + config.getJdbcUrl() + ").");
             } else {
                 plugin.getLogger().info("§a[Database] SQLite + Caching initialized successfully.");
             }
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Database initialization failed", e);
+        }
+    }
+
+    private void configureJdbc(HikariConfig config) {
+        if (jdbcUrlOverride != null) {
+            config.setJdbcUrl(jdbcUrlOverride);
+            if (jdbcUrlOverride.startsWith("jdbc:sqlite:")) {
+                config.setDriverClassName("org.sqlite.JDBC");
+            } else if (jdbcUrlOverride.startsWith("jdbc:h2:")) {
+                config.setDriverClassName("org.h2.Driver");
+            }
+        } else {
+            config.setJdbcUrl("jdbc:sqlite:" + plugin.getDataFolder().getAbsolutePath() + "/skyblock.db");
+            config.setDriverClassName("org.sqlite.JDBC");
+        }
+    }
+
+    private static boolean isSqliteUrl(String url) {
+        return url != null && url.startsWith("jdbc:sqlite:");
+    }
+
+    private void scheduleCoalescedWriteFlushes() {
+        long intervalSec = plugin.getConfig() != null
+                ? plugin.getConfig().getLong("island.perf.coalesce-flush-interval-seconds", 5L)
+                : 5L;
+        long periodTicks = Math.max(20L, intervalSec * 20L);
+        int warnThreshold = plugin.getConfig() != null
+                ? plugin.getConfig().getInt("island.perf.coalesce-pending-warn-threshold", 200)
+                : 200;
+        plugin.getThreadSafety().runRepeatingOnMainThread(() -> {
+            int pending = getPendingCoalescedWriteCount();
+            if (pending >= warnThreshold) {
+                plugin.getLogger().warning("[Database] Coalesced write queue depth: " + pending
+                        + " (threshold " + warnThreshold + "); flush running on async thread.");
+            }
+            plugin.getThreadSafety().runAsync(this::flushCoalescedIslandWrites);
+        }, periodTicks, periodTicks);
+    }
+
+    private boolean isCoalesceIslandShopPurchasesEnabled() {
+        if (coalesceShopPurchasesForTests) {
+            return true;
+        }
+        return plugin.getConfig() != null
+                && plugin.getConfig().getBoolean("island.perf.coalesce-island-shop-purchases", true);
+    }
+
+    private void scheduleCoalescedShopPurchaseFlushes() {
+        long intervalSec = plugin.getConfig().getLong("island.perf.coalesce-flush-interval-seconds", 5L);
+        long periodTicks = Math.max(20L, intervalSec * 20L);
+        int warnThreshold = plugin.getConfig().getInt("island.perf.coalesce-shop-purchase-warn-threshold", 100);
+        plugin.getThreadSafety().runRepeatingOnMainThread(() -> {
+            int pending = getPendingShopPurchaseCount();
+            if (pending >= warnThreshold) {
+                plugin.getLogger().warning("[Shop] Coalesced purchase queue depth: " + pending
+                        + " (threshold " + warnThreshold + "); flush running on async thread.");
+            }
+            plugin.getThreadSafety().runAsync(this::flushCoalescedShopPurchases);
+        }, periodTicks, periodTicks);
+    }
+
+    public int getPendingShopPurchaseCount() {
+        return shopPurchaseCoalescer.pendingCount();
+    }
+
+    public CompletableFuture<Void> flushCoalescedShopPurchases() {
+        if (!shopPurchaseCoalescer.hasPending()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        List<IslandShopPurchaseCoalescer.PurchaseRow> batch = shopPurchaseCoalescer.drain();
+        return CompletableFuture.runAsync(() -> flushShopPurchaseBatch(batch), executor)
+                .exceptionally(ex -> {
+                    shopPurchaseCoalescer.requeue(batch);
+                    plugin.getLogger().severe("[Shop] Coalesced purchase flush failed: " + ex.getMessage());
+                    return null;
+                });
+    }
+
+    private void flushShopPurchaseBatch(List<IslandShopPurchaseCoalescer.PurchaseRow> batch) {
+        if (batch.isEmpty()) {
+            return;
+        }
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT OR REPLACE INTO island_shop_purchases (island_key, item_id, purchased_at) VALUES (?, ?, ?)")) {
+                for (IslandShopPurchaseCoalescer.PurchaseRow row : batch) {
+                    ps.setString(1, row.islandKey());
+                    ps.setString(2, row.itemId());
+                    ps.setLong(3, row.purchasedAt());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+            conn.commit();
+        } catch (SQLException e) {
+            shopPurchaseCoalescer.requeue(batch);
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void scheduleSqliteMaintenance() {
+        if (plugin.getThreadSafety() == null || plugin.getConfig() == null) {
+            return;
+        }
+        long checkpointHours = plugin.getConfig().getLong("island.perf.sqlite-checkpoint-interval-hours", 6L);
+        if (checkpointHours <= 0) {
+            return;
+        }
+        long periodTicks = checkpointHours * 72000L;
+        plugin.getThreadSafety().runRepeatingOnMainThread(() ->
+                plugin.getThreadSafety().runAsync(this::runSqliteWalCheckpoint), periodTicks, periodTicks);
+    }
+
+    public void runSqliteWalCheckpoint() {
+        if (dataSource == null || jdbcUrlOverride != null) {
+            return;
+        }
+        try (Connection conn = getConnection(); java.sql.Statement stmt = conn.createStatement()) {
+            stmt.execute("PRAGMA wal_checkpoint(PASSIVE)");
+            plugin.getLogger().fine("[Database] SQLite WAL passive checkpoint completed.");
+        } catch (SQLException e) {
+            plugin.getLogger().warning("[Database] WAL checkpoint failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Truncates the WAL after merging into the main DB file. Use before host backups (via /isadmin checkpoint).
+     */
+    private boolean shouldCheckpointOnDisable() {
+        if (jdbcUrlOverride != null || dataSource == null) {
+            return false;
+        }
+        return plugin.getConfig() == null
+                || plugin.getConfig().getBoolean("island.perf.sqlite-checkpoint-on-disable", true);
+    }
+
+    public CompletableFuture<Boolean> runSqliteWalCheckpointTruncate() {
+        if (dataSource == null || jdbcUrlOverride != null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection(); java.sql.Statement stmt = conn.createStatement()) {
+                stmt.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+                plugin.getLogger().info("[Database] SQLite WAL TRUNCATE checkpoint completed (backup-safe).");
+                return true;
+            } catch (SQLException e) {
+                plugin.getLogger().warning("[Database] WAL TRUNCATE checkpoint failed: " + e.getMessage());
+                return false;
+            }
+        });
+    }
+
+    private void applySqlitePragmas() {
+        boolean wal = plugin.getConfig() == null
+                || plugin.getConfig().getBoolean("island.perf.sqlite-wal", true);
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+            if (wal) {
+                stmt.execute("PRAGMA journal_mode=WAL");
+            }
+            stmt.execute("PRAGMA synchronous=NORMAL");
+            stmt.execute("PRAGMA busy_timeout=5000");
+            stmt.execute("PRAGMA foreign_keys=ON");
+        } catch (SQLException e) {
+            plugin.getLogger().warning("[Database] SQLite PRAGMA setup: " + e.getMessage());
         }
     }
 
@@ -247,6 +467,7 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS island_boosters (island_key TEXT, booster_type TEXT, multiplier REAL, expires_at INTEGER, PRIMARY KEY(island_key, booster_type))",
                 "CREATE TABLE IF NOT EXISTS auctions (id TEXT PRIMARY KEY, seller_uuid TEXT, item_base64 TEXT, price REAL, end_time INTEGER, sold BOOLEAN DEFAULT 0, buyer_uuid TEXT)",
                 "CREATE TABLE IF NOT EXISTS bazaar_orders (id TEXT PRIMARY KEY, player_uuid TEXT, material TEXT, amount INTEGER, price_per_unit REAL, buy_order BOOLEAN, created_at INTEGER, filled BOOLEAN DEFAULT 0)",
+                "CREATE TABLE IF NOT EXISTS chest_shops (id INTEGER PRIMARY KEY AUTOINCREMENT, world TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, z INTEGER NOT NULL, owner_uuid TEXT NOT NULL, owner_name TEXT NOT NULL, item_type TEXT NOT NULL, buy_price REAL NOT NULL, sell_price REAL NOT NULL, stock INTEGER DEFAULT 0, created_at INTEGER DEFAULT 0, UNIQUE(world, x, y, z))",
                 "CREATE TABLE IF NOT EXISTS pending_items (uuid TEXT, item_base64 TEXT)",
                 "CREATE TABLE IF NOT EXISTS slayer_kills (uuid TEXT, slayer_type TEXT, tier TEXT, kills INTEGER, PRIMARY KEY(uuid, slayer_type, tier))",
                 "CREATE TABLE IF NOT EXISTS slayer_tokens (uuid TEXT PRIMARY KEY, tokens INTEGER DEFAULT 0, last_updated INTEGER DEFAULT 0, weekly_tokens INTEGER DEFAULT 0)",
@@ -1818,21 +2039,21 @@ public class DatabaseManager {
      * Get a specific upgrade level for an island (returns 0 if not found).
      */
     public CompletableFuture<Integer> getIslandUpgradeLevel(String islandKey, IslandUpgrade upgrade) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (Connection conn = getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT level FROM island_upgrades WHERE island_key = ? AND upgrade_type = ?")) {
-                ps.setString(1, islandKey);
-                ps.setString(2, upgrade.name());
-                ResultSet rs = ps.executeQuery();
-                return rs.next() ? rs.getInt("level") : 0;
-            } catch (SQLException e) {
-                return 0;
-            }
-        }, executor);
+        return islandDAO.getIslandUpgradeLevel(islandKey, upgrade);
     }
 
     public void close() {
+        try {
+            flushCoalescedIslandWrites().join();
+            flushCoalescedShopPurchases().join();
+        } catch (Exception ignored) {
+        }
+        if (shouldCheckpointOnDisable()) {
+            try {
+                runSqliteWalCheckpointTruncate().join();
+            } catch (Exception ignored) {
+            }
+        }
         flushCaches();
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
@@ -2421,12 +2642,21 @@ public class DatabaseManager {
     // ==================== ISLAND SHOP ONE-TIME PURCHASES ====================
 
     public void saveShopPurchase(String islandKey, String itemId) {
+        if (isCoalesceIslandShopPurchasesEnabled()) {
+            shopPurchaseCoalescer.queue(islandKey, itemId);
+            return;
+        }
+        saveShopPurchaseImmediate(islandKey, itemId, System.currentTimeMillis());
+    }
+
+    /** Test / admin: force immediate write bypassing coalescer. */
+    public void saveShopPurchaseImmediate(String islandKey, String itemId, long purchasedAt) {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "INSERT OR REPLACE INTO island_shop_purchases (island_key, item_id, purchased_at) VALUES (?, ?, ?)")) {
             ps.setString(1, islandKey);
             ps.setString(2, itemId);
-            ps.setLong(3, System.currentTimeMillis());
+            ps.setLong(3, purchasedAt);
             ps.executeUpdate();
         } catch (SQLException e) {
             plugin.getLogger().severe("[Shop] saveShopPurchase failed: " + e.getMessage());
