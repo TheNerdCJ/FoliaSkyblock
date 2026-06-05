@@ -2,11 +2,11 @@ package com.thenerdcj.island;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import com.thenerdcj.gui.GUIUtils;
 import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -17,11 +17,14 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
+/**
+ * Island upgrade shop GUI. Uses GUIUtils + PDC upgrade_type for resilient clicks.
+ */
 public class IslandUpgradeGUI implements Listener {
 
     private final FoliaSkyblock plugin;
+    private final NamespacedKey upgradeTypeKey;
 
     public IslandUpgradeGUI(FoliaSkyblock plugin) {
         this(plugin, true);
@@ -29,6 +32,7 @@ public class IslandUpgradeGUI implements Listener {
 
     public IslandUpgradeGUI(FoliaSkyblock plugin, boolean autoRegister) {
         this.plugin = plugin;
+        this.upgradeTypeKey = new NamespacedKey(plugin, "upgrade_type");
         if (autoRegister) {
             Bukkit.getPluginManager().registerEvents(this, plugin);
         }
@@ -40,53 +44,58 @@ public class IslandUpgradeGUI implements Listener {
 
         GridPosition pos = island.getGridPosition();
 
-        // Async balance fetch
-        plugin.getEconomyManager().getIslandBalance(pos).thenAccept(balance -> {
+        plugin.getEconomyManager().getIslandBalance(pos).thenAccept(balance ->
+                player.getScheduler().run(plugin, scheduledTask -> {
+                    gui.setItem(4, GUIUtils.createItem(Material.NETHER_STAR, "§6§lIsland Upgrades",
+                            "§7Balance: §e$" + String.format("%.0f", balance)));
 
-            // Schedule on the player's region (Folia optimized)
-            player.getScheduler().run(plugin, scheduledTask -> {
+                    int slot = 10;
+                    for (IslandUpgrade upgrade : IslandUpgrade.values()) {
+                        if (slot > 44) {
+                            break;
+                        }
 
-                gui.setItem(4, createItem(Material.NETHER_STAR, "§6§lIsland Upgrades",
-                        "§7Balance: §e$" + String.format("%.0f", balance)));
+                        int currentLevel = plugin.getIslandUpgradeManager().getUpgradeLevel(island, upgrade);
+                        double cost = upgrade.getCostForLevel(currentLevel);
+                        boolean canAfford = balance >= cost;
+                        boolean maxed = currentLevel >= upgrade.getMaxLevel();
 
-                int slot = 10;
-                for (IslandUpgrade upgrade : IslandUpgrade.values()) {
-                    if (slot > 44) break;
+                        Material material = getUpgradeMaterial(upgrade);
+                        String name = "§e§l" + upgrade.getDisplayName()
+                                + " §7[" + currentLevel + "/" + upgrade.getMaxLevel() + "]";
 
-                    int currentLevel = plugin.getIslandUpgradeManager().getUpgradeLevel(island.getId(), upgrade);
-                    double cost = upgrade.getCostForLevel(currentLevel);
-                    boolean canAfford = balance >= cost;
-                    boolean maxed = currentLevel >= upgrade.getMaxLevel();
+                        List<String> lore = new ArrayList<>();
+                        lore.add("§7" + upgrade.getDescription());
+                        lore.add("");
 
-                    Material material = getUpgradeMaterial(upgrade);
-                    String name = "§e§l" + upgrade.getDisplayName() +
-                            " §7[" + currentLevel + "/" + upgrade.getMaxLevel() + "]";
+                        String effect = getEffectDescription(upgrade, currentLevel);
+                        if (!effect.isEmpty()) {
+                            lore.add("§aEffect: §f" + effect);
+                        }
 
-                    List<String> lore = new ArrayList<>();
-                    lore.add("§7" + upgrade.getDescription());
-                    lore.add("");
+                        lore.add("§7Level: §e" + currentLevel + "§7/§e" + upgrade.getMaxLevel());
+                        lore.add("§7Cost: §e$" + String.format("%.0f", cost));
 
-                    // Show actual effect values (polished, reference: Iridium/Superior style)
-                    String effect = getEffectDescription(upgrade, currentLevel);
-                    if (!effect.isEmpty()) {
-                        lore.add("§aEffect: §f" + effect);
+                        if (maxed) {
+                            lore.add("§c§lMAX LEVEL REACHED");
+                        } else if (canAfford) {
+                            lore.add("§a§lClick to Purchase!");
+                        } else {
+                            lore.add("§c§lCannot Afford");
+                        }
+
+                        ItemStack button = GUIUtils.createItem(material, name, lore);
+                        ItemMeta buttonMeta = button.getItemMeta();
+                        if (buttonMeta != null) {
+                            GUIUtils.setPDCAction(buttonMeta, upgradeTypeKey, upgrade.name());
+                            button.setItemMeta(buttonMeta);
+                        }
+                        gui.setItem(slot++, button);
                     }
 
-                    lore.add("§7Level: §e" + currentLevel + "§7/§e" + upgrade.getMaxLevel());
-                    lore.add("§7Cost: §e$" + String.format("%.0f", cost));
-
-                    if (maxed) lore.add("§c§lMAX LEVEL REACHED");
-                    else if (canAfford) lore.add("§a§lClick to Purchase!");
-                    else lore.add("§c§lCannot Afford");
-
-                    gui.setItem(slot++, createItem(material, name, lore.toArray(new String[0])));
-                }
-
-                gui.setItem(49, createItem(Material.BARRIER, "§c§lClose"));
-                player.openInventory(gui);
-
-            }, null);
-        });
+                    gui.setItem(49, GUIUtils.createItem(Material.BARRIER, "§c§lClose"));
+                    player.openInventory(gui);
+                }, null));
     }
 
     private Material getUpgradeMaterial(IslandUpgrade upgrade) {
@@ -104,7 +113,9 @@ public class IslandUpgradeGUI implements Listener {
     }
 
     private String getEffectDescription(IslandUpgrade upgrade, int level) {
-        if (level <= 0) return "";
+        if (level <= 0) {
+            return "";
+        }
 
         return switch (upgrade) {
             case CROP_GROWTH -> "+" + (level * 25) + "% growth speed";
@@ -114,69 +125,58 @@ public class IslandUpgradeGUI implements Listener {
                 yield "+" + (level * perLevel) + " block radius";
             }
             case MINION_SLOTS -> "+" + level + " minion slots";
-            case MEMBER_LIMIT -> "+" + level + " member limit";
+            case MEMBER_LIMIT -> "+" + level + " member limits";
             case WARDROBE_SLOTS -> "+" + (level * 2) + " wardrobe slots";
             case SPAWNER_RATE -> "+" + (level * 15) + "% spawner speed";
             default -> "";
         };
     }
 
-    private ItemStack createItem(Material material, String legacyName, String... legacyLore) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-
-        meta.displayName(LegacyComponentSerializer.legacySection().deserialize(legacyName));
-
-        if (legacyLore.length > 0) {
-            List<Component> loreList = new ArrayList<>();
-            for (String line : legacyLore) {
-                loreList.add(LegacyComponentSerializer.legacySection().deserialize(line));
-            }
-            meta.lore(loreList);
-        }
-
-        item.setItemMeta(meta);
-        return item;
-    }
-
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
 
-        Component viewTitle = event.getView().title();
-        String title = LegacyComponentSerializer.legacySection().serialize(viewTitle);
-
-        if (!title.contains("Island Upgrades")) return;
+        String title = event.getView().getTitle();
+        if (title == null || !title.contains("Island Upgrades")) {
+            return;
+        }
 
         event.setCancelled(true);
 
         ItemStack clicked = event.getCurrentItem();
-        if (clicked == null || clicked.getType() == Material.AIR) return;
-
-        String itemName = "";
-        if (clicked.getItemMeta() != null && clicked.getItemMeta().displayName() != null) {
-            itemName = LegacyComponentSerializer.legacySection()
-                    .serialize(Objects.requireNonNull(clicked.getItemMeta().displayName()));
+        if (clicked == null || clicked.getType() == Material.AIR) {
+            return;
         }
 
-        if (itemName.contains("Close")) {
+        if (clicked.getType() == Material.BARRIER) {
             player.closeInventory();
             return;
         }
 
         Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-        if (island == null) return;
+        if (island == null) {
+            return;
+        }
 
-        for (IslandUpgrade upgrade : IslandUpgrade.values()) {
-            if (itemName.contains(upgrade.getDisplayName())) {
-                plugin.getIslandUpgradeManager().purchaseUpgrade(player, island, upgrade);
-                player.closeInventory();
+        ItemMeta clickedMeta = clicked.getItemMeta();
+        if (clickedMeta == null) {
+            return;
+        }
+        String upgradeName = GUIUtils.getPDCAction(clickedMeta, upgradeTypeKey);
+        if (upgradeName == null) {
+            return;
+        }
 
-                // Use player's scheduler for GUI refresh (Folia optimized)
-                player.getScheduler().runDelayed(plugin,
-                        scheduledTask -> open(player, island), null, 5L);
-                return;
-            }
+        try {
+            IslandUpgrade upgrade = IslandUpgrade.valueOf(upgradeName);
+            plugin.getIslandUpgradeManager().purchaseUpgrade(island, upgrade, player);
+            player.closeInventory();
+            player.getScheduler().runDelayed(plugin,
+                    scheduledTask -> open(player, island), null, 5L);
+        } catch (IllegalArgumentException ignored) {
+            // Unknown PDC payload — ignore click
         }
     }
 }

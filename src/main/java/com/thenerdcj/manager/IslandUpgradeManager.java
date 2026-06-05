@@ -383,4 +383,38 @@ public class IslandUpgradeManager {
             });
         });
     }
+    /**
+     * Get the current level of a specific upgrade on an island.
+     */
+    public int getUpgradeLevel(Island island, IslandUpgrade upgrade) {
+        if (island == null || upgrade == null) {
+            return 0;
+        }
+        return island.getUpgradeLevel(upgrade);
+    }
+
+    /**
+     * Async version - loads directly from database.
+     */
+    public CompletableFuture<Integer> getUpgradeLevelAsync(Island island, IslandUpgrade upgrade) {
+        String islandKey = island.getOwnerUuid() + "_" + island.getDimension().name().toLowerCase();
+        return plugin.getDatabaseManager().getIslandUpgradeLevel(islandKey, upgrade);
+    }
+    // ==================== CONVENIENCE METHODS ====================
+
+    /**
+     * Purchase/apply an upgrade (alias for applyUpgrade).
+     * Use this if your GUIs/commands call purchaseUpgrade(...).
+     */
+    public CompletableFuture<Boolean> purchaseUpgrade(Island island, IslandUpgrade upgrade, int currentLevel, Player player) {
+        return applyUpgrade(island, upgrade, currentLevel, player);
+    }
+
+    /**
+     * Overloaded version that automatically gets the current level.
+     */
+    public CompletableFuture<Boolean> purchaseUpgrade(Island island, IslandUpgrade upgrade, Player player) {
+        int currentLevel = getUpgradeLevel(island, upgrade);
+        return applyUpgrade(island, upgrade, currentLevel, player);
+    }
 }

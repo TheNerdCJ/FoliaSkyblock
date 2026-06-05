@@ -472,11 +472,11 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         }
 
         island.setMemberRank(target.getUniqueId(), newRank);
-        // Persist to DB using upsert
         GridPosition pos = island.getGridPosition();
         plugin.getDatabaseManager().addIslandMember(
-            pos.x(), pos.z(), island.getDimension().name(), 
-            target.getUniqueId(), newRank.name()
+                pos.x(), pos.z(), island.getDimension().name(),
+                target.getUniqueId(),
+                newRank.name()
         );
         // Update persisted aggregate snapshot for O(1) (member_count in island_worth)
         plugin.getDatabaseManager().getIslandDAO().saveIslandMemberCount(pos, island.getMemberCount());

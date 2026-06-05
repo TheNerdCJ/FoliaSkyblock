@@ -21,20 +21,25 @@ public final class DBOperations {
     private final FoliaSkyblock plugin;
     private final ExecutorService legacyExecutor; // temporary bridge during migration
     private final java.util.function.Supplier<Connection> connectionSupplier;
+    private final boolean h2Dialect;
 
     public DBOperations(FoliaSkyblock plugin, ExecutorService legacyExecutor, java.util.function.Supplier<Connection> connectionSupplier) {
+        this(plugin, legacyExecutor, connectionSupplier, false);
+    }
+
+    public DBOperations(FoliaSkyblock plugin, ExecutorService legacyExecutor, java.util.function.Supplier<Connection> connectionSupplier, boolean h2Dialect) {
         this.plugin = plugin;
         this.legacyExecutor = legacyExecutor;
         this.connectionSupplier = connectionSupplier;
+        this.h2Dialect = h2Dialect;
     }
 
     public DBOperations(FoliaSkyblock plugin, ExecutorService legacyExecutor) {
-        this(plugin, legacyExecutor, null);
+        this(plugin, legacyExecutor, null, false);
     }
 
-    /** For cases where we pass a throwing supplier from DatabaseManager */
-    public DBOperations(FoliaSkyblock plugin, ExecutorService legacyExecutor, java.util.function.Supplier<Connection> connectionSupplier, boolean dummy) {
-        this(plugin, legacyExecutor, connectionSupplier);
+    public boolean isH2Dialect() {
+        return h2Dialect;
     }
 
     /**

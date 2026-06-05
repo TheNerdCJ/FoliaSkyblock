@@ -55,9 +55,12 @@ public class IslandDAO extends BaseDAO {
             String key = makeIslandKey(gridX, gridZ, dimension);
             try {
                 return withConnection(conn -> {
-                    try (PreparedStatement ps = conn.prepareStatement(
-                            "INSERT OR REPLACE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome, level, last_reset, generation_seed) " +
-                            "VALUES (?, ?, ?, ?, ?, 1, 0, ?)")) {
+                    String sql = dbOps.isH2Dialect()
+                            ? "MERGE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome, level, last_reset, generation_seed) "
+                            + "KEY(owner_uuid, dimension) VALUES (?, ?, ?, ?, ?, 1, 0, ?)"
+                            : "INSERT OR REPLACE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome, level, last_reset, generation_seed) "
+                            + "VALUES (?, ?, ?, ?, ?, 1, 0, ?)";
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
                         ps.setInt(1, gridX);
                         ps.setInt(2, gridZ);
                         ps.setString(3, ownerUuid.toString());
@@ -249,6 +252,73 @@ public class IslandDAO extends BaseDAO {
             } catch (Exception e) {
                 plugin.getLogger().severe("[IslandDAO] saveIslandUpgrade failed: " + e.getMessage());
                 return false;
+            }
+        });
+    }
+
+    public CompletableFuture<Integer> getIslandUpgradeLevel(String islandKey, IslandUpgrade upgrade) {
+        return supplyAsync(() -> {
+            try {
+                return withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT level FROM island_upgrades WHERE island_key = ? AND upgrade_type = ?")) {
+                        ps.setString(1, islandKey);
+                        ps.setString(2, upgrade.name());
+                        ResultSet rs = ps.executeQuery();
+                        return rs.next() ? rs.getInt("level") : 0;
+                    } catch (SQLException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+            } catch (Exception e) {
+                plugin.getLogger().warning("[IslandDAO] getIslandUpgradeLevel failed: " + e.getMessage());
+                return 0;
+            }
+        });
+    }
+
+    public CompletableFuture<Boolean> saveMinionData(String islandKey, int minionType, int level) {
+        return supplyAsync(() -> {
+            try {
+                return withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "INSERT OR REPLACE INTO island_minions (island_key, minion_type, level) VALUES (?, ?, ?)")) {
+                        ps.setString(1, islandKey);
+                        ps.setInt(2, minionType);
+                        ps.setInt(3, level);
+                        ps.executeUpdate();
+                        return true;
+                    } catch (SQLException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+            } catch (Exception e) {
+                plugin.getLogger().warning("[IslandDAO] saveMinionData failed: " + e.getMessage());
+                return false;
+            }
+        });
+    }
+
+    public CompletableFuture<Map<Integer, Integer>> loadMinionData(String islandKey) {
+        return supplyAsync(() -> {
+            Map<Integer, Integer> data = new HashMap<>();
+            try {
+                return withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT minion_type, level FROM island_minions WHERE island_key = ?")) {
+                        ps.setString(1, islandKey);
+                        ResultSet rs = ps.executeQuery();
+                        while (rs.next()) {
+                            data.put(rs.getInt("minion_type"), rs.getInt("level"));
+                        }
+                    } catch (SQLException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                    return data;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().warning("[IslandDAO] loadMinionData failed: " + e.getMessage());
+                return data;
             }
         });
     }
@@ -525,10 +595,10 @@ public class IslandDAO extends BaseDAO {
     }
 
     // Island collections (per-island discovery)
-    public void saveIslandCollection(String islandKey, String itemKey, UUID discoveredBy) {
-        runAsync(() -> {
+    public CompletableFuture<Boolean> saveIslandCollection(String islandKey, String itemKey, UUID discoveredBy) {
+        return supplyAsync(() -> {
             try {
-                withConnection(conn -> {
+                return withConnection(conn -> {
                     try (PreparedStatement ps = conn.prepareStatement(
                             "INSERT OR IGNORE INTO island_collections (island_key, item_key, discovered_by, discovered_at) VALUES (?, ?, ?, ?)")) {
                         ps.setString(1, islandKey);
@@ -536,13 +606,14 @@ public class IslandDAO extends BaseDAO {
                         ps.setString(3, discoveredBy != null ? discoveredBy.toString() : null);
                         ps.setLong(4, System.currentTimeMillis());
                         ps.executeUpdate();
+                        return true;
                     } catch (SQLException e) {
                         throw new RuntimeException(e);
                     }
-                    return null;
                 });
             } catch (Exception e) {
                 plugin.getLogger().severe("[IslandDAO] saveIslandCollection failed: " + e.getMessage());
+                return false;
             }
         });
     }
@@ -642,10 +713,10 @@ public class IslandDAO extends BaseDAO {
     // Addresses TODO + optimization for full modularization + reliable persistence+drift.
 
     // Worth persistence (grid PK matching schema; key consistency fixed to GridPosition.toString() / grid+dim)
-    public void saveIslandWorth(GridPosition pos, double worth, int worthLevel, long lastCalculated) {
-        runAsync(() -> {
+    public CompletableFuture<Boolean> saveIslandWorth(GridPosition pos, double worth, int worthLevel, long lastCalculated) {
+        return supplyAsync(() -> {
             try {
-                withConnection(conn -> {
+                return withConnection(conn -> {
                     try (PreparedStatement ps = conn.prepareStatement(
                             "INSERT OR REPLACE INTO island_worth (grid_x, grid_z, dimension, worth, worth_level, last_calculated) VALUES (?, ?, ?, ?, ?, ?)")) {
                         ps.setInt(1, pos.x());
@@ -655,13 +726,14 @@ public class IslandDAO extends BaseDAO {
                         ps.setInt(5, worthLevel);
                         ps.setLong(6, lastCalculated);
                         ps.executeUpdate();
+                        return true;
                     } catch (SQLException e) {
                         throw new RuntimeException(e);
                     }
-                    return null;
                 });
             } catch (Exception e) {
                 plugin.getLogger().severe("[IslandDAO] saveIslandWorth failed: " + e.getMessage());
+                return false;
             }
         });
     }
@@ -712,10 +784,10 @@ public class IslandDAO extends BaseDAO {
         });
     }
 
-    public void saveIslandBankBalance(GridPosition pos, double balance) {
-        runAsync(() -> {
+    public CompletableFuture<Boolean> saveIslandBankBalance(GridPosition pos, double balance) {
+        return supplyAsync(() -> {
             try {
-                withConnection(conn -> {
+                return withConnection(conn -> {
                     try (PreparedStatement ps = conn.prepareStatement(
                             "INSERT OR REPLACE INTO island_banks (grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?)")) {
                         ps.setInt(1, pos.x());
@@ -723,13 +795,14 @@ public class IslandDAO extends BaseDAO {
                         ps.setString(3, pos.getDimension().name());
                         ps.setDouble(4, balance);
                         ps.executeUpdate();
+                        return true;
                     } catch (SQLException e) {
                         throw new RuntimeException(e);
                     }
-                    return null;
                 });
             } catch (Exception e) {
                 plugin.getLogger().severe("[IslandDAO] saveIslandBankBalance failed: " + e.getMessage());
+                return false;
             }
         });
     }
@@ -775,11 +848,11 @@ public class IslandDAO extends BaseDAO {
         });
     }
 
-    public void saveIslandSettings(IslandSettings settings) {
+    public CompletableFuture<Boolean> saveIslandSettings(IslandSettings settings) {
         GridPosition pos = settings.getGridPosition();
-        runAsync(() -> {
+        return supplyAsync(() -> {
             try {
-                withConnection(conn -> {
+                return withConnection(conn -> {
                     try (PreparedStatement ps = conn.prepareStatement(
                             "INSERT OR REPLACE INTO island_settings " +
                             "(grid_x, grid_z, dimension, pvp_enabled, visitors_allowed, explosions_enabled, " +
@@ -803,13 +876,14 @@ public class IslandDAO extends BaseDAO {
                         ps.setBoolean(15, settings.isWarpEnabled());
                         ps.setString(16, settings.getWarpDescription());
                         ps.executeUpdate();
+                        return true;
                     } catch (SQLException e) {
                         throw new RuntimeException(e);
                     }
-                    return null;
                 });
             } catch (Exception e) {
                 plugin.getLogger().severe("[IslandDAO] saveIslandSettings failed: " + e.getMessage());
+                return false;
             }
         });
     }

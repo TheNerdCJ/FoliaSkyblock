@@ -17,6 +17,56 @@ island:
   # Worth level (from block value) is separate for economy/tops; see IslandWorthManager. Explicit tie in Island.getProgressionLevel() / sync.
   # Default starter items are handled in IslandManager.java
 
+  # Party system config (for XP balancing - ensures solo vs party progression speed feels fair, per design spec and Hypixel reference)
+  party:
+    max-size: 4
+    # XP multipliers applied to island XP and skill XP gains. Higher party = lower per-person gain (diminishing returns).
+    # Folia-safe: applied server-side in Island.addXp / addSkillXp via IslandManager.
+    xp-multipliers:
+      1: 1.0
+      2: 0.85
+      3: 0.75
+      4: 0.65
+      5: 0.60
+      # For >5 falls back to 0.55 min in code. Config overrides take precedence.
+
+  # Island Worth / Level System (Classic Skyblock)
+  worth:
+    block-worth:
+      STONE: 1.0
+      COBBLESTONE: 1.0
+      DIRT: 0.5
+      GRASS_BLOCK: 0.8
+      OAK_LOG: 3.0
+      DIAMOND_ORE: 150.0
+      DIAMOND_BLOCK: 1350.0
+      EMERALD_BLOCK: 1200.0
+      NETHERITE_BLOCK: 4500.0
+      SPAWNER: 800.0
+      BEACON: 2500.0
+
+    level-formula:
+      base: 100.0
+      multiplier: 1.5
+
+    upgrade-multipliers:
+      enabled: true
+
+    recalc-interval-minutes: 15
+    max-blocks-to-scan: 250000
+    profile-hot-paths: false
+    max-islands-per-recalc-tick: 50
+
+  perf:
+    max-players-for-tab-update: 200
+    max-cache-size-warp: 500
+    max-cache-size-rating: 1000
+
+  upkeep:
+    enabled: false
+    percent-per-hour: 0.5
+    min-balance: 1000
+
 # Seasonal server-wide resets (Option B full impl: data wipe + staggered RegionScheduler plot clears for fresh competitive seasons every ~3 months).
 # Enables seasonal events while preserving donor cosmetics (player_* tables via CosmeticDAO already survive).
 # Trigger is manual via /isadmin season reset <season-id> CONFIRM [--dry-run] for safety.
@@ -34,80 +84,6 @@ seasonal:
   announce-before-days: 14
   # Default length hint (informational; not auto-enforced).
   default-length-months: 3
-
-  # Party system config (for XP balancing - ensures solo vs party progression speed feels fair, per design spec and Hypixel reference)
-  party:
-    max-size: 4
-    # XP multipliers applied to island XP and skill XP gains. Higher party = lower per-person gain (diminishing returns).
-    # This makes large parties not trivialize progression. Matches "progression speed feels identical whether single-player or multi-player".
-    # Folia-safe: applied server-side in Island.addXp / addSkillXp via IslandManager.
-    xp-multipliers:
-      1: 1.0
-      2: 0.85
-      3: 0.75
-      4: 0.65
-      5: 0.60
-      # For >5 falls back to 0.55 min in code. Config overrides take precedence.
-
-  # =============================================
-  # Island Worth / Level System (Classic Skyblock)
-  # =============================================
-  worth:
-    # Block worth values (per block placed on island)
-    # Higher value blocks contribute more to island worth and level
-    block-worth:
-      STONE: 1.0
-      COBBLESTONE: 1.0
-      DIRT: 0.5
-      GRASS_BLOCK: 0.8
-      OAK_LOG: 3.0
-      DIAMOND_ORE: 150.0
-      DIAMOND_BLOCK: 1350.0
-      EMERALD_BLOCK: 1200.0
-      NETHERITE_BLOCK: 4500.0
-      SPAWNER: 800.0
-      BEACON: 2500.0
-      # Add more blocks as needed. Use Material name exactly.
-
-    # Formula: worthLevel = floor(sqrt(totalWorth / 100)) + 1 (customizable)
-    level-formula:
-      base: 100.0          # Worth required for level 1
-      multiplier: 1.5      # How fast levels scale
-
-    # Upgrade multipliers applied to total worth (from IslandUpgradeManager)
-    upgrade-multipliers:
-      enabled: true
-      # These are applied as finalWorth = baseWorth * multiplier
-      # Example: If player has CROP_GROWTH level 5, it might give a small worth bonus
-
-    # Performance tuning for large Folia servers (hundreds of islands)
-    # Controls how often full worth recalculation runs globally.
-    # For best perf on 500+ islands, prefer event-driven (block events already call adjustBlockWorth + invalidate)
-    # and keep global interval long or disabled (set to 0 or negative to disable periodic full recalc).
-    recalc-interval-minutes: 15   # Global periodic full recalc (drift correction). 0 = disabled (event-driven only recommended for scale)
-    # Chunk budget to prevent lag on huge/custom islands; early exit in scan loops
-    max-blocks-to-scan: 250000
-    # Debug-only hot path profiling (nanoTime around worth chunk combine); logs when true. For dev/perf tuning only.
-    profile-hot-paths: false
-    # Cap work per tick for large servers (prevents lag spikes on 1000+ islands periodic)
-    max-islands-per-recalc-tick: 50
-    # Future: per-island-size tiers e.g. small:5, medium:15, large:60 (staggered RegionScheduler)
-
-  # Perf caps and knobs for large scale servers (100s-1000+ islands/players) - compression/optimization
-  perf:
-    max-players-for-tab-update: 200  # cap tab list updates per tick for perf
-    max-cache-size-warp: 500  # bounded cache for warps (LRU eviction)
-    max-cache-size-rating: 1000  # bounded cache for ratings
-    # other caps like max-islands-per-recalc-tick under worth, etc.
-    # For compression: use bounded CHM (review/bound all for eviction + size caps; trails/overhead/collection/minion/hologram/skill + auction/island + real LRU in rating/bank/settings/warp etc added), Caffeine dep if ok (currently use LinkedHashMap LRU + manual eviction in managers like furniture/structure/warp/trails etc for no extra dep; real LRU for worthCache + rating etc), event-driven to avoid periodic full scans.
-    # Data compression via paged lists in GUIs (e.g. AdminIslandInspectGUI incl. skills + enhanced puns/full logs + fuller + structures/quests/slayer/minions paged this pass), DB paginated queries for tops where possible (getTopRatedIslands(limit, offset) + loadAllPublicWarps(limit) + getTopIslandsByWorth(limit, offset) implemented/expanded this pass for actual server-side pagination on 1000+). More per-island RegionScheduler for globals/leaderboards recommended (e.g. stagger tops/leaderboard refresh at island centers instead of global; added in rating/Folia + actual in tops task + weekly + worth periodic). Caps for hoppers/auctions etc in future. H2 large sims to 1000 islands + notes. BossManager/QuestManager/HologramManager CHM bounds + profiling added this pass for ... tracking on large servers. Actual staggered code in more tasks (tax already per-island, tops/weekly/worth enhanced). Minion/Hologram profiling added.
-
-  # Economy sinks (to prevent inflation, Play-to-Win balance)
-  # Island upkeep: small % or flat drain on island balance over time (prestige/resource cost)
-  upkeep:
-    enabled: false   # Enable for production large servers; default off to avoid surprising players
-    percent-per-hour: 0.5   # 0.5% of island balance per hour (if balance > 0)
-    min-balance: 1000       # Only tax islands with at least this balance
 
 # =============================================
 # Bug Reporting System (player /bug + staff triage GUI)
