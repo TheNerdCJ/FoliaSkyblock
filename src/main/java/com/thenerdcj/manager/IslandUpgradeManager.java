@@ -67,6 +67,10 @@ public class IslandUpgradeManager {
                     // Persist immediately (idempotent with setUpgradeLevel)
                     String islandKey = island.getId();
                     plugin.getDatabaseManager().saveIslandUpgrade(islandKey, upgrade, currentLevel + 1);
+                    invalidateUpgradeCache(islandKey);
+                    if (upgrade == IslandUpgrade.ORE_GENERATOR && plugin.getIslandOreGenerator() != null) {
+                        plugin.getIslandOreGenerator().invalidateOreWeightsForIsland(island.getId());
+                    }
                     return CompletableFuture.completedFuture(true);
                 } else {
                     // Refund if application failed
@@ -326,6 +330,9 @@ public class IslandUpgradeManager {
                 String islandKey = island.getId();
                 plugin.getDatabaseManager().saveIslandUpgrade(islandKey, upgrade, currentLevel + 1);
                 invalidateUpgradeCache(islandKey);
+                if (upgrade == IslandUpgrade.ORE_GENERATOR && plugin.getIslandOreGenerator() != null) {
+                    plugin.getIslandOreGenerator().invalidateOreWeightsForIsland(island.getId());
+                }
 
                 // Recalculate island worth when upgrades change (worth system integration)
                 if (plugin.getIslandWorthManager() != null) {

@@ -61,6 +61,24 @@ island:
     max-players-for-tab-update: 200
     max-cache-size-warp: 500
     max-cache-size-rating: 1000
+    # Batch worth/bank/settings SQLite writes (latest value per island wins per flush window).
+    coalesce-island-writes: true
+    coalesce-flush-interval-seconds: 5
+    max-ore-weight-cache-entries: 2048
+    sqlite-wal: true
+    sqlite-checkpoint-interval-hours: 6
+    sqlite-checkpoint-on-disable: true
+    coalesce-pending-warn-threshold: 200
+    max-chest-shops-loaded: 5000
+    lazy-load-chest-shops: false
+    hydrate-shops-on-chunk-enter: true
+    hydrate-shops-debounce-ms: 500
+    # After a chunk hydrate (or eviction), skip re-querying that chunk from DB for this window.
+    hydrate-shops-chunk-cooldown-ms: 60000
+    coalesce-island-shop-purchases: true
+    coalesce-shop-purchase-warn-threshold: 100
+    coalesce-chest-shop-saves: false
+    coalesce-shop-save-interval-ms: 500
 
   upkeep:
     enabled: false

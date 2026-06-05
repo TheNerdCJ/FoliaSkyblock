@@ -34,8 +34,46 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class IslandDAO extends BaseDAO {
 
+    private IslandPersistenceCoalescer persistenceCoalescer;
+    private boolean coalesceWrites = true;
+    private final java.util.concurrent.atomic.AtomicInteger coalescedFlushCount = new java.util.concurrent.atomic.AtomicInteger();
+
     public IslandDAO(FoliaSkyblock plugin, DBOperations dbOps) {
         super(plugin, dbOps);
+    }
+
+    public void setPersistenceCoalescer(IslandPersistenceCoalescer coalescer) {
+        this.persistenceCoalescer = coalescer;
+    }
+
+    public void setCoalesceWritesEnabled(boolean enabled) {
+        this.coalesceWrites = enabled;
+    }
+
+    public int getCoalescedFlushCount() {
+        return coalescedFlushCount.get();
+    }
+
+    public void resetCoalescedFlushCount() {
+        coalescedFlushCount.set(0);
+    }
+
+    public CompletableFuture<Void> flushCoalescedWrites() {
+        if (persistenceCoalescer == null || !persistenceCoalescer.hasPending()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        IslandPersistenceCoalescer.DrainResult batch = persistenceCoalescer.drain();
+        if (batch.worth().isEmpty() && batch.bank().isEmpty() && batch.settings().isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return supplyAsync(() -> {
+            flushCoalescedBatch(batch);
+            return null;
+        }).exceptionally(ex -> {
+            plugin.getLogger().severe("[IslandDAO] coalesced flush failed: " + ex.getMessage());
+            persistenceCoalescer.requeue(batch);
+            return null;
+        }).thenApply(v -> null);
     }
 
     @Override
@@ -55,12 +93,9 @@ public class IslandDAO extends BaseDAO {
             String key = makeIslandKey(gridX, gridZ, dimension);
             try {
                 return withConnection(conn -> {
-                    String sql = dbOps.isH2Dialect()
-                            ? "MERGE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome, level, last_reset, generation_seed) "
-                            + "KEY(owner_uuid, dimension) VALUES (?, ?, ?, ?, ?, 1, 0, ?)"
-                            : "INSERT OR REPLACE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome, level, last_reset, generation_seed) "
-                            + "VALUES (?, ?, ?, ?, ?, 1, 0, ?)";
-                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "INSERT OR REPLACE INTO islands (grid_x, grid_z, owner_uuid, dimension, biome, level, last_reset, generation_seed) " +
+                            "VALUES (?, ?, ?, ?, ?, 1, 0, ?)")) {
                         ps.setInt(1, gridX);
                         ps.setInt(2, gridZ);
                         ps.setString(3, ownerUuid.toString());
@@ -595,10 +630,10 @@ public class IslandDAO extends BaseDAO {
     }
 
     // Island collections (per-island discovery)
-    public CompletableFuture<Boolean> saveIslandCollection(String islandKey, String itemKey, UUID discoveredBy) {
-        return supplyAsync(() -> {
+    public void saveIslandCollection(String islandKey, String itemKey, UUID discoveredBy) {
+        runAsync(() -> {
             try {
-                return withConnection(conn -> {
+                withConnection(conn -> {
                     try (PreparedStatement ps = conn.prepareStatement(
                             "INSERT OR IGNORE INTO island_collections (island_key, item_key, discovered_by, discovered_at) VALUES (?, ?, ?, ?)")) {
                         ps.setString(1, islandKey);
@@ -606,14 +641,13 @@ public class IslandDAO extends BaseDAO {
                         ps.setString(3, discoveredBy != null ? discoveredBy.toString() : null);
                         ps.setLong(4, System.currentTimeMillis());
                         ps.executeUpdate();
-                        return true;
                     } catch (SQLException e) {
                         throw new RuntimeException(e);
                     }
+                    return null;
                 });
             } catch (Exception e) {
                 plugin.getLogger().severe("[IslandDAO] saveIslandCollection failed: " + e.getMessage());
-                return false;
             }
         });
     }
@@ -713,28 +747,133 @@ public class IslandDAO extends BaseDAO {
     // Addresses TODO + optimization for full modularization + reliable persistence+drift.
 
     // Worth persistence (grid PK matching schema; key consistency fixed to GridPosition.toString() / grid+dim)
-    public CompletableFuture<Boolean> saveIslandWorth(GridPosition pos, double worth, int worthLevel, long lastCalculated) {
+    public void saveIslandWorth(GridPosition pos, double worth, int worthLevel, long lastCalculated) {
+        if (coalesceWrites && persistenceCoalescer != null) {
+            persistenceCoalescer.queueWorth(pos, worth, worthLevel, lastCalculated);
+            return;
+        }
+        runAsync(() -> writeIslandWorthImmediate(pos, worth, worthLevel, lastCalculated));
+    }
+
+    public CompletableFuture<Boolean> saveIslandWorthAsync(GridPosition pos, double worth, int worthLevel, long lastCalculated) {
+        if (coalesceWrites && persistenceCoalescer != null) {
+            persistenceCoalescer.queueWorth(pos, worth, worthLevel, lastCalculated);
+            return CompletableFuture.completedFuture(true);
+        }
         return supplyAsync(() -> {
+            writeIslandWorthImmediate(pos, worth, worthLevel, lastCalculated);
+            return true;
+        });
+    }
+
+    private void flushCoalescedBatch(IslandPersistenceCoalescer.DrainResult batch) {
+        if (batch.worth().isEmpty() && batch.bank().isEmpty() && batch.settings().isEmpty()) {
+            return;
+        }
+        withConnection(conn -> {
             try {
-                return withConnection(conn -> {
+                boolean prevAutoCommit = conn.getAutoCommit();
+                conn.setAutoCommit(false);
+                try {
+                if (!batch.worth().isEmpty()) {
                     try (PreparedStatement ps = conn.prepareStatement(
                             "INSERT OR REPLACE INTO island_worth (grid_x, grid_z, dimension, worth, worth_level, last_calculated) VALUES (?, ?, ?, ?, ?, ?)")) {
-                        ps.setInt(1, pos.x());
-                        ps.setInt(2, pos.z());
-                        ps.setString(3, pos.getDimension().name());
-                        ps.setDouble(4, worth);
-                        ps.setInt(5, worthLevel);
-                        ps.setLong(6, lastCalculated);
-                        ps.executeUpdate();
-                        return true;
-                    } catch (SQLException e) {
-                        throw new RuntimeException(e);
+                        for (var e : batch.worth().entrySet()) {
+                            GridPosition pos = e.getKey();
+                            IslandPersistenceCoalescer.WorthSnapshot s = e.getValue();
+                            ps.setInt(1, pos.x());
+                            ps.setInt(2, pos.z());
+                            ps.setString(3, pos.getDimension().name());
+                            ps.setDouble(4, s.worth());
+                            ps.setInt(5, s.worthLevel());
+                            ps.setLong(6, s.lastCalculated());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
                     }
-                });
-            } catch (Exception e) {
-                plugin.getLogger().severe("[IslandDAO] saveIslandWorth failed: " + e.getMessage());
-                return false;
+                }
+                if (!batch.bank().isEmpty()) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "INSERT OR REPLACE INTO island_banks (grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?)")) {
+                        for (var e : batch.bank().entrySet()) {
+                            GridPosition pos = e.getKey();
+                            ps.setInt(1, pos.x());
+                            ps.setInt(2, pos.z());
+                            ps.setString(3, pos.getDimension().name());
+                            ps.setDouble(4, e.getValue());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+                if (!batch.settings().isEmpty()) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "INSERT OR REPLACE INTO island_settings " +
+                            "(grid_x, grid_z, dimension, pvp_enabled, visitors_allowed, explosions_enabled, " +
+                            "fire_spread_enabled, mob_spawning_enabled, crop_trampling_enabled, animal_spawning_enabled, " +
+                            "leaf_decay_enabled, border_color, border_size, border_markers_enabled, warp_enabled, warp_description) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                        for (var e : batch.settings().entrySet()) {
+                            bindIslandSettings(ps, e.getValue());
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                }
+                conn.commit();
+                coalescedFlushCount.incrementAndGet();
+                } catch (SQLException ex) {
+                    try {
+                        conn.rollback();
+                    } catch (SQLException rollbackEx) {
+                        ex.addSuppressed(rollbackEx);
+                    }
+                    throw ex;
+                } finally {
+                    conn.setAutoCommit(prevAutoCommit);
+                }
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
             }
+            return null;
+        });
+    }
+
+    private static void bindIslandSettings(PreparedStatement ps, IslandSettings settings) throws SQLException {
+        GridPosition pos = settings.getGridPosition();
+        ps.setInt(1, pos.x());
+        ps.setInt(2, pos.z());
+        ps.setString(3, pos.getDimension().name());
+        ps.setBoolean(4, settings.isPvpEnabled());
+        ps.setBoolean(5, settings.isVisitorsAllowed());
+        ps.setBoolean(6, settings.isExplosionsEnabled());
+        ps.setBoolean(7, settings.isFireSpreadEnabled());
+        ps.setBoolean(8, settings.isMobSpawningEnabled());
+        ps.setBoolean(9, settings.isCropTramplingEnabled());
+        ps.setBoolean(10, settings.isAnimalSpawningEnabled());
+        ps.setBoolean(11, settings.isLeafDecayEnabled());
+        ps.setString(12, settings.getBorderColor());
+        ps.setInt(13, settings.getBorderSize());
+        ps.setBoolean(14, settings.isBorderMarkersEnabled());
+        ps.setBoolean(15, settings.isWarpEnabled());
+        ps.setString(16, settings.getWarpDescription());
+    }
+
+    void writeIslandWorthImmediate(GridPosition pos, double worth, int worthLevel, long lastCalculated) {
+        withConnection(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT OR REPLACE INTO island_worth (grid_x, grid_z, dimension, worth, worth_level, last_calculated) VALUES (?, ?, ?, ?, ?, ?)")) {
+                ps.setInt(1, pos.x());
+                ps.setInt(2, pos.z());
+                ps.setString(3, pos.getDimension().name());
+                ps.setDouble(4, worth);
+                ps.setInt(5, worthLevel);
+                ps.setLong(6, lastCalculated);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+            return null;
         });
     }
 
@@ -784,26 +923,38 @@ public class IslandDAO extends BaseDAO {
         });
     }
 
-    public CompletableFuture<Boolean> saveIslandBankBalance(GridPosition pos, double balance) {
+    public void saveIslandBankBalance(GridPosition pos, double balance) {
+        if (coalesceWrites && persistenceCoalescer != null) {
+            persistenceCoalescer.queueBank(pos, balance);
+            return;
+        }
+        runAsync(() -> writeIslandBankImmediate(pos, balance));
+    }
+
+    public CompletableFuture<Boolean> saveIslandBankBalanceAsync(GridPosition pos, double balance) {
+        if (coalesceWrites && persistenceCoalescer != null) {
+            persistenceCoalescer.queueBank(pos, balance);
+            return CompletableFuture.completedFuture(true);
+        }
         return supplyAsync(() -> {
-            try {
-                return withConnection(conn -> {
-                    try (PreparedStatement ps = conn.prepareStatement(
-                            "INSERT OR REPLACE INTO island_banks (grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?)")) {
-                        ps.setInt(1, pos.x());
-                        ps.setInt(2, pos.z());
-                        ps.setString(3, pos.getDimension().name());
-                        ps.setDouble(4, balance);
-                        ps.executeUpdate();
-                        return true;
-                    } catch (SQLException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-            } catch (Exception e) {
-                plugin.getLogger().severe("[IslandDAO] saveIslandBankBalance failed: " + e.getMessage());
-                return false;
+            writeIslandBankImmediate(pos, balance);
+            return true;
+        });
+    }
+
+    void writeIslandBankImmediate(GridPosition pos, double balance) {
+        withConnection(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT OR REPLACE INTO island_banks (grid_x, grid_z, dimension, balance) VALUES (?, ?, ?, ?)")) {
+                ps.setInt(1, pos.x());
+                ps.setInt(2, pos.z());
+                ps.setString(3, pos.getDimension().name());
+                ps.setDouble(4, balance);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
             }
+            return null;
         });
     }
 
@@ -848,43 +999,39 @@ public class IslandDAO extends BaseDAO {
         });
     }
 
-    public CompletableFuture<Boolean> saveIslandSettings(IslandSettings settings) {
-        GridPosition pos = settings.getGridPosition();
+    public void saveIslandSettings(IslandSettings settings) {
+        if (coalesceWrites && persistenceCoalescer != null) {
+            persistenceCoalescer.queueSettings(settings);
+            return;
+        }
+        runAsync(() -> writeIslandSettingsImmediate(settings));
+    }
+
+    public CompletableFuture<Boolean> saveIslandSettingsAsync(IslandSettings settings) {
+        if (coalesceWrites && persistenceCoalescer != null) {
+            persistenceCoalescer.queueSettings(settings);
+            return CompletableFuture.completedFuture(true);
+        }
         return supplyAsync(() -> {
-            try {
-                return withConnection(conn -> {
-                    try (PreparedStatement ps = conn.prepareStatement(
-                            "INSERT OR REPLACE INTO island_settings " +
-                            "(grid_x, grid_z, dimension, pvp_enabled, visitors_allowed, explosions_enabled, " +
-                            "fire_spread_enabled, mob_spawning_enabled, crop_trampling_enabled, animal_spawning_enabled, " +
-                            "leaf_decay_enabled, border_color, border_size, border_markers_enabled, warp_enabled, warp_description) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-                        ps.setInt(1, pos.x());
-                        ps.setInt(2, pos.z());
-                        ps.setString(3, pos.getDimension().name());
-                        ps.setBoolean(4, settings.isPvpEnabled());
-                        ps.setBoolean(5, settings.isVisitorsAllowed());
-                        ps.setBoolean(6, settings.isExplosionsEnabled());
-                        ps.setBoolean(7, settings.isFireSpreadEnabled());
-                        ps.setBoolean(8, settings.isMobSpawningEnabled());
-                        ps.setBoolean(9, settings.isCropTramplingEnabled());
-                        ps.setBoolean(10, settings.isAnimalSpawningEnabled());
-                        ps.setBoolean(11, settings.isLeafDecayEnabled());
-                        ps.setString(12, settings.getBorderColor());
-                        ps.setInt(13, settings.getBorderSize());
-                        ps.setBoolean(14, settings.isBorderMarkersEnabled());
-                        ps.setBoolean(15, settings.isWarpEnabled());
-                        ps.setString(16, settings.getWarpDescription());
-                        ps.executeUpdate();
-                        return true;
-                    } catch (SQLException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-            } catch (Exception e) {
-                plugin.getLogger().severe("[IslandDAO] saveIslandSettings failed: " + e.getMessage());
-                return false;
+            writeIslandSettingsImmediate(settings);
+            return true;
+        });
+    }
+
+    void writeIslandSettingsImmediate(IslandSettings settings) {
+        withConnection(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT OR REPLACE INTO island_settings " +
+                    "(grid_x, grid_z, dimension, pvp_enabled, visitors_allowed, explosions_enabled, " +
+                    "fire_spread_enabled, mob_spawning_enabled, crop_trampling_enabled, animal_spawning_enabled, " +
+                    "leaf_decay_enabled, border_color, border_size, border_markers_enabled, warp_enabled, warp_description) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                bindIslandSettings(ps, settings);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
             }
+            return null;
         });
     }
 

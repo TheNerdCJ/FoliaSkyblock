@@ -11,14 +11,15 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockFormEvent;
 import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataHolder;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
@@ -37,8 +38,10 @@ public class IslandOreGenerator implements Listener {
     private final GridManager gridManager;
     private final IslandUpgradeManager upgradeManager;
     private final NamespacedKey generatorOresKey;
+    private final NamespacedKey generatorOreBlockKey;
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
+    private final int maxOreWeightCacheEntries;
     private final ConcurrentHashMap<String, Map<Material, Double>> effectiveOreWeightsCache = new ConcurrentHashMap<>();
 
     private static final Map<World.Environment, Map<Material, Double>> BASE_ORE_WEIGHTS = new EnumMap<>(World.Environment.class);
@@ -73,6 +76,27 @@ public class IslandOreGenerator implements Listener {
         this.gridManager = gridManager;
         this.upgradeManager = upgradeManager;
         this.generatorOresKey = new NamespacedKey(plugin, "generator_ores");
+        this.generatorOreBlockKey = new NamespacedKey(plugin, "generator_ore");
+        int cacheCap = 2048;
+        if (plugin.getConfig() != null) {
+            cacheCap = plugin.getConfig().getInt("island.perf.max-ore-weight-cache-entries", 2048);
+        }
+        this.maxOreWeightCacheEntries = Math.max(256, cacheCap);
+    }
+
+    /**
+     * Drops stale weight entries after upgrade level changes (memory compression).
+     */
+    public void invalidateOreWeightsForIsland(String islandId) {
+        if (islandId == null || islandId.isEmpty()) {
+            return;
+        }
+        String prefix = islandId + ":";
+        effectiveOreWeightsCache.keySet().removeIf(k -> k.startsWith(prefix));
+        while (effectiveOreWeightsCache.size() > maxOreWeightCacheEntries) {
+            String first = effectiveOreWeightsCache.keys().nextElement();
+            effectiveOreWeightsCache.remove(first);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -172,14 +196,27 @@ public class IslandOreGenerator implements Listener {
         if (block == null) {
             return;
         }
+        BlockState state = block.getState();
+        if (state instanceof PersistentDataHolder holder) {
+            holder.getPersistentDataContainer().set(generatorOreBlockKey, PersistentDataType.BYTE, (byte) 1);
+            state.update(true, false);
+            return;
+        }
+        tagGeneratorOreChunkLegacy(block);
+    }
+
+    private void tagGeneratorOreChunkLegacy(Block block) {
         Chunk chunk = block.getChunk();
         PersistentDataContainer pdc = chunk.getPersistentDataContainer();
         List<String> positions = pdc.get(generatorOresKey, PersistentDataType.LIST.strings());
         if (positions == null) {
-            positions = new ArrayList<>(4);
+            positions = new java.util.ArrayList<>(4);
         }
         String posKey = block.getX() + ":" + block.getY() + ":" + block.getZ();
         if (!positions.contains(posKey)) {
+            if (positions.size() >= 512) {
+                positions.remove(0);
+            }
             positions.add(posKey);
             pdc.set(generatorOresKey, PersistentDataType.LIST.strings(), positions);
         }
@@ -189,14 +226,23 @@ public class IslandOreGenerator implements Listener {
         if (block == null || plugin == null) {
             return false;
         }
-        NamespacedKey key = new NamespacedKey(plugin, "generator_ores");
-        // Legacy tags used hardcoded namespace "foliasb"
-        NamespacedKey legacyKey = new NamespacedKey("foliasb", "generator_ores");
+        NamespacedKey blockKey = new NamespacedKey(plugin, "generator_ore");
+        NamespacedKey legacyBlockKey = new NamespacedKey("foliasb", "generator_ore");
+        BlockState state = block.getState();
+        if (state instanceof PersistentDataHolder holder) {
+            PersistentDataContainer blockPdc = holder.getPersistentDataContainer();
+            if (blockPdc.has(blockKey, PersistentDataType.BYTE)
+                    || blockPdc.has(legacyBlockKey, PersistentDataType.BYTE)) {
+                return true;
+            }
+        }
+        NamespacedKey chunkKey = new NamespacedKey(plugin, "generator_ores");
+        NamespacedKey legacyChunkKey = new NamespacedKey("foliasb", "generator_ores");
         Chunk chunk = block.getChunk();
-        PersistentDataContainer pdc = chunk.getPersistentDataContainer();
+        PersistentDataContainer chunkPdc = chunk.getPersistentDataContainer();
         String posKey = block.getX() + ":" + block.getY() + ":" + block.getZ();
-        for (NamespacedKey k : List.of(key, legacyKey)) {
-            List<String> positions = pdc.get(k, PersistentDataType.LIST.strings());
+        for (NamespacedKey k : List.of(chunkKey, legacyChunkKey)) {
+            List<String> positions = chunkPdc.get(k, PersistentDataType.LIST.strings());
             if (positions != null && positions.contains(posKey)) {
                 return true;
             }

@@ -2,7 +2,7 @@ package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
-import com.thenerdcj.gui.IslandBankGUI;
+
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.island.IslandRank;
@@ -566,13 +566,14 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
 
     private void handleBank(Player player) {
         MessageUtil.sendMessage(player, "§aOpening Island Bank GUI...");
-        new IslandBankGUI(plugin).open(player, new IslandManager(plugin).getIsland(player.getUniqueId(), player.getWorld().getEnvironment()));
-        MessageUtil.sendMessage(player, "§7(If GUI does not appear, check IslandBankGUI implementation)");
+        plugin.getIslandBankGUI().open(player,
+                plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment()));
     }
 
     private void handleSettings(Player player) {
         MessageUtil.sendMessage(player, "§aOpening Island Settings GUI...");
-        // Similar to bank
+        plugin.getIslandSettingsGUI().open(player,
+                plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment()));
     }
 
     private void handleUpgrade(Player player) {
@@ -586,8 +587,14 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleBrowse(Player player, String[] args) {
-        MessageUtil.sendMessage(player, "§aOpening Island Browse / Top list GUI...");
-        // Links to IslandBrowseGUI
+        int page = 0;
+        if (args.length >= 2) {
+            try {
+                page = Math.max(0, Integer.parseInt(args[1]) - 1);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        plugin.getIslandBrowseGUI().open(player, page);
     }
 
     private void handleTp(Player player, String[] args) {

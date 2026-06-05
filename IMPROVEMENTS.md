@@ -1,5 +1,129 @@
 # FoliaSkyblock – Production Roadmap & IMPROVEMENTS.md
 
+## June 4, 2026 — Session Status Tracker (process: mark COMPLETED when done)
+
+| Item | Status |
+|------|--------|
+| Config nesting (`party`/`worth`/`perf`/`upkeep` under `island:`) | **COMPLETED** |
+| Ore generator merge (`IslandOreGenerator` sole listener) | **COMPLETED** |
+| PDC/cache fixes (`island.getId()`, plugin namespace, weight cache) | **COMPLETED** |
+| Startup `validateConfiguration()` legacy-path warnings | **COMPLETED** |
+| `IslandDAO` worth/bank/settings + promote grid persistence | **COMPLETED** |
+| **Batch write coalescing** (worth/bank/settings) | **COMPLETED** — `IslandPersistenceCoalescer` + `island.perf.coalesce-*` + shutdown flush |
+| **Per-block generator ore PDC** | **COMPLETED** — `PersistentDataHolder` on `BlockState` when supported; bounded legacy chunk list fallback |
+| **Ore weight cache invalidation** on `ORE_GENERATOR` upgrade | **COMPLETED** — `invalidateOreWeightsForIsland` + cap 2048 entries |
+| **MigrationScriptRegistry** (Flyway-style named steps) | **COMPLETED** — v14 `idx_island_worth_grid` via registry |
+| GUI full `BaseGUI` migration (~45 files) | **OPEN** (Wardrobe cosmetics largely on BaseGUI; ~34 catalog GUIs remain) |
+| `CosmeticPickerGUI` abstract base | **COMPLETED** |
+| `PowerOrbSkinGUI` / `MinionSkinGUI` → BaseGUI | **COMPLETED** |
+| PAPI `shop_pending_saves` | **COMPLETED** |
+| `HelmetSkinGUI` → `BaseGUI` (`HelmetSkinMainGUI`) | **COMPLETED** |
+| `DeathEffectGUI` → `BaseGUI` (`DeathEffectMainGUI`) | **COMPLETED** |
+| Chest shop lazy hydration | **COMPLETED** — `lazy-load-chest-shops` + `ChestShopDAO.loadAt` + `ensureShopAt` |
+| Chest shop save coalescing | **COMPLETED** — `ChestShopSaveCoalescer` + `flushBatch` + `coalesce-chest-shop-saves` |
+| `BackpackSkinGUI` → `BaseGUI` | **COMPLETED** |
+| `DeathMessageGUI` → `BaseGUI` | **COMPLETED** |
+| PAPI `db_flush_count` | **COMPLETED** |
+| `RuneGUI` → `BaseGUI` (`RuneMainGUI`, `RuneTableGUI`) | **COMPLETED** |
+| SQL migrations from `resources/migrations/*.sql` | **COMPLETED** — `MigrationScriptRegistry.loadFromResources` + `v14_*.sql` |
+| Coalesce load test (150 islands → 1 commit) | **COMPLETED** — `testCoalescedWrites_SingleCommitForManyIslands` |
+| `SkillGUI` → `BaseGUI` | **COMPLETED** |
+| `PetGUI` → `BaseGUI` (`PetMainGUI`, `PetSkinGUI`) | **COMPLETED** |
+| `TagGUI` → `BaseGUI` (`TagMainGUI`) | **COMPLETED** |
+| `WingGUI` → `BaseGUI` (`WingMainGUI`) | **COMPLETED** |
+| PAPI `db_pending_writes` / `pending_coalesced_writes` | **COMPLETED** |
+| Shutdown WAL TRUNCATE (`sqlite-checkpoint-on-disable`) | **COMPLETED** |
+| Default CI / `-Pwith-mockbukkit` profile | **COMPLETED** — profile runs full test suite + `folia.mockbukkit.enabled`; use `mvn test -Pwith-mockbukkit` in CI for MB |
+| Default `mvn test` includes `DatabaseCriticalFlowsTest` | **COMPLETED** — surefire `**/*Test.java` includes |
+| `/isadmin checkpoint` (WAL TRUNCATE before backup) | **COMPLETED** |
+| `DatabaseCriticalFlowsTest` SQLite dialect (replace H2) | **COMPLETED** — in-memory SQLite + `DBOperations` executor fallback when no `Server` |
+| Remaining `DatabaseManager` JDBC (Grid, ChestShop) | **COMPLETED** — `GridDAO` + `ChestShopDAO`; managers delegate (no direct JDBC) |
+| Coalesce flush on async thread | **COMPLETED** — timer on main, flush via `ThreadSafety.runAsync` |
+| Coalesce queue depth warning | **COMPLETED** — `coalesce-pending-warn-threshold` config |
+| SQLite WAL passive checkpoint schedule | **COMPLETED** — `sqlite-checkpoint-interval-hours` + `runSqliteWalCheckpoint()` |
+| Chest shop memory cap (compression) | **COMPLETED** — `max-chest-shops-loaded` bounds in-memory map |
+| Single-transaction coalesced flush | **COMPLETED** — one connection + `executeBatch` + commit in `IslandDAO.flushCoalescedBatch` |
+| SQLite WAL + `synchronous=NORMAL` | **COMPLETED** — `applySqlitePragmas()` + `island.perf.sqlite-wal` |
+| Config-driven ore weight cache cap | **COMPLETED** — `island.perf.max-ore-weight-cache-entries` |
+| Admin `/isadmin flushwrites` | **COMPLETED** — pending count + async flush |
+| Wardrobe pickers → `CosmeticPickerGUI` (Helmet/Backpack/DeathEffect) | **COMPLETED** |
+| `IslandBankGUI` PDC actions + plugin singleton | **COMPLETED** |
+| Chest shop in-memory chunk index (`getShopsInChunk`) | **COMPLETED** |
+| SQL `v15_chest_shops_chunk_index` migration | **COMPLETED** |
+| `DeathMessageGUI` → `CosmeticPickerGUI` variant (glass, back @0) | **COMPLETED** |
+| `IslandSettingsGUI` → `BaseGUI` (`IslandSettingsMainGUI` + PDC toggles) | **COMPLETED** |
+| `ChestShopDAO.loadByChunk` + integration test | **COMPLETED** |
+| Island bank balance in write coalescer | **COMPLETED** (already via `queueBank` in `IslandPersistenceCoalescer`) |
+| `GeneratorGUI` → `BaseGUI` (`GeneratorMainGUI`) | **COMPLETED** |
+| `IslandTopGUI` → `BaseGUI` (`IslandTopMainGUI` + PDC categories) | **COMPLETED** |
+| `IslandBrowseGUI` → `BaseGUI` (`IslandBrowseMainGUI` + PDC visit) | **COMPLETED** |
+| Chest shop chunk-enter hydrate (`loadByChunk`) | **COMPLETED** — `hydrate-shops-on-chunk-enter` + `PlayerMoveEvent` |
+| `/island browse` wired to `IslandBrowseGUI` | **COMPLETED** |
+| `IslandShopGUI` → `BaseGUI` (`IslandShopMainGUI` + PDC purchase flow) | **COMPLETED** |
+| `IslandUpgradeGUI` → `BaseGUI` (`IslandUpgradeMainGUI` + PDC) | **COMPLETED** |
+| `IslandBankGUI` variable-size `BaseGUI` hook | **COMPLETED** — `getInventorySize(Player)` + `IslandBankMainGUI` |
+| Shop chunk hydrate debounce | **COMPLETED** — `hydrate-shops-debounce-ms` (default 500) |
+| Shop chunk hydrate cooldown (post-eviction) | **COMPLETED** — `hydrate-shops-chunk-cooldown-ms` (default 60s); time-based, not permanent set |
+| Island shop purchase write coalescing | **COMPLETED** — `IslandShopPurchaseCoalescer` + `coalesce-island-shop-purchases` + batch flush on disable/`/isadmin flushwrites` |
+| SQL migrations README | **COMPLETED** — `src/main/resources/migrations/README.md` (naming, backup runbook) |
+| PAPI `shop_purchase_pending` | **COMPLETED** |
+| `BoosterGUI` → `BaseGUI` (`BoosterMainGUI` + coordinator) | **COMPLETED** |
+| `PrestigeGUI` → `BaseGUI` (`PrestigeMainGUI` + coordinator) | **COMPLETED** |
+| Shop purchase coalesce warn threshold | **COMPLETED** — `coalesce-shop-purchase-warn-threshold` (default 100) |
+| `/isadmin flushwrites` drains chest shop save coalescer | **COMPLETED** |
+| Auction/Bazaar PDC + holder click routing audit | **COMPLETED** — holder-guarded clicks; nav/bid/confirm on PDC (Bazaar anvil gated by PDC) |
+
+**Latest Progress (this pass):** Booster/Prestige on BaseGUI coordinators; shop purchase queue warnings; admin flush includes chest shop saves; trading GUIs verified PDC+holder. Verify: `mvn test -Dtest=DatabaseCriticalFlowsTest`.
+
+---
+
+## Optimization, Compression & Persistence — Backlog
+
+### Persistence (done / next)
+- **(DONE)** Coalesce high-frequency island writes (worth, bank, settings): latest value per `GridPosition` per flush window; configurable `island.perf.coalesce-island-writes` + `coalesce-flush-interval-seconds`; forced flush on disable.
+- **(DONE)** `saveIslandWorthAsync` / `saveIslandBankBalanceAsync` / `saveIslandSettingsAsync` for tests and admin force-save paths.
+- **(DONE)** WAL mode + `PRAGMA synchronous=NORMAL` for SQLite under coalesced load (`applySqlitePragmas`, `island.perf.sqlite-wal`). **(NEXT)** Document backup window for hosts in Wiki/host guide.
+- **(DONE)** Single-transaction batch flush in `IslandDAO.flushCoalescedBatch` (batched INSERT OR REPLACE + single commit).
+- **(NEXT)** Optional gzip/BLOB snapshot table for cold islands (worth + settings blob) to cut row churn on seasonal archives.
+- **(NEXT)** Event-sourced worth deltas table (`island_worth_deltas`) for audit + replay instead of full recalc-only history.
+
+### Compression (done / next)
+- **(DONE)** Ore generator: block PDC tag `generator_ore` (O(1) anti-cheat check); legacy chunk string list capped at 512 positions per chunk.
+- **(DONE)** Ore weight `ConcurrentHashMap` bounded eviction + prefix invalidation on upgrade.
+- **(NEXT)** Replace chunk string lists entirely once all live chunks have been touched post-upgrade (migration task to strip `generator_ores` chunk keys).
+- **(NEXT)** Bit-packed chunk region mask for generator ores if block PDC unavailable on specific block types.
+- **(DONE)** Config-driven `max-ore-weight-cache-entries` wired from `island.perf` in `IslandOreGenerator` ctor.
+
+### Folia / scheduling (done / next)
+- **(DONE)** Coalesced flush: main-thread timer triggers `ThreadSafety.runAsync(flushCoalescedIslandWrites)` (DB work off region thread).
+- **(NEXT)** Per-island RegionScheduler flush at island center for worth coalesce (spread SQLite I/O across regions).
+- **(DONE)** `/isadmin flushwrites` (alias `flushdb`) + pending queue depth in message.
+
+### Testing / ops (next)
+- **(DONE)** `DatabaseCriticalFlowsTest` uses shared in-memory SQLite; `awaitAsyncWrites()` + async save helpers; run via `mvn test -Dtest=DatabaseCriticalFlowsTest` or `-Pintegration-db`.
+- **(DONE)** Load test (scaled): 150 islands worth/bank/settings coalesced → 1 commit (`testCoalescedWrites_SingleCommitForManyIslands`). **(NEXT)** Scale to 500 in gated benchmark profile.
+- **(DONE)** Load `migrations/v{N}_{name}.sql` from plugin resources into `MigrationScriptRegistry` (JAR + classpath dir scan).
+
+### New suggestions (this pass)
+- **(DONE)** ChestShopDAO extracted; `chest_shops` centralized in `DatabaseManager.createTables()`.
+- **(DONE)** Coalesce metrics: warn when pending ≥ `coalesce-pending-warn-threshold`.
+- **(DONE)** Passive WAL checkpoint on interval (`sqlite-checkpoint-interval-hours`).
+- **(DONE)** PAPI `%foliaskyblock_db_pending_writes%` / `%foliaskyblock_pending_coalesced_writes%` (staff dashboards).
+- **(DONE)** `/isadmin checkpoint` for manual `wal_checkpoint(TRUNCATE)` before host backups (flushes coalesced writes first).
+- **(DONE)** Chest shop chunk index + `loadByChunk` + `hydrateChunkOnPlayerEnter` + per-player debounce (`hydrate-shops-debounce-ms`) + per-chunk cooldown (`hydrate-shops-chunk-cooldown-ms`, default 60s).
+- **Prepared statement cache:** Reuse compiled INSERT statements on the coalescer flush path across ticks (minor CPU win on 500+ island servers).
+- **(DONE)** Island bank persistence: coalesced with worth/settings via `IslandPersistenceCoalescer.queueBank` + single-transaction flush.
+- **Test harness:** Mock `Server` + minimal `AsyncScheduler` in integration tests to exercise the Folia code path, not only executor fallback.
+- **(DONE)** GUI quick win: wardrobe on `CosmeticPickerGUI` (incl. DeathMessage glass variant). **(DONE)** Island hub GUIs complete (Settings, Bank, Browse, Top, Generator, Shop, Upgrade). **(DONE)** Booster/Prestige coordinator + BaseGUI. **(DONE)** Auction/Bazaar PDC+holder audit. **(NEXT)** Bazaar/Auction full `BaseGUI` migration (multi-view/anvil flows remain on legacy holders).
+- **(DONE)** Island shop persistence: one-time purchases via `saveShopPurchase` + **(DONE)** `IslandShopPurchaseCoalescer` batch flush (`coalesce-island-shop-purchases`).
+- **Island Top persistence:** Cache last page/category per player in PDC session map (already in-memory); optional Redis for cross-restart browse/top state on proxy networks.
+- **CosmeticPickerGUI:** Optional `onBackFromPicker` override documented for non-wardrobe hubs; Wardrobe hub single entry GUI (reduce 12 coordinator classes).
+- **(DONE)** Shop write coalescing: `ChestShopSaveCoalescer` + `ChestShopDAO.flushBatch` + `island.perf.coalesce-chest-shop-saves`.
+- **(DONE)** Lazy shop hydration: `island.perf.lazy-load-chest-shops` + `ChestShopManager.ensureShopAt` (DB row on sign interact; memory cap still applies).
+- **(DONE)** CI default: `DatabaseCriticalFlowsTest` runs with standard `mvn test` (`**/*Test.java` surefire includes). `-Pintegration-db` still isolates DB tests only.
+
+---
+
 **Project Goal (Authoritative Design Spec):**  
 A high-performance, Play-to-Win Skyblock plugin for the latest Folia API. It must be heavily optimized and compressed for large servers (hundreds of concurrent players and islands). Every system must use Folia schedulers (GlobalRegionScheduler, RegionScheduler, EntityScheduler, AsyncScheduler) wherever possible.
 
@@ -1126,77 +1250,29 @@ All mvn BUILD SUCCESS. Spawn now has ample, detailed NPC areas + overall much ri
 
 ---
 
-## June 4, 2026 — Session Status Tracker
-
-Use this section to mark work done without scrolling the full history above.
-
-| Item | Status |
-|------|--------|
-| `config.yml` `island.party/worth/perf/upkeep` nesting fix | **COMPLETED** |
-| Ore generator listener merge (`IslandOreGenerator`) | **COMPLETED** |
-| Generator ore PDC namespace + legacy read | **COMPLETED** |
-| Startup config validation (mis-nest + empty worth) | **COMPLETED** |
-| `IslandDAO.getIslandUpgradeLevel` + DM delegate | **COMPLETED** |
-| Minion persistence → `IslandDAO` | **COMPLETED** |
-| `IslandUpgradeGUI` → GUIUtils + PDC | **COMPLETED** |
-| `IslandCommand` promote DB grid args | **COMPLETED** |
-| `DatabaseCriticalFlowsTest` 10/10 green (SQLite in-memory) | **COMPLETED** |
-| IslandDAO async persistence (`CompletableFuture` saves) | **COMPLETED** |
-| `DatabaseManager` H2/SQLite driver selection + `sqlSurrogateKeyColumn()` | **COMPLETED** |
-| `DBOperations.isH2Dialect()` + IslandDAO MERGE for H2 upserts | **COMPLETED** (partial dialect bridge) |
-| Seasonal reset Option B | **COMPLETED** (prior pass) |
-| Full `DatabaseManager` DAO extraction | **IN PROGRESS** (~85 direct SQL sites remain) |
-| Flyway / formal migrations | **OPEN** |
-| PAPI paginated tops | **OPEN** |
-| Custom schematics (WorldEdit) | **OPEN** |
-| GUI → `BaseGUI` (remaining ~45 files) | **OPEN** |
-| Benchmark 500-island CI script | **OPEN** |
-
----
-
-## Optimization, Compression & Persistence — Backlog (Prioritized)
-
-Suggestions for large Folia servers (100–1000+ islands). Mark **DONE** when implemented; move bullet to session tracker above.
-
-### Persistence (data integrity & I/O)
-
-1. **DONE (partial):** Grid PK (`grid_x`, `grid_z`, `dimension`) for worth/bank/settings/warps/ratings — keep eliminating string `island_key` drift in new code.
-2. **DONE (partial):** `saveIslandWorth`, `saveIslandCollection`, `saveIslandBankBalance`, `saveIslandSettings` now return `CompletableFuture<Boolean>` (tests can `.join()`; production may fire-and-forget via managers).
-3. **Batch write coalescing:** Debounce worth/settings/balance dirty flags — flush at most once per island per 30–60s unless shutdown (reduces SQLite write storms) (**OPEN**).
-4. **Generator ore PDC:** Move from chunk string lists to **per-block PDC** (`generator_ore=true`) — O(1) lookup, no list growth on busy gens (**OPEN**; legacy `foliasb` chunk lists still read).
-5. **Snapshot tables for tops:** Materialized `island_worth_snapshots` + nightly/async refresh job instead of scanning all islands for leaderboards (**OPEN**; aggregates columns exist).
-6. **Flyway:** Versioned migrations with checksum validation; stop hand-editing `DatabaseMigration` for production deploys (**OPEN**).
-7. **Minion rows:** Store `GridPosition` columns on `island_minions` instead of opaque `island_key` strings (**OPEN**).
-8. **Seasonal grant audit:** `player_seasonal_grants` table + CosmeticDAO facade for event cosmetics (**OPEN**; wipe path done).
-
-### Compression (memory & CPU)
-
-1. **DONE:** Bounded CHM + periodic `cleanupCaches` on furniture/structure/trails/minion/hologram/auction/island managers.
-2. **DONE:** Admin inspect GUI — paged sublists (tags, collections, furniture, punishments, overhead, emotes, skills, puns).
-3. **Worth hot path:** Keep event-driven `adjustBlockWorth`; set `island.worth.recalc-interval-minutes: 0` on 500+ island servers (**config documented**).
-4. **Ore weight cache:** Invalidate `effectiveOreWeightsCache` on `IslandUpgradeEvent` for `ORE_GENERATOR` only (**OPEN**).
-5. **ItemSerializer:** Compress wardrobe/crate payloads with gzip threshold (>512 bytes) before BLOB store (**OPEN**).
-6. **GUI item build:** Shared `GuiPageCache` (TTL 5s) for browse/top/inspect list pages — avoid rebuilding identical skull rows (**OPEN**).
-7. **Nametag/scoreboard:** Refresh player teams on dirty flag only, not every tab tick (**OPEN**).
-
-### Folia / scheduling optimizations
-
-1. **DONE:** `ThreadSafety` Global/Region/Entity schedulers with Paper fallback.
-2. **DONE:** Upkeep + worth recalc caps (`max-islands-per-recalc-tick`) + per-island `runAtLocation` for tax.
-3. **Global tops refresh:** Stagger `IslandTopGUI` / rating tops across island centers via RegionScheduler, not one GlobalRegion loop (**OPEN**; `topsDirty` flags exist).
-4. **Hologram updates:** EntityScheduler per display entity only when line content changes (hash lines) (**OPEN**).
-5. **Minion production:** Tick only loaded minion chunks; sleep minions with no viewers within 64 blocks (**OPEN**).
-
-### Testing & ops
-
-1. **DONE:** Critical flows tests use in-memory **SQLite** (production dialect) + `isFolia=false`; H2 still supported via `isH2Dialect()` MERGE where needed.
-2. **CI profile:** `mvn test` default excludes MockBukkit/Registry tests; `-Pwith-mockbukkit` for integration (**OPEN** — document in pom).
-3. **Benchmark artifact:** JMH or scripted 500-island create + worth adjust + inspect open latency report (**OPEN**).
-4. **Config migrate on enable:** Auto-rewrite `seasonal.party` → `island.party` once with backup (**OPEN** — validation warns today).
-5. **DAO dialect helper:** Centralize `INSERT OR REPLACE` vs H2 `MERGE` in `BaseDAO.upsert(...)` — apply to all IslandDAO/CosmeticDAO writes (**IN PROGRESS** — `saveIsland` only).
-
----
-
 **New further optimization and compression suggestions (added/updated this pass, to implement in future cycles):**
-
-*Superseded by the structured **Optimization, Compression & Persistence — Backlog** section above. Use that list going forward.*
+- **Shared `pet_action` PDC namespace:** `PetMainGUI` and `PetSkinGUI` reuse the same NamespacedKey; consider a single coordinator action router if more pet sub-views are added (rename, filter).
+- **BaseGUI click-type hook:** Add optional `InventoryClickEvent` to `handleAction` so pet/tag right-click flows do not need a full `onInventoryClick` override per GUI.
+- **Backup runbook:** Document host workflow: `/isadmin flushwrites` → `/isadmin checkpoint` → copy `plugins/FoliaSkyblock/skyblock.db` (avoid copying `-wal`/`-shm` after TRUNCATE).
+- **(DONE)** Coalesce + checkpoint on disable: `DatabaseManager.close()` flushes coalescer then TRUNCATE when `island.perf.sqlite-checkpoint-on-disable` (default true).
+- **Wardrobe hub GUI:** Single `WardrobeHubGUI` on BaseGUI routing to Pet/Tag/Wing sub-GUIs (dedupe back-nav boilerplate).
+- **Tag remove bugfix note:** Legacy `TagGUI` remove button lacked PDC; `TagMainGUI` uses `REMOVE_ACTIVE` nav button (regression test candidate).
+- **Pet skin GUI pagination:** If `PetSkin` enum grows past 27 slots, enable BaseGUI page slicing on `PetSkinGUI` without custom title logic.
+- **(DONE)** Migration SQL convention: `migrations/README.md` for hosts/devs (`v{N}_{snake_name}.sql`, backup runbook).
+- **(DONE)** Coalesce flush metrics: PAPI `%foliaskyblock_db_flush_count%` / `%foliaskyblock_coalesced_flush_count%`.
+- **Prepared statement reuse:** Hold persistent `PreparedStatement` refs on `IslandDAO` for coalesced batch paths (worth/bank/settings) across flushes — reset batch instead of re-prepare each tick.
+- **Chunk-scoped shop index:** Optional `world,chunkX,chunkZ` column + query on lazy hydrate to avoid full-table `loadAt` scan at scale (add v15 SQL migration).
+- **(DONE)** Shop save coalescing + PAPI `%foliaskyblock_shop_pending_saves%`.
+- **(DONE)** `CosmeticPickerGUI` abstract layout (header/remove/grid/wardrobe back).
+- **Migrate legacy pickers:** HelmetSkinMainGUI, BackpackSkinMainGUI, DeathEffectMainGUI → extend `CosmeticPickerGUI` (delete ~200 duplicate lines).
+- **Island cold snapshot:** `island_snapshots` table with gzip BLOB (worth + settings JSON) for seasonal archive tier; flush coalescer writes cold rows when island idle >24h.
+- **Cosmetic GUI template:** Extract `CosmeticPickerMainGUI` abstract base (header, NONE slot 18, grid 19–44, wardrobe back) to dedupe Backpack/Minion/PowerOrb migrations.
+- **(DONE)** Per-chunk chest shop hydrate cooldown (`hydrate-shops-chunk-cooldown-ms`, default 60s).
+- **(DONE)** Island shop purchase coalescer + PAPI `%foliaskyblock_shop_purchase_pending%` + `/isadmin flushwrites` drains queue.
+- **(DONE)** Shop purchase coalesce warn threshold (`coalesce-shop-purchase-warn-threshold`).
+- **(NEXT)** Worth delta table + gzip cold snapshots (see Optimization backlog § Persistence).
+- **(NEXT)** Bazaar/Auction full `BaseGUI` migration (split browse vs anvil/confirm sub-GUIs; largest remaining GUI bucket).
+- **(DONE)** Booster/Prestige `*MainGUI` + coordinator listeners registered in `FoliaSkyblock`.
+- **(NEXT)** `TradingGUI` shared helper: `createTradingNav` + `requireHolder` for Bazaar browse-only view extraction.
+- **(from main merge)** Minion persistence retained in `IslandDAO`; `IslandProtectionListener` on main preserved via merge.
+- **(NEXT)** `DatabaseManager` H2 `newDBOps` / `sqlSurrogateKeyColumn()` bridge from main (if H2 tests re-enabled).

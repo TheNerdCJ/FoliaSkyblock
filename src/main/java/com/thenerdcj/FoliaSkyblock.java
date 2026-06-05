@@ -90,6 +90,8 @@ public class FoliaSkyblock extends JavaPlugin {
     // Island Shop
     private IslandShopManager islandShopManager;
     private IslandShopGUI islandShopGUI;
+    private IslandBankGUI islandBankGUI;
+    private IslandSettingsGUI islandSettingsGUI;
 
     // Prestige System
     private PrestigeManager prestigeManager;
@@ -200,6 +202,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private PlayerSkillManager playerSkillManager;
     private SkillGUI skillGUI;
     private IslandTopGUI islandTopGUI;
+    private IslandBrowseGUI islandBrowseGUI;
 
     // ==================== GUI INSTANCES ====================
     private TradeGUI tradeGUI;
@@ -269,6 +272,8 @@ public class FoliaSkyblock extends JavaPlugin {
         this.boosterGUI = new BoosterGUI(this);
         this.islandShopManager = new IslandShopManager(this);
         this.islandShopGUI = new IslandShopGUI(this);
+        this.islandBankGUI = new IslandBankGUI(this);
+        this.islandSettingsGUI = new IslandSettingsGUI(this);
 
         // Prestige + Border + Crates + Cosmetics
         this.prestigeManager = new PrestigeManager(this);
@@ -567,6 +572,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.playerSkillManager = new PlayerSkillManager(this);
         this.skillGUI = new SkillGUI(this);
         this.islandTopGUI = new IslandTopGUI(this);
+        this.islandBrowseGUI = new IslandBrowseGUI(this);
 
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.DeathEffectListener(this), this);
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.ChatBubbleListener(this), this);
@@ -630,6 +636,7 @@ public class FoliaSkyblock extends JavaPlugin {
     @Override
     public void onDisable() {
         if (hologramManager != null) hologramManager.cleanup();
+        if (chestShopManager != null) chestShopManager.flushCoalescedShopSaves();
         if (databaseManager != null) databaseManager.close();
         MessageUtil.info(getLogger(), "§e[FoliaSkyblock] Plugin disabled.");
     }
@@ -858,6 +865,12 @@ public class FoliaSkyblock extends JavaPlugin {
         pm.registerEvents(new DimensionIslandListener(this), this);
         pm.registerEvents(new TPAListener(this, tpaListGUI), this);
         pm.registerEvents(auctionGUI, this);
+        if (boosterGUI != null) {
+            pm.registerEvents(boosterGUI, this);
+        }
+        if (prestigeGUI != null) {
+            pm.registerEvents(prestigeGUI, this);
+        }
         pm.registerEvents(new com.thenerdcj.listener.WardrobeListener(this), this);
         pm.registerEvents(new com.thenerdcj.listener.ShopTokenListener(this), this);
         pm.registerEvents(new com.thenerdcj.listener.SlayerGearListener(this), this);
@@ -890,6 +903,8 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.mission.MissionManager getMissionManager() { return missionManager; }
     public com.thenerdcj.booster.BoosterManager getBoosterManager() { return boosterManager; }
     public com.thenerdcj.gui.IslandShopGUI getIslandShopGUI() { return islandShopGUI; }
+    public com.thenerdcj.gui.IslandBankGUI getIslandBankGUI() { return islandBankGUI; }
+    public com.thenerdcj.gui.IslandSettingsGUI getIslandSettingsGUI() { return islandSettingsGUI; }
     public com.thenerdcj.manager.IslandShopManager getIslandShopManager() { return islandShopManager; }
     public com.thenerdcj.manager.PrestigeManager getPrestigeManager() { return prestigeManager; }
     public com.thenerdcj.gui.PrestigeGUI getPrestigeGUI() { return prestigeGUI; }
@@ -1050,6 +1065,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.skills.PlayerSkillManager getPlayerSkillManager() { return playerSkillManager; }
     public SkillGUI getSkillGUI() { return skillGUI; }
     public com.thenerdcj.gui.IslandTopGUI getIslandTopGUI() { return islandTopGUI; }
+    public com.thenerdcj.gui.IslandBrowseGUI getIslandBrowseGUI() { return islandBrowseGUI; }
 
     // ==================== CONFIG VALIDATION ====================
     private void validateConfiguration() {
