@@ -8,6 +8,7 @@ import com.thenerdcj.island.Island;
 import com.thenerdcj.island.Island.Skill;
 import com.thenerdcj.island.IslandUpgrade;
 import com.thenerdcj.mission.Mission;
+import com.thenerdcj.quest.Quest;
 import com.thenerdcj.util.MessageUtil;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -465,6 +466,7 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS island_museum (island_key TEXT PRIMARY KEY, donated TEXT DEFAULT '', tokens INTEGER DEFAULT 0)", // task batch: full persist for museum
                 "CREATE TABLE IF NOT EXISTS island_museum_donations (island_key TEXT, material TEXT, count INTEGER DEFAULT 0, PRIMARY KEY (island_key, material))", // per-donation rows + count for zero-dep (fallback for Gson provided scope issues on non-standard servers)
                 "CREATE TABLE IF NOT EXISTS island_missions (id TEXT PRIMARY KEY, island_key TEXT, owner_uuid TEXT, type TEXT, objective TEXT, target_material TEXT, target INTEGER, progress INTEGER, reward_money INTEGER, reward_xp INTEGER, reward_item_base64 TEXT, reward_booster_type TEXT, reward_booster_duration INTEGER, completed BOOLEAN, claimed BOOLEAN, created_at INTEGER, expires_at INTEGER, title TEXT, description TEXT)",
+                "CREATE TABLE IF NOT EXISTS island_quests (island_key TEXT, quest_id TEXT, type TEXT, category TEXT, progress INTEGER DEFAULT 0, completed BOOLEAN DEFAULT 0, claimed BOOLEAN DEFAULT 0, expiry_time INTEGER, title TEXT, description TEXT, target INTEGER, reward_xp INTEGER, reward_money INTEGER, PRIMARY KEY(island_key, quest_id))",
                 "CREATE TABLE IF NOT EXISTS island_boosters (island_key TEXT, booster_type TEXT, multiplier REAL, expires_at INTEGER, PRIMARY KEY(island_key, booster_type))",
                 "CREATE TABLE IF NOT EXISTS auctions (id TEXT PRIMARY KEY, seller_uuid TEXT, item_base64 TEXT, price REAL, end_time INTEGER, sold BOOLEAN DEFAULT 0, buyer_uuid TEXT)",
                 "CREATE TABLE IF NOT EXISTS bazaar_orders (id TEXT PRIMARY KEY, player_uuid TEXT, material TEXT, amount INTEGER, price_per_unit REAL, buy_order BOOLEAN, created_at INTEGER, filled BOOLEAN DEFAULT 0)",
@@ -2098,6 +2100,81 @@ public class DatabaseManager {
                 }
             } catch (SQLException ignored) {}
             return data;
+        }, executor);
+    }
+
+    // ==================== QUEST PERSISTENCE ====================
+
+    public CompletableFuture<Void> saveIslandQuest(String islandKey, Quest quest) {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO island_quests (island_key, quest_id, type, category, progress, completed, claimed, expiry_time, title, description, target, reward_xp, reward_money) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, islandKey);
+                ps.setString(2, quest.getId());
+                ps.setString(3, quest.getType().name());
+                ps.setString(4, quest.getCategory().name());
+                ps.setInt(5, quest.getProgress());
+                ps.setBoolean(6, quest.isCompleted());
+                ps.setBoolean(7, quest.isClaimed());
+                ps.setLong(8, quest.getExpiryTime());
+                ps.setString(9, quest.getTitle());
+                ps.setString(10, quest.getDescription());
+                ps.setInt(11, quest.getTarget());
+                ps.setInt(12, quest.getRewardXp());
+                ps.setInt(13, quest.getRewardMoney());
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Quest] Failed to save quest for " + islandKey + ": " + e.getMessage());
+            }
+        }, executor);
+    }
+
+    public CompletableFuture<List<Quest>> loadIslandQuests(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Quest> list = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT * FROM island_quests WHERE island_key = ?")) {
+                ps.setString(1, islandKey);
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    Quest.QuestType type = Quest.QuestType.valueOf(rs.getString("type"));
+                    Quest.QuestCategory category = Quest.QuestCategory.valueOf(rs.getString("category"));
+                    Quest q = new Quest(
+                            rs.getString("quest_id"),
+                            rs.getString("title"),
+                            rs.getString("description"),
+                            category,
+                            type,
+                            rs.getInt("progress"),
+                            rs.getInt("target"),
+                            rs.getInt("reward_xp"),
+                            rs.getInt("reward_money"),
+                            rs.getBoolean("completed"),
+                            rs.getLong("expiry_time")
+                    );
+                    q.setClaimed(rs.getBoolean("claimed"));
+                    list.add(q);
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Quest] Failed to load quests for " + islandKey + ": " + e.getMessage());
+            }
+            return list;
+        }, executor);
+    }
+
+    public CompletableFuture<Void> deleteIslandQuest(String islandKey, String questId) {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "DELETE FROM island_quests WHERE island_key = ? AND quest_id = ?")) {
+                ps.setString(1, islandKey);
+                ps.setString(2, questId);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Quest] Failed to delete quest " + questId + " for " + islandKey + ": " + e.getMessage());
+            }
         }, executor);
     }
 

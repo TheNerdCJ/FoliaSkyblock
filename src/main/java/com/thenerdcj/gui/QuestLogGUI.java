@@ -70,8 +70,16 @@ public class QuestLogGUI implements Listener {
                     if (slot >= 44) break;
 
                     Material material = getQuestMaterial(quest.getCategory());
-                    String status = quest.isCompleted() ? "§a§lCOMPLETED" :
-                            (quest.isExpired() ? "§c§lEXPIRED" : "§e§lIN PROGRESS");
+                    String status;
+                    if (quest.isClaimed()) {
+                        status = "§2§lCLAIMED";
+                    } else if (quest.isCompleted()) {
+                        status = "§a§lREADY TO CLAIM";
+                    } else if (quest.isExpired()) {
+                        status = "§c§lEXPIRED";
+                    } else {
+                        status = "§e§lIN PROGRESS";
+                    }
 
                     gui.setItem(slot, createQuestItem(material, quest, status));
                     slot++;
@@ -80,6 +88,12 @@ public class QuestLogGUI implements Listener {
 
                 gui.setItem(49, createItem(Material.EMERALD, "§a§lGenerate New Quests",
                         "§7Click to get new daily/weekly quests"));
+
+                // Claim All Ready button - supports true multi-tasking for onboarding quests
+                gui.setItem(50, createItem(Material.GOLD_INGOT, "§6§lClaim All Ready",
+                        "§7Claim rewards for every completed quest",
+                        "§7You can work on many quests at once",
+                        "§7and claim them independently."));
 
                 // Modernized filler
                 ItemStack glass = GUIUtils.createItem(Material.GRAY_STAINED_GLASS_PANE, " ");
@@ -114,7 +128,15 @@ public class QuestLogGUI implements Listener {
         lore.add("§7Reward: §a" + quest.getRewardXp() + " XP §7+ §e$" + quest.getRewardMoney());
         lore.add("");
         lore.add(status);
-        lore.add(quest.isCompleted() && !quest.isClaimed() ? "§aClick to claim reward!" : "§7Complete to claim reward");
+        if (quest.isCompleted() && !quest.isClaimed()) {
+            lore.add("§a§lClick to claim reward!");
+            lore.add("§7(Quests are multi-task — claim anytime,");
+            lore.add("§7even while working on others)");
+        } else if (quest.isClaimed()) {
+            lore.add("§2§lReward Claimed");
+        } else {
+            lore.add("§7Complete to claim reward");
+        }
 
         // Base via GUIUtils (modernized)
         ItemStack item = GUIUtils.createItem(material, "§e" + quest.getTitle(), lore.toArray(new String[0]));
@@ -175,6 +197,25 @@ public class QuestLogGUI implements Listener {
             plugin.getThreadSafety().runOnMainThread(() -> {
                 player.closeInventory();
                 this.open(player, islandId);
+            });
+            return;
+        }
+
+        // Claim All Ready - true multi-task support for onboarding
+        if (itemName.contains("Claim All Ready")) {
+            if (plugin.getQuestManager() != null) {
+                int claimed = plugin.getQuestManager().claimAllReady(islandId, player);
+                if (claimed > 0) {
+                    player.sendMessage("§a§lClaimed " + claimed + " quest(s)!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+                } else {
+                    player.sendMessage("§7No quests ready to claim right now.");
+                    player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                }
+            }
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                player.closeInventory();
+                this.open(player, islandId); // refresh to show updated state
             });
             return;
         }

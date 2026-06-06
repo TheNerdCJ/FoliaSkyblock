@@ -65,8 +65,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * 4. DUPES (shulker, hopper cross-claim, item dupe):
  *    - Shulker place count tracking.
  *    - recordHopperTransfer for cross-claim (different owner islands) or spawn/unclaimed.
- *    - recentItemGains for rapid item actions.
+ *    - recentItemGains for excessive item gains (total items summed over 30s window, not count of actions).
  *    - Flags "Shulker Box Duplication Pattern (common skyblock dupe)".
+ *    - lastDropSourceTime + recentMobKillTime (with configurable grace windows in anticheat.yml) suppress
+ *      "Very Rapid Item Pickup on Island" false positives during normal farming (crop harvesting like wheat/potatoes/carrots
+ *      in 9x9+ areas, mining drops, post-harvest chest collection). Recent breaks give 60s grace by default (measured from
+ *      most recent break) so legit collection of scattered drops after harvesting doesn't flag.
  *
  * 5. GENERATOR ABUSE / MACRO on custom gens:
  *    - IslandOreGenerator levels affect rates; anti-cheat aware (lower suspicion on high level gens? but still monitor).
@@ -147,6 +151,13 @@ public class AntiCheatManager {
     private long itemRapidThresholdMs;
     private int rapidItemViolationWeight;
 
+    // Grace windows for suppressing "Very Rapid Item Pickup" false positives on own island.
+    // Farming (e.g. breaking many potato/carrot crops then collecting the drops or emptying collection chests)
+    // involves bursts of item pickups/clicks that can be <200ms apart. We give a generous window after
+    // the player's last block break so normal harvesting + loot collection doesn't flag.
+    private long recentBlockBreakGraceMs;
+    private long recentMobKillGraceMs;
+
     // Neural detector is experimental — disabled by default after Tier 3 review
     private boolean neuralDetectorEnabled;
 
@@ -164,8 +175,11 @@ public class AntiCheatManager {
 
     // Dupe / item
     private final Map<UUID, Long> lastItemActionTime = new ConcurrentHashMap<>();
-    private final Map<UUID, List<Long>> recentItemGains = new ConcurrentHashMap<>();
+    private final Map<UUID, List<long[]>> recentItemGains = new ConcurrentHashMap<>();  // [time, amount]
     private final Map<UUID, Integer> shulkerPlaceCount = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> recentMobKillTime = new ConcurrentHashMap<>();
+    private int itemGainThreshold = 1000;  // total items in window before flagging (raised for legit farms/chests)
+    // lastBlockBreakTime (and recentMobKill) are also used as grace for rapid pickup suppression on islands (see recordItemTransaction)
 
     // XP Play-to-Win
     private final Map<UUID, List<Long>> recentXPGains = new ConcurrentHashMap<>();
@@ -186,6 +200,11 @@ public class AntiCheatManager {
     // === NEW: Fastbreak / Fastplace tracking ===
     private final Map<UUID, Long> lastBlockBreakTime = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastBlockPlaceTime = new ConcurrentHashMap<>();
+
+    // Separate timer for "legitimate drop source" (block breaks that produce items on ground).
+    // Used for generous pickup grace during farming (e.g. harvesting a 9x9+ potato plot and then
+    // collecting the many scattered drops). This is distinct from lastBlockBreakTime (used for fastbreak detection).
+    private final Map<UUID, Long> lastDropSourceTime = new ConcurrentHashMap<>();
 
     public AntiCheatManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -225,6 +244,10 @@ public class AntiCheatManager {
 
         itemRapidThresholdMs = config.getLong("dupe.item-rapid-threshold-ms", 400L);
         rapidItemViolationWeight = config.getInt("dupe.rapid-item-violation-weight", 2);
+        itemGainThreshold = config.getInt("dupe.item-gain-threshold", 1000);  // total items gained in 30s window
+
+        recentBlockBreakGraceMs = config.getLong("dupe.recent-block-break-grace-ms", 60000L);
+        recentMobKillGraceMs = config.getLong("dupe.recent-mob-kill-grace-ms", 8000L);
 
         neuralDetectorEnabled = config.getBoolean("neural-detector.enabled", false); // Disabled by default after Tier 3 review
 
@@ -241,13 +264,18 @@ public class AntiCheatManager {
                 Long last = lastViolationTime.get(entry.getKey());
                 return last != null && (now - last) > (violationDecaySeconds * 1000L);
             });
-            recentItemGains.values().forEach(list -> list.removeIf(ts -> now - ts > 30000));
+            recentItemGains.values().forEach(list -> list.removeIf(arr -> now - arr[0] > 30000));
             recentXPGains.values().forEach(list -> list.removeIf(ts -> now - ts > xpWindowMs));
             recentQuestGains.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
             recentCollectionDiscovers.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
             recentHousingPlaces.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
             recentMinionPlaces.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
             recentEnchantProcs.values().forEach(list -> list.removeIf(ts -> now - ts > generalWindowMs));
+            recentMobKillTime.entrySet().removeIf(entry -> now - entry.getValue() > 10000L);
+            lastBlockBreakTime.entrySet().removeIf(entry -> now - entry.getValue() > 60000L);
+            lastBlockPlaceTime.entrySet().removeIf(entry -> now - entry.getValue() > 60000L);
+            lastItemActionTime.entrySet().removeIf(entry -> now - entry.getValue() > 60000L);
+            lastDropSourceTime.entrySet().removeIf(entry -> now - entry.getValue() > 60000L);
             shulkerPlaceCount.clear();
         }, 12000L, 12000L);
     }
@@ -366,6 +394,7 @@ public class AntiCheatManager {
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
         lastBlockBreakTime.put(uuid, now);
+        lastDropSourceTime.put(uuid, now);  // for generous pickup grace during crop harvesting / drop collection
 
         PlayerBehaviorProfile profile = profiles.computeIfAbsent(uuid, k -> new PlayerBehaviorProfile(uuid));
         profile.recordBlockBreak(block.getType());
@@ -424,16 +453,30 @@ public class AntiCheatManager {
 
         if (lastAction != null && (now - lastAction) < threshold) {
             // Rapid item actions (pickup/drop/inv) are common in legit play:
-            // - Farming mobs/blocks that drop multiple items close together
-            // - Quickly collecting several ground items
+            // - Farming mobs/blocks that drop multiple items close together (e.g. after killing a mob, or mining with shovel/pick)
+            // - Quickly collecting several ground items from own breaks
             // - Normal inventory management
             // Only treat as high-severity dupe risk in spawn protected area.
-            // On own island, much more lenient (or use lower weight).
+            // On own island, much more lenient (suppress for recent mob kills or block breaks).
             if (isInSpawnProtectedArea(player.getLocation())) {
                 flagViolation(player, "Rapid Item Manipulation (Possible Dupe - ruins economy/trading)", rapidItemViolationWeight);
             } else if (isOnOwnIsland(player)) {
-                // Legit farming on your own island — only light flag if extremely spammy
-                if ((now - lastAction) < (threshold / 2)) {  // e.g. <200ms is still very fast even for legit
+                // Legit farming on your own island — only light flag if extremely spammy.
+                // Use lastDropSourceTime (updated on every block break) with a generous default grace (60s).
+                // This covers harvesting a full 9x9 (or larger) wheat/potato/carrot plot and then spending time
+                // walking around collecting the many ground items (multiple drops per crop block, e.g. wheat + seeds), or
+                // rapidly shift-clicking the yield out of farm chests/storage after the harvest.
+                // A single crop break can produce several Item entities that get picked up in <100ms bursts.
+                // Harvesting + gathering a 9x9 can take 30-60s+; the grace is from the most recent break.
+                // Without sufficient grace, normal post-harvest collection triggers false "Very Rapid Item Pickup".
+                Long lastKill = recentMobKillTime.get(uuid);
+                Long lastSource = lastDropSourceTime.get(uuid);
+                if ( (lastKill != null && (now - lastKill) < recentMobKillGraceMs) ||
+                     (lastSource != null && (now - lastSource) < recentBlockBreakGraceMs) ) {
+                    // Suppress: normal farming (hoe on crops, shovel on dirt, etc.) legitimately creates ground drops
+                    // that are picked up very quickly. Collection after clearing a plot can easily take 10-30s.
+                    // The dedicated lastDropSourceTime + long grace prevents false positives on real 9x9+ farms.
+                } else if ((now - lastAction) < (threshold / 2)) {  // e.g. <200ms is still very fast even for legit
                     flagViolation(player, "Very Rapid Item Pickup on Island", Math.max(1, rapidItemViolationWeight - 1));
                 }
             } else {
@@ -443,15 +486,29 @@ public class AntiCheatManager {
         lastItemActionTime.put(uuid, now);
 
         if (itemCountDelta > 0) {
-            recentItemGains.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
-            List<Long> gains = recentItemGains.get(uuid);
-            // The >25 check is over a rolling 30s window (cleaned in task). Legit high-volume farms can hit this,
-            // but it's a secondary signal after the time check.
-            if (gains.size() > 30) {  // Slightly raised from 25 for more headroom on busy farms
+            long[] entry = new long[] { now, itemCountDelta };
+            recentItemGains.computeIfAbsent(uuid, k -> new ArrayList<>()).add(entry);
+            List<long[]> gains = recentItemGains.get(uuid);
+            // Track total items gained (not just # of transactions) over 30s rolling window.
+            // Legit play (cobble gens, harvesting, chest collects, farms) can produce hundreds quickly.
+            // Dupe would be sudden thousands without visible source. Configurable via anticheat.yml dupe.item-gain-threshold (default 1000).
+            // Secondary signal after the rapid time check.
+            long totalGained = 0;
+            for (long[] g : gains) totalGained += g[1];
+            if (totalGained > itemGainThreshold) {
                 flagViolation(player, "Excessive Item Gain (Possible Duplication - bypasses progression)", 5);
                 gains.clear();
             }
         }
+    }
+
+    /**
+     * Records that the player recently killed a mob.
+     * Used to suppress false-positive "Very Rapid Item Pickup" flags when legitimately collecting mob drops.
+     */
+    public void recordMobKill(Player player) {
+        if (!enabled || player == null) return;
+        recentMobKillTime.put(player.getUniqueId(), System.currentTimeMillis());
     }
 
     public void checkShulkerDuplication(Player player, ItemStack item) {
@@ -893,12 +950,14 @@ public class AntiCheatManager {
         recentXPGains.remove(uuid);
         lastBlockBreakTime.remove(uuid);
         lastBlockPlaceTime.remove(uuid);
+        lastDropSourceTime.remove(uuid);
         staffBypassPlayers.remove(uuid);
         recentQuestGains.remove(uuid);
         recentCollectionDiscovers.remove(uuid);
         recentHousingPlaces.remove(uuid);
         recentMinionPlaces.remove(uuid);
         recentEnchantProcs.remove(uuid);
+        recentMobKillTime.remove(uuid);
     }
 
     // ==================== ADMIN DEBUG EXPOSURE ====================
@@ -951,7 +1010,7 @@ public class AntiCheatManager {
     }
 
     // ==================== TASK 6: EXPANDED HEURISTICS + NEURAL SAMPLES ====================
-    // New for museum/minion/schematic abuse (from logs + popular YT dupe videos for expanded features).
+    // New for museum/minion abuse (from logs + popular YT dupe videos for expanded features).
     // Neural: add training samples in test + runtime profile updates.
     public boolean isFlaggedForMinionMacro(Player player, int placedThisMinute) {
         if (placedThisMinute > 15) {
@@ -963,10 +1022,5 @@ public class AntiCheatManager {
 
     public void reportMuseumDonateAbuse(Player player, int count) {
         if (count > 8) flagViolation(player, "Museum donate spam/exploit (task 4)", 3);
-    }
-
-    public boolean isFlaggedForSchematicAbuse(Player player) {
-        // Hook from generator if schematics on; rate limit pastes.
-        return false;
     }
 }

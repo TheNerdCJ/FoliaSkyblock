@@ -24,21 +24,12 @@
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
-        <!-- PlaceholderAPI for task 2 expansion (placeholders for tops, balances, levels, worth - common in Iridium/Superior servers) -->
-        <repository>
-            <id>placeholderapi</id>
-            <url>https://repo.extendedclip.com/content/repositories/placeholderapi/</url>
-        </repository>
         <!-- Required for MockBukkit -->
         <repository>
             <id>jitpack.io</id>
             <url>https://jitpack.io</url>
         </repository>
-        <!-- EngineHub for WorldEdit (schematic support) -->
-        <repository>
-            <id>enginehub</id>
-            <url>https://maven.enginehub.org/repo/</url>
-        </repository>
+        <!-- No WorldEdit/EngineHub repo needed (schematic support completely removed) -->
     </repositories>
 
     <dependencies>
@@ -47,14 +38,6 @@
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
             <version>${paper.api.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- PlaceholderAPI (task 2: expansion for %f oliaskyblock_*% stats - tops/balances/levels/worth. softdepend in plugin.yml) -->
-        <dependency>
-            <groupId>me.clip</groupId>
-            <artifactId>placeholderapi</artifactId>
-            <version>2.11.5</version>
             <scope>provided</scope>
         </dependency>
 
@@ -104,13 +87,7 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- WorldEdit / FAWE for optional schematic loading (for complex spawn hubs and islands) -->
-        <dependency>
-            <groupId>com.sk89q.worldedit</groupId>
-            <artifactId>worldedit-bukkit</artifactId>
-            <version>7.2.15</version>
-            <scope>provided</scope>
-        </dependency>
+        <!-- No WorldEdit dependency (schematic support and auto-download completely removed from project) -->
 
         <!-- MockBukkit is available via the "with-mockbukkit" profile (see <profiles>) for realistic cycle tests. -->
 

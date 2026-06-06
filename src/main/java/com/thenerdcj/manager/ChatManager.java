@@ -60,8 +60,9 @@ public class ChatManager {
 
     /**
      * Returns a rich display name including rank prefix + active cosmetic tag.
+     * Used for chat, join/leave messages, lists, etc.
      */
-    private String getRichDisplayName(Player player) {
+    public String getRichDisplayName(Player player) {
         if (plugin.getPlayerTagManager() != null) {
             return plugin.getPlayerTagManager().getComposedDisplayName(
                     player.getUniqueId(), player.getName());
@@ -165,7 +166,7 @@ public class ChatManager {
         // Staff Spy
         for (Player staff : Bukkit.getOnlinePlayers()) {
             if (staffSpyEnabled.contains(staff.getUniqueId())
-                    && staff.hasPermission("folia.staff.spy")
+                    && staff.hasPermission("foliasb.staff.spy")
                     && !staff.getUniqueId().equals(sender.getUniqueId())
                     && !staff.getUniqueId().equals(target.getUniqueId())) {
 
@@ -173,6 +174,10 @@ public class ChatManager {
                 staff.sendMessage(spyMsg);
             }
         }
+    }
+
+    public boolean isStaffSpying(UUID uuid) {
+        return staffSpyEnabled.contains(uuid);
     }
 
     /**
@@ -184,7 +189,7 @@ public class ChatManager {
             staffSpyEnabled.remove(uuid);
             player.sendMessage("§cStaff chat spy disabled.");
         } else {
-            if (!player.hasPermission("folia.staff.spy")) {
+            if (!player.hasPermission("foliasb.staff.spy")) {
                 player.sendMessage("§cYou don't have permission to use staff spy.");
                 return;
             }

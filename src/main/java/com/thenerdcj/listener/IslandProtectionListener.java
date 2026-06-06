@@ -469,6 +469,9 @@ public class IslandProtectionListener implements Listener {
         if (plugin.getIslandStructureManager() != null) {
             plugin.getIslandStructureManager().onWorldUnload(world);
         }
+        if (plugin.getBorderVisualManager() != null) {
+            plugin.getBorderVisualManager().onWorldUnload(world);
+        }
         plugin.getLogger().info("[FoliaSkyblock] Folia unload cleanup performed for world: " + world.getName());
     }
 

@@ -93,7 +93,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.40, 0.09,
-            7, 11,  // size range for randomization
+            2, 4,  // classic small skyblock size (unique per-island via noise/archetype/spawn finder)
             0.65, 0.25, 0.15, 0.10, 1.0);
 
     public static final BiomeTemplate FOREST = new BiomeTemplate(
@@ -102,7 +102,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE, Material.GOLD_ORE),
             0.70, 0.11,
-            8, 12,
+            2, 4,  // classic small skyblock size (unique per-island via noise/archetype/spawn finder)
             0.55, 0.20, 0.18, 0.08, 1.1);
 
     public static final BiomeTemplate DESERT = new BiomeTemplate(
@@ -111,7 +111,7 @@ public class BiomeTemplate {
             Material.GOLD_ORE, null, null,
             Material.SAND, List.of(Material.GOLD_ORE, Material.IRON_ORE),
             0.05, 0.13,
-            6, 10,
+            2, 3,  // classic small skyblock size (unique per-island via noise/archetype/spawn finder)
             0.15, 0.05, 0.35, 0.12, 0.9);  // low veg, some rocks, special wells?
 
     public static final BiomeTemplate TAIGA = new BiomeTemplate(
@@ -120,7 +120,7 @@ public class BiomeTemplate {
             Material.IRON_ORE, Material.SPRUCE_LOG, Material.SPRUCE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.IRON_ORE, Material.COAL_ORE),
             0.60, 0.10,
-            7, 11,
+            2, 4,  // classic small skyblock size (unique per-island via noise/archetype/spawn finder)
             0.50, 0.15, 0.22, 0.07, 1.0);
 
     public static final BiomeTemplate JUNGLE = new BiomeTemplate(
@@ -129,7 +129,7 @@ public class BiomeTemplate {
             Material.EMERALD_ORE, Material.JUNGLE_LOG, Material.JUNGLE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.EMERALD_ORE, Material.DIAMOND_ORE),
             0.85, 0.08,
-            8, 13,
+            2, 4,  // classic small skyblock size (unique per-island via noise/archetype/spawn finder)
             0.75, 0.30, 0.12, 0.15, 1.2);  // dense, ponds, special (vines, melons)
 
     // Nether & End (limited trees)
@@ -139,7 +139,7 @@ public class BiomeTemplate {
             Material.NETHER_QUARTZ_ORE, null, null,
             Material.SOUL_SAND, List.of(Material.NETHER_QUARTZ_ORE, Material.NETHER_GOLD_ORE, Material.ANCIENT_DEBRIS),
             0.0, 0.18,
-            6, 9,
+            2, 3,  // classic small skyblock size (unique per-island via noise/archetype/spawn finder)
             0.10, 0.25, 0.20, 0.18, 1.0);  // lava ponds, rocks, special fire/glowstone
 
     public static final BiomeTemplate END = new BiomeTemplate(
@@ -148,7 +148,7 @@ public class BiomeTemplate {
             Material.OBSIDIAN, null, null,
             Material.END_STONE, List.of(Material.OBSIDIAN),
             0.0, 0.06,
-            5, 8,
+            2, 3,  // classic small skyblock size (unique per-island via noise/archetype/spawn finder)
             0.05, 0.08, 0.10, 0.22, 0.8);  // chorus, obsidian pillars small, low density
 
     // ----- registry -----

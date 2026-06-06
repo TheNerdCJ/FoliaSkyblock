@@ -65,7 +65,8 @@ public class IslandGenerator {
 
         plugin.getServer().getRegionScheduler().execute(plugin, center, () -> {
             generateIslandStructure(center, finalBiome, island.getDimension(), template, seed, sizeLevelFinal);
-            Location spawn = IslandSpawnFinder.findNear(center, template, 12);
+            // Small search radius sufficient for classic tiny islands; finder still yields varied safe spawn points per island (unique experience)
+            Location spawn = IslandSpawnFinder.findNear(center, template, 5);
             island.setSpawnLocation(spawn);
             if (player != null && player.isOnline()) {
                 // Snap to safe pad after terrain (no chat — create already warped the player)
@@ -363,7 +364,8 @@ public class IslandGenerator {
                                        GenerationProfile profile) {
         String biomeName = biome.getKey().getKey().toUpperCase();
         double vegDens = template.getVegetationDensity() * (0.75 + profile.featureBias * 0.5);
-        int featureAttempts = (int) (radius * 3.8 * (0.65 + rand.nextDouble() * 0.7));
+        // Lower attempt count for classic small islands (prevents clutter; still varied by rand + profile + archetype)
+        int featureAttempts = (int) (radius * 2.2 * (0.65 + rand.nextDouble() * 0.7));
 
         IslandArchetype arch = profile.archetype;
 
@@ -391,17 +393,17 @@ public class IslandGenerator {
             }
         }
 
-        // Ponds — strongly modulated by waterBias from profile
+        // Ponds — strongly modulated by waterBias from profile. Small for classic tiny islands (water mainly from starter buckets).
         double pondRoll = template.getPondChance() * (0.6 + profile.waterBias * 1.1);
         if (rand.nextDouble() < pondRoll) {
-            int pr = radius / 2 + rand.nextInt(4);
+            int pr = 1 + rand.nextInt(2); // 1-2 radius ponds only
             placeSimplePond(world, cx + rand.nextInt(radius / 2) - radius / 4,
                             cy, cz + rand.nextInt(radius / 2) - radius / 4, pr, template, rand);
 
             // Bonus connected smaller pond in valley/river archetypes
             if ((arch == IslandArchetype.VALLEYS_RIVERS || arch == IslandArchetype.SCATTERED_ISLETS) && rand.nextDouble() < 0.55) {
                 placeSimplePond(world, cx + rand.nextInt(radius / 3) - radius / 6,
-                                cy, cz + rand.nextInt(radius / 3) - radius / 6, pr / 2, template, rand);
+                                cy, cz + rand.nextInt(radius / 3) - radius / 6, 1, template, rand);
             }
         }
     }
@@ -487,7 +489,7 @@ public class IslandGenerator {
     private void addBalancedOreVeins(World world, int cx, int cy, int cz, int radius,
                                      BiomeTemplate template, Random rand) {
         int numVeins = (int) (radius * template.getOreChance() * template.getOreDensityMultiplier() * (0.85 + rand.nextDouble() * 0.3));
-        numVeins = Math.clamp(numVeins, 2, (int) (radius * 1.2)); // clamp for balance
+        numVeins = Math.clamp(numVeins, 1, Math.max(2, (int) (radius * 0.9))); // clamp for balance on small classic islands
 
         List<Material> ores = template.getAllowedOres();
         if (ores.isEmpty()) return;
@@ -515,8 +517,9 @@ public class IslandGenerator {
         if (template.getTreeLog() == null) return;
 
         double treeMult = (profile.archetype == IslandArchetype.DENSE_CANOPY) ? 1.35 : 1.0;
-        int numTrees = (int) (radius * template.getTreeChance() * (0.7 + rand.nextDouble() * 0.55) * treeMult);
-        numTrees = Math.clamp(numTrees, 0, radius / 2 + 4);
+        // Classic skyblock: at most 1-2 trees even on slightly larger of the small starters. Scales with radius on size upgrades.
+        int numTrees = (int) (radius * 0.75 * template.getTreeChance() * (0.6 + rand.nextDouble() * 0.5) * treeMult);
+        numTrees = Math.clamp(numTrees, 0, Math.min(2, radius / 2 + 1));
 
         List<Location> placed = new ArrayList<>();
         for (int i = 0; i < numTrees; i++) {
@@ -636,8 +639,8 @@ public class IslandGenerator {
 
         switch (biomeName) {
             case "JUNGLE" -> {
-                // Vines + melon/pumpkin patches (more in dense canopy)
-                int count = (arch == IslandArchetype.DENSE_CANOPY) ? 4 + rand.nextInt(4) : 3 + rand.nextInt(3);
+                // Vines + melon/pumpkin patches (more in dense canopy) — small counts for tiny classic islands
+                int count = (arch == IslandArchetype.DENSE_CANOPY) ? 1 + rand.nextInt(2) : 1 + rand.nextInt(2);
                 for (int i = 0; i < count; i++) {
                     int x = cx + rand.nextInt(radius) - radius/2;
                     int z = cz + rand.nextInt(radius) - radius/2;
@@ -703,8 +706,8 @@ public class IslandGenerator {
             }
             default -> {
                 if (biomeName.equals("FOREST") || biomeName.equals("PLAINS")) {
-                    // Flower meadow patches or berry bushes — nicer in some archetypes
-                    int flowers = (arch == IslandArchetype.ROLLING_HILLS) ? 3 + rand.nextInt(3) : 2;
+                    // Flower meadow patches or berry bushes — nicer in some archetypes (few on small islands)
+                    int flowers = (arch == IslandArchetype.ROLLING_HILLS) ? 1 + rand.nextInt(2) : 1;
                     for (int i = 0; i < flowers; i++) {
                         int x = cx + rand.nextInt(radius) - radius/2;
                         int z = cz + rand.nextInt(radius) - radius/2;
@@ -725,8 +728,8 @@ public class IslandGenerator {
         int cy = center.getBlockY();
         int cz = center.getBlockZ();
 
-        // Fixed relative position (e.g. 3 blocks east of center on surface)
-        int chestX = cx + 3;
+        // Fixed relative position (closer for classic small skyblock islands; edge or inset depending on per-island radius)
+        int chestX = cx + 2;
         int chestZ = cz;
         int surfaceY = cy + 2; // approximate, adjust if needed in real
 
@@ -761,8 +764,8 @@ public class IslandGenerator {
             inv.addItem(new ItemStack(Material.BONE_MEAL, 12 + rand.nextInt(6)));
 
             // Essential for cobble generator (classic Skyblock starter)
-            inv.addItem(new ItemStack(Material.WATER_BUCKET));
-            inv.addItem(new ItemStack(Material.WATER_BUCKET));
+            // 2 water stacked + 1 lava as specified
+            inv.addItem(new ItemStack(Material.WATER_BUCKET, 2));
             inv.addItem(new ItemStack(Material.LAVA_BUCKET));
 
             // Early game guide book (onboarding help, no power)
@@ -770,9 +773,9 @@ public class IslandGenerator {
             if (guide.getItemMeta() instanceof org.bukkit.inventory.meta.BookMeta bookMeta) {
                 bookMeta.setTitle("FoliaSkyblock Beginner's Guide");
                 bookMeta.setAuthor("Island Elder");
-                bookMeta.addPage("Welcome to your new island!\n\n§6Key Commands:\n§f/is or /island - Main menu\n/quests or /daily - First tasks\n/skills - Personal MCMMO skills\n/collections - Discover & unlock\n/wardrobe - Earned cosmetics");
-                bookMeta.addPage("§aEarly Game Tips:\n\nStart by breaking blocks and planting seeds.\nComplete 'First' quests for a free cosmetic trail!\nLevel skills for abilities.\nMinions automate farming/mining.\nEverything is Play-to-Win - no pay advantages.");
-                bookMeta.addPage("§eProgression:\n\nIsland XP from actions/quests.\nUnlock dimensions at levels.\nPrestige & Slayers for top cosmetics.\nTrade at /bazaar /ah for missing items.\n\nHave fun and play fair!");
+                bookMeta.addPage("Welcome to your new island!\n\n§1Key Commands:\n§0/is or /island - Main menu\n/quests or /daily - First tasks\n/skills - Personal MCMMO skills\n/collections - Discover & unlock\n/wardrobe - Earned cosmetics");
+                bookMeta.addPage("§1Early Game Tips:\n\n§0Start by breaking blocks and planting seeds.\nComplete 'First' quests for a free cosmetic trail!\nLevel skills for abilities.\nMinions automate farming/mining.\nEverything is Play-to-Win - no pay advantages.");
+                bookMeta.addPage("§1Progression:\n\n§0Island XP from actions/quests.\nUnlock dimensions at levels.\nPrestige & Slayers for top cosmetics.\nTrade at /bazaar /ah for missing items.\n\nHave fun and play fair!");
                 bookMeta.setGeneration(org.bukkit.inventory.meta.BookMeta.Generation.ORIGINAL);
                 guide.setItemMeta(bookMeta);
             }

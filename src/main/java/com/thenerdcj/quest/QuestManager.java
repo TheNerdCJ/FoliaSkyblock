@@ -12,14 +12,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * QuestManager - Handles Daily & Weekly Quests for islands.
+ * QuestManager - Handles Daily, Weekly, and Onboarding (FIRST) Quests for islands.
  * 
- * Provides:
- * - Async quest retrieval for GUI
- * - Generation of daily/weekly quests
- * - Claiming rewards
+ * Multi-task capable design (for onboarding especially):
+ * - Players can work on many quests simultaneously (different categories or multiple in same).
+ * - Progress is added in parallel to all matching active quests.
+ * - Rewards can be claimed for any completed quest at any time, independently.
+ *   No need to "finish the previous one" first.
+ * - "Claim All Ready" supported in GUI.
  * 
- * Currently in-memory (like ChallengeManager). Can be extended with Database persistence.
+ * Onboarding FIRST quests are all given at island creation and stay until claimed.
+ * 
+ * Currently in-memory. For production, add DB persistence for quest states.
  */
 public class QuestManager {
 
@@ -55,13 +59,26 @@ public class QuestManager {
      * Removes expired/completed old dailies and adds new ones if needed.
      */
     public void generateDailyQuests(String islandId) {
-        List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
+        if (!questsByIsland.containsKey(islandId)) {
+            try {
+                List<Quest> loaded = plugin.getDatabaseManager().loadIslandQuests(islandId).get();
+                questsByIsland.put(islandId, new ArrayList<>(loaded));
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Quest] Failed to load daily quests for " + islandId + ": " + e.getMessage());
+                questsByIsland.put(islandId, new ArrayList<>());
+            }
+        }
+        List<Quest> current = questsByIsland.get(islandId);
 
-        // Clean up old/expired dailies (never touch FIRST/onboarding quests)
-        current.removeIf(q -> 
-            q.getType() == Quest.QuestType.DAILY && 
-            (q.isCompleted() || q.isExpired() || q.isClaimed())
-        );
+        // Clean up old/expired dailies (never touch FIRST/onboarding quests) and delete from DB
+        java.util.Iterator<Quest> it = current.iterator();
+        while (it.hasNext()) {
+            Quest q = it.next();
+            if (q.getType() == Quest.QuestType.DAILY && (q.isCompleted() || q.isExpired() || q.isClaimed())) {
+                plugin.getDatabaseManager().deleteIslandQuest(islandId, q.getId());
+                it.remove();
+            }
+        }
 
         // Ensure we have at least 3 daily quests
         long dailyCount = current.stream()
@@ -71,6 +88,7 @@ public class QuestManager {
         for (long i = dailyCount; i < 3; i++) {
             Quest newQuest = createRandomQuest(Quest.QuestType.DAILY);
             current.add(newQuest);
+            plugin.getDatabaseManager().saveIslandQuest(islandId, newQuest);
         }
     }
 
@@ -78,13 +96,26 @@ public class QuestManager {
      * Generate (or refresh) weekly quests for the island.
      */
     public void generateWeeklyQuests(String islandId) {
-        List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
+        if (!questsByIsland.containsKey(islandId)) {
+            try {
+                List<Quest> loaded = plugin.getDatabaseManager().loadIslandQuests(islandId).get();
+                questsByIsland.put(islandId, new ArrayList<>(loaded));
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Quest] Failed to load weekly quests for " + islandId + ": " + e.getMessage());
+                questsByIsland.put(islandId, new ArrayList<>());
+            }
+        }
+        List<Quest> current = questsByIsland.get(islandId);
 
-        // Clean up old weeklies (never touch FIRST/onboarding quests)
-        current.removeIf(q -> 
-            q.getType() == Quest.QuestType.WEEKLY && 
-            (q.isCompleted() || q.isExpired() || q.isClaimed())
-        );
+        // Clean up old weeklies (never touch FIRST/onboarding quests) and delete from DB
+        java.util.Iterator<Quest> it = current.iterator();
+        while (it.hasNext()) {
+            Quest q = it.next();
+            if (q.getType() == Quest.QuestType.WEEKLY && (q.isCompleted() || q.isExpired() || q.isClaimed())) {
+                plugin.getDatabaseManager().deleteIslandQuest(islandId, q.getId());
+                it.remove();
+            }
+        }
 
         long weeklyCount = current.stream()
             .filter(q -> q.getType() == Quest.QuestType.WEEKLY)
@@ -93,6 +124,7 @@ public class QuestManager {
         for (long i = weeklyCount; i < 2; i++) {
             Quest newQuest = createRandomQuest(Quest.QuestType.WEEKLY);
             current.add(newQuest);
+            plugin.getDatabaseManager().saveIslandQuest(islandId, newQuest);
         }
     }
 
@@ -102,7 +134,16 @@ public class QuestManager {
      * Called on island creation (including resets for fresh start feel). Never removed by daily/weekly gens.
      */
     public void generateOnboardingQuests(String islandId) {
-        List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
+        if (!questsByIsland.containsKey(islandId)) {
+            try {
+                List<Quest> loaded = plugin.getDatabaseManager().loadIslandQuests(islandId).get();
+                questsByIsland.put(islandId, new ArrayList<>(loaded));
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Quest] Failed to load onboarding quests for " + islandId + ": " + e.getMessage());
+                questsByIsland.put(islandId, new ArrayList<>());
+            }
+        }
+        List<Quest> current = questsByIsland.get(islandId);
 
         long firstCount = current.stream()
             .filter(q -> q.getType() == Quest.QuestType.FIRST)
@@ -111,36 +152,50 @@ public class QuestManager {
         if (firstCount > 0) return; // Already seeded for this island life
 
         // Fixed, friendly first-island quests (target low for new players, categories map to actions)
-        current.add(createFirstQuest(
+        Quest q1 = createFirstQuest(
             Quest.QuestCategory.FARMING,
             "First Harvest",
             "Harvest your first crops (break fully-grown wheat, carrots, potatoes, etc.)",
             1, 35, 40
-        ));
-        current.add(createFirstQuest(
+        );
+        current.add(q1);
+        plugin.getDatabaseManager().saveIslandQuest(islandId, q1);
+
+        Quest q2 = createFirstQuest(
             Quest.QuestCategory.MINING,
             "First Dig",
             "Break your first stone, ore, or dirt block on the island",
             1, 25, 30
-        ));
-        current.add(createFirstQuest(
+        );
+        current.add(q2);
+        plugin.getDatabaseManager().saveIslandQuest(islandId, q2);
+
+        Quest q3 = createFirstQuest(
             Quest.QuestCategory.COMBAT,
             "First Foe",
             "Defeat your first hostile mob (zombie, skeleton, etc.)",
             1, 50, 45
-        ));
-        current.add(createFirstQuest(
+        );
+        current.add(q3);
+        plugin.getDatabaseManager().saveIslandQuest(islandId, q3);
+
+        Quest q4 = createFirstQuest(
             Quest.QuestCategory.BUILDING,
             "First Steps",
             "Place blocks to expand or customize your island (5 total)",
             5, 20, 25
-        ));
-        current.add(createFirstQuest(
+        );
+        current.add(q4);
+        plugin.getDatabaseManager().saveIslandQuest(islandId, q4);
+
+        Quest q5 = createFirstQuest(
             Quest.QuestCategory.CHALLENGE,
             "First Minion",
             "Deploy your first minion to help automate tasks",
             1, 60, 50
-        ));
+        );
+        current.add(q5);
+        plugin.getDatabaseManager().saveIslandQuest(islandId, q5);
 
         // Note: progress is fed by EarlyGameListener (safe, anti-cheat guarded) + MinionManager hook
     }
@@ -165,6 +220,8 @@ public class QuestManager {
 
     /**
      * Claim a specific quest reward.
+     * Fully independent per-quest. You can claim any completed unclaimed quest at any time,
+     * even while other quests (in the same or different categories) are still in progress.
      */
     public boolean claimQuest(String islandId, String questId, Player player) {
         List<Quest> quests = questsByIsland.get(islandId);
@@ -173,6 +230,7 @@ public class QuestManager {
         for (Quest quest : quests) {
             if (quest.getId().equals(questId) && quest.isCompleted() && !quest.isClaimed()) {
                 quest.setClaimed(true);
+                plugin.getDatabaseManager().saveIslandQuest(islandId, quest);
 
                 // Deliver rewards (basic implementation - enhance with your Economy/XP system)
                 int xp = quest.getRewardXp();
@@ -223,11 +281,52 @@ public class QuestManager {
     }
 
     /**
+     * Claim all currently ready (completed + unclaimed) quests for the island.
+     * This enables true multi-tasking: players can work on many quests in parallel
+     * and claim rewards for the ones they finish without waiting for the others.
+     */
+    public int claimAllReady(String islandId, Player player) {
+        List<Quest> quests = questsByIsland.get(islandId);
+        if (quests == null) return 0;
+
+        int claimedCount = 0;
+        for (Quest quest : quests) {
+            if (quest.isCompleted() && !quest.isClaimed()) {
+                if (claimQuest(islandId, quest.getId(), player)) {
+                    claimedCount++;
+                }
+            }
+        }
+        return claimedCount;
+    }
+
+    /**
+     * Save all in-memory quests to DB (called on shutdown).
+     */
+    public void saveAllQuests() {
+        for (Map.Entry<String, List<Quest>> entry : questsByIsland.entrySet()) {
+            String islandId = entry.getKey();
+            for (Quest q : entry.getValue()) {
+                plugin.getDatabaseManager().saveIslandQuest(islandId, q);
+            }
+        }
+    }
+
+    /**
      * Optional helper: Add progress to matching quests (call this from your listeners)
      */
     public void addProgressToIsland(String islandId, Quest.QuestCategory category, int amount) {
         long start = 0;
         if (plugin.getIslandWorthManager() != null && plugin.getIslandWorthManager().isProfileHotPaths()) start = System.nanoTime();
+
+        if (!questsByIsland.containsKey(islandId)) {
+            try {
+                List<Quest> loaded = plugin.getDatabaseManager().loadIslandQuests(islandId).get();
+                questsByIsland.put(islandId, new ArrayList<>(loaded));
+            } catch (Exception e) {
+                questsByIsland.put(islandId, new ArrayList<>());
+            }
+        }
         List<Quest> quests = questsByIsland.get(islandId);
         if (quests == null) {
             if (start != 0) { /* no log if no quests */ }
@@ -236,7 +335,11 @@ public class QuestManager {
 
         for (Quest quest : quests) {
             if (quest.getCategory() == category && !quest.isCompleted() && !quest.isExpired() && !quest.isClaimed()) {
+                int before = quest.getProgress();
                 quest.addProgress(amount);
+                if (quest.getProgress() > before) {
+                    plugin.getDatabaseManager().saveIslandQuest(islandId, quest);
+                }
             }
         }
         if (start != 0) {

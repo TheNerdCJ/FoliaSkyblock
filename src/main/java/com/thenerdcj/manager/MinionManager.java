@@ -2,18 +2,22 @@ package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.island.IslandSpawnFinder;
 import com.thenerdcj.cosmetic.MinionSkinManager;
 import com.thenerdcj.cosmetic.MinionSkin;
 import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.util.RayTraceResult;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -150,7 +154,10 @@ public class MinionManager {
         }
 
         int newTotal = getTotalPlacedMinions(islandId);
-        spawnMinionEntity(player, island, type, islandId, newTotal);
+
+        // Place where the player is looking (raycast), using safe ground finder to avoid spawning inside terrain.
+        Location placementTarget = getPlayerLookTarget(player);
+        spawnMinionEntity(player, island, type, islandId, newTotal, placementTarget);
 
         player.sendMessage("§aPlaced §e" + type.getDisplayName() + "§a minion! (" + newTotal + "/" + getMaxMinionSlots(islandId) + " slots used).");
 
@@ -172,22 +179,67 @@ public class MinionManager {
         return true;
     }
 
+    /**
+     * Gets the block the player is targeting for minion placement.
+     * Tries exact target block first, then a precise ray trace. Returns null if no suitable solid block.
+     */
+    private Location getPlayerLookTarget(Player player) {
+        if (player == null) return null;
+        try {
+            Block targetBlock = player.getTargetBlockExact(7);
+            if (targetBlock != null && !targetBlock.getType().isAir() && targetBlock.getType().isSolid()) {
+                return targetBlock.getLocation();
+            }
+            // Precise fallback
+            RayTraceResult result = player.getWorld().rayTraceBlocks(
+                    player.getEyeLocation(),
+                    player.getLocation().getDirection(),
+                    7.0,
+                    FluidCollisionMode.NEVER,
+                    true
+            );
+            if (result != null && result.getHitBlock() != null && !result.getHitBlock().getType().isAir()) {
+                return result.getHitBlock().getLocation();
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     /** Overload accepting the enum directly (preferred) */
     public boolean placeMinion(Player player, Island island, MinionType type) {
         return placeMinion(player, island, type.getKey());
     }
 
     private void spawnMinionEntity(Player player, Island island, MinionType type, String islandId, int minionNumber) {
+        spawnMinionEntity(player, island, type, islandId, minionNumber, null);
+    }
+
+    private void spawnMinionEntity(Player player, Island island, MinionType type, String islandId, int minionNumber, Location placementTarget) {
         World world = (player != null) ? player.getWorld() : Bukkit.getWorlds().get(0);
         Location center = island.getCenter(world);
         if (center == null) {
             center = (player != null) ? player.getLocation().clone() : new Location(world, 0, 100, 0);
         }
 
-        int spread = 3;
-        int xOffset = ((minionNumber - 1) % 4) * spread - (spread);
-        int zOffset = ((minionNumber - 1) / 4) * spread;
-        Location spawnLoc = center.clone().add(xOffset, 1.2, zOffset);
+        Location spawnLoc;
+
+        if (placementTarget != null) {
+            // New placement: spawn near where the player is looking, using safe finder
+            spawnLoc = IslandSpawnFinder.findSafeMinionLocationNearTarget(placementTarget, null);
+            if (spawnLoc == null) {
+                // Fallback to grid if look target was invalid
+                int spread = 3;
+                int xOffset = ((minionNumber - 1) % 4) * spread - (spread);
+                int zOffset = ((minionNumber - 1) / 4) * spread;
+                spawnLoc = IslandSpawnFinder.findSafeMinionLocation(center, xOffset, zOffset, null);
+            }
+        } else {
+            // Legacy / respawn path: use the fixed grid around island center
+            int spread = 3;
+            int xOffset = ((minionNumber - 1) % 4) * spread - (spread);
+            int zOffset = ((minionNumber - 1) / 4) * spread;
+            spawnLoc = IslandSpawnFinder.findSafeMinionLocation(center, xOffset, zOffset, null);
+        }
 
         ArmorStand stand = (ArmorStand) world.spawnEntity(spawnLoc, EntityType.ARMOR_STAND);
         stand.setCustomNameVisible(true);
@@ -341,11 +393,12 @@ public class MinionManager {
             MinionType type = entry.getKey();
             int count = entry.getValue();
             for (int i = 0; i < count; i++) {
-                // Reuse the grid placement logic
+                // Reuse the grid placement logic, but use safe finder to prevent inside-block spawns.
                 int spread = 3;
                 int xOffset = ((minionNumber - 1) % 4) * spread - spread;
                 int zOffset = ((minionNumber - 1) / 4) * spread;
-                Location spawnLoc = center.clone().add(xOffset, 1.2, zOffset);
+                // Respawn path uses grid (no player look target available at load time)
+                Location spawnLoc = IslandSpawnFinder.findSafeMinionLocation(center, xOffset, zOffset, null);
 
                 ArmorStand stand = (ArmorStand) world.spawnEntity(spawnLoc, EntityType.ARMOR_STAND);
                 stand.setCustomNameVisible(true);
@@ -431,6 +484,9 @@ public class MinionManager {
         if (counts.isEmpty()) placedMinionsByType.remove(islandId);
 
         saveMinionDataForIsland(islandId);
+
+        // Actually despawn one visual minion entity (was missing; only counts were updated before)
+        despawnOneMinion(islandId, toRemove);
     }
 
     public void removeMinionType(String islandId, MinionType type) {
@@ -446,6 +502,46 @@ public class MinionManager {
             }
             if (counts.isEmpty()) placedMinionsByType.remove(islandId);
             saveMinionDataForIsland(islandId);
+
+            // Actually despawn one visual minion entity (was missing; only counts were updated before)
+            despawnOneMinion(islandId, type);
+        }
+    }
+
+    /** Despawns one active ArmorStand minion for the island (prefers matching type by name if provided). */
+    private void despawnOneMinion(String islandId) {
+        despawnOneMinion(islandId, null);
+    }
+
+    private void despawnOneMinion(String islandId, MinionType preferredType) {
+        List<ArmorStand> list = activeMinions.get(islandId);
+        if (list == null || list.isEmpty()) return;
+
+        ArmorStand toRemove = null;
+        if (preferredType != null) {
+            String typeName = preferredType.getDisplayName();
+            for (int i = list.size() - 1; i >= 0; i--) {
+                ArmorStand s = list.get(i);
+                if (s != null && s.isValid() && s.getCustomName() != null && s.getCustomName().contains(typeName)) {
+                    toRemove = list.remove(i);
+                    break;
+                }
+            }
+        }
+        if (toRemove == null && !list.isEmpty()) {
+            toRemove = list.remove(list.size() - 1);
+        }
+        final ArmorStand standToRemove = toRemove;
+        if (standToRemove != null && standToRemove.isValid()) {
+            if (plugin.getThreadSafety().isFolia() && standToRemove.getScheduler() != null) {
+                // Folia-safe: schedule removal on the entity's own scheduler (matches hologram/hologram patterns)
+                standToRemove.getScheduler().run(plugin, t -> standToRemove.remove(), null);
+            } else {
+                standToRemove.remove();
+            }
+        }
+        if (list.isEmpty()) {
+            activeMinions.remove(islandId);
         }
     }
 

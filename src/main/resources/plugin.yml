@@ -5,7 +5,9 @@ api-version: 1.21
 load: STARTUP
 folia-supported: true
 author: TheNerdCJ
-softdepend: [PlaceholderAPI, WorldEdit]  # WorldEdit/FAWE for optional complex spawn schematics and island schematics. Graceful fallback to procedural.
+# No soft dependencies. PlaceholderAPI support has been removed to ensure full Folia compatibility
+# (PAPI v2.x is not marked as Folia-compatible and causes load failures on Folia servers).
+# If you need %foliaskyblock_*% placeholders, consider alternatives or a Folia-compatible PAPI fork.
 description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, economy, trading, Play-to-Win progression, and full EssentialsX-style QoL commands.
 
 commands:
@@ -34,7 +36,7 @@ commands:
     permission: foliasb.staff.mute
 
   setspawn:
-    description: Set the server spawn location (admin only)
+    description: Set the global server/hub spawn location to your current position (EssentialsX-style)
     usage: /<command>
     permission: foliasb.admin.setspawn
     aliases: [spawnset]
@@ -170,10 +172,10 @@ commands:
     usage: /<command>
     aliases: [chatbubble, bubble, bubbles]
 
-  weather:
+  islandweather:
     description: Open the Island Weather cosmetic effects catalog (set while on your island)
     usage: /<command>
-    aliases: [islandweather, weathereffects, wfx]
+    aliases: [weathereffects, wfx]
 
   accessories:
     description: Open the Cosmetic Accessories menu (floating items around player)
@@ -268,19 +270,19 @@ commands:
     usage: /<command>
 
   staff:
-    description: Staff command panel
-    usage: /<command> <subcommand>
+    description: Staff command panel / quick help (EssentialsX-style shortcuts)
+    usage: /<command>
     permission: foliasb.staff
 
   fly:
-    description: Toggle fly mode
+    description: Toggle fly mode (optionally for another player)
     permission: foliasb.staff
-    usage: /<command>
+    usage: /<command> [player]
 
   god:
-    description: Toggle god mode
+    description: Toggle god mode (optionally for another player)
     permission: foliasb.staff
-    usage: /<command>
+    usage: /<command> [player]
 
   heal:
     description: Heal yourself or a player
@@ -288,7 +290,7 @@ commands:
     usage: /<command> [player]
 
   speed:
-    description: Set walk/fly speed
+    description: Set walk/fly speed (optionally for another player)
     permission: foliasb.staff
     usage: /<command> <speed> [player]
 
@@ -302,23 +304,23 @@ commands:
     permission: foliasb.staff
     usage: /<command> <mode> [player]
 
-  # EssentialsX-style shortcuts (staff only)
+  # EssentialsX-style shortcuts (staff only) - support optional [player] target
   gmc:
-    description: Set gamemode to creative
+    description: Set gamemode to creative (optionally for another player)
     permission: foliasb.staff
-    usage: /gmc
+    usage: /gmc [player]
   gms:
-    description: Set gamemode to survival
+    description: Set gamemode to survival (optionally for another player)
     permission: foliasb.staff
-    usage: /gms
+    usage: /gms [player]
   gma:
-    description: Set gamemode to adventure
+    description: Set gamemode to adventure (optionally for another player)
     permission: foliasb.staff
-    usage: /gma
+    usage: /gma [player]
   gmsp:
-    description: Set gamemode to spectator
+    description: Set gamemode to spectator (optionally for another player)
     permission: foliasb.staff
-    usage: /gmsp
+    usage: /gmsp [player]
 
   tp:
     description: Teleport to a player
@@ -387,14 +389,44 @@ commands:
     usage: /<command> <message>
 
   clear:
-    description: Clear inventory
+    description: Clear inventory (optionally for another player)
     permission: foliasb.staff
     usage: /<command> [player]
 
   repair:
-    description: Repair held items
+    description: Repair held item (optionally for another player)
+    permission: foliasb.staff
+    usage: /<command> [player]
+
+  # EssentialsX-style movement & tools (staff)
+  top:
+    description: Teleport to the highest block above you (or target)
+    permission: foliasb.staff
+    usage: /<command> [player]
+  back:
+    description: Return to previous location (/back again toggles)
+    permission: foliasb.staff
+    usage: /<command> [player]
+  jump:
+    description: Teleport to the block you are looking at
+    permission: foliasb.staff
+    usage: /<command> [player]
+  sudo:
+    description: Execute commands or chat as another player (audit logged)
+    permission: foliasb.staff
+    usage: /<command> <player> <cmd or c:msg>
+  socialspy:
+    description: Toggle seeing all private messages (requires foliasb.staff.spy)
     permission: foliasb.staff
     usage: /<command>
+  time:
+    description: Set world time (affects the dimension of target/current)
+    permission: foliasb.staff
+    usage: /<command> <day|night|...|ticks> [player]
+  weather:
+    description: Set world weather (affects the dimension of target/current)
+    permission: foliasb.staff
+    usage: /<command> <clear|rain|storm> [player]
 
   holo:
     description: Manage holograms

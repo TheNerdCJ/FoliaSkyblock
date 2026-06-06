@@ -196,8 +196,15 @@ public class IslandManager {
                     cacheIsland(player.getUniqueId(), island);
 
                     plugin.getMinionManager().loadMinionDataForIsland(islandKey);
-                    plugin.getThreadSafety().runOnMainThread(() ->
-                            plugin.getMinionManager().respawnMinionsForIsland(island));
+                    // Use region scheduler at island center so block reads (for safe minion placement) and entity spawns are on correct Folia region thread.
+                    Location respawnAnchor = island.getCenter(null);
+                    if (respawnAnchor != null) {
+                        plugin.getThreadSafety().runAtLocation(respawnAnchor, () ->
+                                plugin.getMinionManager().respawnMinionsForIsland(island));
+                    } else {
+                        plugin.getThreadSafety().runOnMainThread(() ->
+                                plugin.getMinionManager().respawnMinionsForIsland(island));
+                    }
 
                     // Museum persist load for full feature (task continuation)
                     if (plugin.getMuseumManager() != null) {
@@ -218,6 +225,21 @@ public class IslandManager {
                     // Island Structures (use respawn for consistency with furniture + full DB load inside)
                     if (plugin.getIslandStructureManager() != null) {
                         plugin.getIslandStructureManager().respawnAllStructuresForIsland(islandKey, island.getCenter(null) != null ? island.getCenter(null).getWorld() : null);
+                    }
+
+                    // Persistent border markers (if enabled in settings) - direct visual, no gameplay impact
+                    if (plugin.getBorderVisualManager() != null) {
+                        final Island fIsland = island;
+                        plugin.getIslandSettingsManager().getSettings(island.getGridPosition()).thenAccept(s -> {
+                            if (s.isBorderMarkersEnabled()) {
+                                Location c = fIsland.getCenter(null);
+                                if (c != null) {
+                                    plugin.getThreadSafety().runAtLocation(c, () -> {
+                                        plugin.getBorderVisualManager().spawnBorderHologramMarkers(fIsland, null);
+                                    });
+                                }
+                            }
+                        });
                     }
 
                     // Island Weather Cosmetics
@@ -477,6 +499,8 @@ public class IslandManager {
         if (player == null || dest == null || dest.getWorld() == null) {
             return;
         }
+        // Record for /back support (EssentialsX style)
+        plugin.recordLastLocation(player);
 
         final Location target = dest.clone();
         target.setX(target.getBlockX() + 0.5);
@@ -490,6 +514,11 @@ public class IslandManager {
 
         plugin.getThreadSafety().runForEntity(player, () -> {
             if (!player.isOnline()) return;
+            // When teleporting to non-island location (e.g. global /spawn), explicitly clear any active island WorldBorder
+            // to prevent stale border warning (red vignette) from the previous island's border at the new location.
+            if (island == null && plugin.getBorderVisualManager() != null) {
+                plugin.getBorderVisualManager().clearPlayerWorldBorder(player);
+            }
             try {
                 player.teleportAsync(target).whenComplete((success, err) -> {
                     plugin.getThreadSafety().runForEntity(player, () -> finishIslandTeleport(player, island, target, success, announce));
@@ -510,11 +539,19 @@ public class IslandManager {
             player.teleport(target);
         }
         if (announce) {
-            MessageUtil.sendMessage(player, "§aTeleported to your island!");
+            if (island == null) {
+                MessageUtil.sendMessage(player, "§aTeleported to spawn!");
+            } else {
+                MessageUtil.sendMessage(player, "§aTeleported to your island!");
+            }
         }
         plugin.getThreadSafety().runOnMainThreadLater(() -> {
             if (player.isOnline() && plugin.getBorderVisualManager() != null) {
-                plugin.getBorderVisualManager().updatePlayerWorldBorder(player, island);
+                if (island == null) {
+                    plugin.getBorderVisualManager().clearPlayerWorldBorder(player);
+                } else {
+                    plugin.getBorderVisualManager().updatePlayerWorldBorder(player, island);
+                }
             }
         }, 15L);
     }

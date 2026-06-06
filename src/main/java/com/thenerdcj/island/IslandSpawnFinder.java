@@ -14,7 +14,7 @@ import org.bukkit.block.Block;
  */
 public final class IslandSpawnFinder {
 
-    private static final int DEFAULT_SEARCH_RADIUS = 12;
+    private static final int DEFAULT_SEARCH_RADIUS = 6; // shrunk for classic small starter islands; still allows unique nearby spawns via terrain variation
 
     private IslandSpawnFinder() {}
 
@@ -62,26 +62,6 @@ public final class IslandSpawnFinder {
             return best;
         }
         return new Location(world, cx + 0.5, hintY + 1.0, cz + 0.5);
-    }
-
-    private static Integer findGroundY(World world, int x, int z, int hintY, BiomeTemplate template) {
-        int start = Math.min(world.getMaxHeight() - 4, hintY + 16);
-        int end = Math.max(world.getMinHeight(), hintY - 10);
-
-        for (int y = start; y >= end; y--) {
-            Material ground = world.getBlockAt(x, y, z).getType();
-            if (!isValidSpawnGround(ground, template)) {
-                continue;
-            }
-            if (!hasHeadroom(world, x, y, z)) {
-                continue;
-            }
-            if (!hasSolidSupport(world, x, y, z)) {
-                continue;
-            }
-            return y;
-        }
-        return null;
     }
 
     private static boolean isValidSpawnGround(Material material, BiomeTemplate template) {
@@ -151,5 +131,89 @@ public final class IslandSpawnFinder {
         }
         Block below = world.getBlockAt(x, groundY - 1, z);
         return below.getType().isSolid() && !isTreeOrUnsafe(below.getType());
+    }
+
+    /**
+     * Find a safe spawn location for a minion (or similar small entity) at a specific offset from island center.
+     * Uses the terrain-aware ground finder to avoid spawning inside blocks, trees, or on invalid surfaces.
+     * Falls back to the naive offset +1.2 if no safe ground found at/near the spot.
+     * Must be called on the correct Folia region thread for the location.
+     */
+    public static Location findSafeMinionLocation(Location center, int xOffset, int zOffset, BiomeTemplate template) {
+        if (center == null || center.getWorld() == null) {
+            return null;
+        }
+        World world = center.getWorld();
+        int x = center.getBlockX() + xOffset;
+        int z = center.getBlockZ() + zOffset;
+        int hintY = center.getBlockY();
+
+        Integer groundY = findGroundY(world, x, z, hintY, template);
+        if (groundY != null) {
+            // +1.2 to match historical minion floating height for ArmorStand visuals
+            return new Location(world, x + 0.5, groundY + 1.2, z + 0.5);
+        }
+
+        // Fallback (rare): use the old blind placement so at least something spawns
+        return center.clone().add(xOffset, 1.2, zOffset);
+    }
+
+    /**
+     * Find a safe minion spawn location near where the player is looking.
+     * Prefers the exact x/z of the target block, then searches a small radius for safe ground.
+     * This allows minions to be placed at the block the player is targeting, without ending up inside terrain.
+     * Must be called on the correct Folia region thread.
+     */
+    public static Location findSafeMinionLocationNearTarget(Location target, BiomeTemplate template) {
+        if (target == null || target.getWorld() == null) {
+            return null;
+        }
+        World world = target.getWorld();
+        int tx = target.getBlockX();
+        int tz = target.getBlockZ();
+        int hintY = target.getBlockY();
+
+        // Try the exact target column first
+        Integer groundY = findGroundY(world, tx, tz, hintY, template);
+        if (groundY != null) {
+            return new Location(world, tx + 0.5, groundY + 1.2, tz + 0.5);
+        }
+
+        // Small search around the target (up to 2 blocks away) for a safe spot
+        for (int r = 1; r <= 2; r++) {
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    if (Math.abs(dx) < r && Math.abs(dz) < r) continue; // skip inner ring already checked
+                    Integer y = findGroundY(world, tx + dx, tz + dz, hintY, template);
+                    if (y != null) {
+                        return new Location(world, tx + dx + 0.5, y + 1.2, tz + dz + 0.5);
+                    }
+                }
+            }
+        }
+
+        // Fallback: just above the target block
+        return target.clone().add(0, 1.2, 0);
+    }
+
+    // Expose for reuse in minion placement (and potentially furniture etc.)
+    public static Integer findGroundY(World world, int x, int z, int hintY, BiomeTemplate template) {
+        int start = Math.min(world.getMaxHeight() - 4, hintY + 16);
+        int end = Math.max(world.getMinHeight(), hintY - 10);
+
+        for (int y = start; y >= end; y--) {
+            Material ground = world.getBlockAt(x, y, z).getType();
+            if (!isValidSpawnGround(ground, template)) {
+                continue;
+            }
+            if (!hasHeadroom(world, x, y, z)) {
+                continue;
+            }
+            if (!hasSolidSupport(world, x, y, z)) {
+                continue;
+            }
+            return y;
+        }
+        return null;
     }
 }

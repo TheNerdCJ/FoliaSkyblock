@@ -4,8 +4,18 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import org.bukkit.*;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.TextDisplay;
+import org.bukkit.util.Transformation;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
+
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -23,6 +33,7 @@ public class BorderVisualManager {
 
     private final FoliaSkyblock plugin;
     private final ConcurrentHashMap<GridPosition, WorldBorder> activeWorldBorders = new ConcurrentHashMap<>();
+    private final Map<GridPosition, List<TextDisplay>> activeBorderMarkers = new ConcurrentHashMap<>();
 
     private boolean worldBorderEnabled;
     private boolean particlesEnabled;
@@ -291,6 +302,26 @@ public class BorderVisualManager {
     }
 
     /**
+     * Cleanup border marker displays when a world unloads (Folia region safety).
+     */
+    public void onWorldUnload(World world) {
+        if (world == null) return;
+        activeBorderMarkers.entrySet().removeIf(entry -> {
+            List<TextDisplay> list = entry.getValue();
+            if (!list.isEmpty()) {
+                TextDisplay first = list.get(0);
+                if (first != null && first.isValid() && first.getWorld() != null && first.getWorld().equals(world)) {
+                    for (TextDisplay d : list) {
+                        if (d != null && d.isValid()) d.remove();
+                    }
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    /**
      * Full persistent hologram border markers.
      * Spawns (or re-spawns) TextDisplay holograms at the 4 corners of the island border.
      * These are saved via HologramManager so they persist across restarts.
@@ -302,40 +333,90 @@ public class BorderVisualManager {
         Location center = island.getCenter(requester != null ? requester.getWorld() : Bukkit.getWorlds().get(0));
         if (center == null) return;
 
-        // Folia-safe: cached only (hologram spawn path)
+        // Folia-safe: cached only (border marker path)
         var settings = plugin.getIslandSettingsManager().getCachedSettings(island.getGridPosition());
         if (!settings.isBorderMarkersEnabled()) return;
         String colorCode = getColorCode(settings.getBorderColor());
 
-        String gridKey = island.getGridPosition().x() + "_" + island.getGridPosition().z() + "_" + island.getDimension().name();
+        GridPosition key = island.getGridPosition();
+
+        // Remove any existing markers for this island first
+        removeBorderHologramMarkers(island);
+
+        List<TextDisplay> markers = new ArrayList<>();
+        String gridKey = key.x() + "_" + key.z() + "_" + island.getDimension().name();
         String[] corners = {"NW", "NE", "SW", "SE"};
         double[][] offsets = {{-radius, -radius}, {radius, -radius}, {-radius, radius}, {radius, radius}};
 
+        // Place higher to be above terrain; use direct TextDisplay (bypasses Hologram system for reliability)
+        float yOffset = 10.0f;
+        float scale = 0.7f;
+        float viewRange = Math.max(4.0f, (radius * 1.42f) / 64f + 2.0f);
+
         for (int i = 0; i < 4; i++) {
-            Location loc = center.clone().add(offsets[i][0], 3.2, offsets[i][1]);
-            String name = "border_" + gridKey + "_" + corners[i];
+            Location loc = center.clone().add(offsets[i][0], yOffset, offsets[i][1]);
+            String corner = corners[i];
 
-            // Remove old one if exists (best effort)
-            // For simplicity in this pass we rely on unique names and let admin clean if needed
+            TextDisplay td = (TextDisplay) center.getWorld().spawn(loc, TextDisplay.class, entity -> {
+                // Multi-line text with colors (no § translation needed here, use Adventure)
+                Component text = Component.text()
+                    .append(Component.text("◆ Border Marker ◆", getNamedTextColor(colorCode)))
+                    .append(Component.newline())
+                    .append(Component.text(corner, NamedTextColor.GRAY))
+                    .append(Component.newline())
+                    .append(Component.text("Radius: ", NamedTextColor.WHITE))
+                    .append(Component.text(String.valueOf(radius), NamedTextColor.AQUA))
+                    .build();
+                entity.text(text);
+                entity.setBillboard(Display.Billboard.CENTER);
+                entity.setSeeThrough(false);
+                entity.setShadowed(true);
+                entity.setTransformation(new Transformation(
+                    new Vector3f(0, 0, 0),
+                    new Quaternionf(),
+                    new Vector3f(scale, scale, scale),
+                    new Quaternionf()
+                ));
+                entity.setViewRange(viewRange);
+                entity.setPersistent(false);
+            });
 
-            com.thenerdcj.hologram.HologramData data = new com.thenerdcj.hologram.HologramData(name, loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
-            data.setScale(0.7);
-            data.setBillboard("CENTER");
-            data.addLine("§" + colorCode + "◆ Border Marker ◆");
-            data.addLine("§7" + corners[i]);
-            data.addLine("§fRadius: §b" + radius);
-
-            plugin.getHologramManager().spawnHologram(data);
+            markers.add(td);
         }
 
+        activeBorderMarkers.put(key, markers);
+
         if (requester != null) {
-            requester.sendMessage("§aSpawned persistent border hologram markers at corners.");
+            requester.sendMessage("§aSpawned persistent border markers at corners (using direct displays).");
         }
     }
 
+    private NamedTextColor getNamedTextColor(String code) {
+        if (code == null) code = "b";
+        return switch (code.toLowerCase()) {
+            case "c", "4" -> NamedTextColor.RED;
+            case "a", "2" -> NamedTextColor.GREEN;
+            case "9", "1" -> NamedTextColor.BLUE;
+            case "e", "6" -> NamedTextColor.YELLOW;
+            case "5" -> NamedTextColor.DARK_PURPLE;
+            case "d" -> NamedTextColor.LIGHT_PURPLE;
+            case "f", "7" -> NamedTextColor.WHITE;
+            case "0" -> NamedTextColor.BLACK;
+            default -> NamedTextColor.BLUE;
+        };
+    }
+
     public void removeBorderHologramMarkers(Island island) {
-        // In a production version we would query and delete by name prefix.
-        // For this implementation, we document that admins can use /hologram delete for "border_*" names.
+        if (island == null) return;
+        GridPosition key = island.getGridPosition();
+        List<TextDisplay> list = activeBorderMarkers.remove(key);
+        if (list != null) {
+            for (TextDisplay d : list) {
+                if (d != null && d.isValid()) {
+                    d.remove();
+                }
+            }
+        }
     }
 
     private String getColorCode(String color) {

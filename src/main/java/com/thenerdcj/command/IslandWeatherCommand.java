@@ -34,7 +34,7 @@ public class IslandWeatherCommand implements CommandExecutor {
         }
 
         // For now, direct set requires being on island (handled in GUI/manager)
-        player.sendMessage("§7Use /weather or /islandweather with no args to open the catalog (set active while on your island).");
+        player.sendMessage("§7Use /islandweather or /weathereffects with no args to open the catalog (set active while on your island).");
         plugin.getIslandWeatherGUI().open(player);
         return true;
     }

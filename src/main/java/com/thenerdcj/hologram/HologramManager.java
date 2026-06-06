@@ -8,7 +8,6 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.TextDisplay;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import com.thenerdcj.util.MessageUtil;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -27,7 +26,6 @@ public class HologramManager {
     private final DatabaseManager databaseManager;
     private final Map<Integer, Hologram> activeHolograms = new HashMap<>();
     private final Map<Integer, ScheduledTask> dynamicTasks = new ConcurrentHashMap<>();
-    private final LegacyComponentSerializer legacySerializer = MessageUtil.getLegacySerializer();
 
     // Bounded for large scale (many dynamic/top holograms on large servers)
     private static final int MAX_HOLOGRAMS = 1000;
@@ -91,8 +89,14 @@ public class HologramManager {
                             .replace("%island_worth_level%", "N/A");
                     }
 
-                    entity.text(legacySerializer.deserialize(processedLine));
+                    // Normalize color codes so both & and § work (and mixed strings from dynamic + medals etc.)
+                    // Users/docs instruct to use & in /holo addline etc; internal dynamic uses &; some use §.
+                    // translateAlternateColorCodes turns valid &codes into §codes (leaves existing § and non-code & alone).
+                    processedLine = org.bukkit.ChatColor.translateAlternateColorCodes('&', processedLine);
+
+                    entity.text(MessageUtil.legacy(processedLine));
                     entity.setBillboard(org.bukkit.entity.Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
+                    entity.setViewRange(data.getViewRange());
                     entity.setSeeThrough(data.isSeeThrough());
                     entity.setShadowed(data.isShadow());
                     entity.setTransformation(new Transformation(
@@ -115,7 +119,7 @@ public class HologramManager {
                 yOffset -= 0.28 * scale;   // Spacing now correctly scales with the hologram size
             }
 
-            Hologram holo = new Hologram(data, displays);
+            Hologram holo = new Hologram(data, displays, plugin);
             activeHolograms.put(data.getId(), holo);
 
             if (data.isDynamic()) {

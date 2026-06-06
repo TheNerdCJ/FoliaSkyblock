@@ -189,7 +189,7 @@ The bar is now very high. New cosmetics should feel like natural, high-value ext
 - `IslandWeatherCosmetic` enum (14 effects: gentle rain, snow flurry, meadow pollen, ember shower, mystic fog, starfall, aurora, slayer tempest, celestial glow, void mist, rainbow mist, bloom shower, lava glow, crystal rain).
 - Full manager: player ownership + per-island active weather, collection XP + milestones, Folia-safe repeating particle loops (player scheduler + ThreadSafety) on island enter, enter/leave/start/stop hooks, DB load/save for active + unlocks.
 - Dedicated GUI (catalog with active indicator, set/clear while on island, Back to Wardrobe).
-- Commands: /weather, /islandweather, /weathereffects (open GUI; set from island).
+- Commands: /islandweather, /weathereffects, /wfx (open GUI; set from island). /weather is the staff admin weather control.
 - DB: player_island_weather + island_active_weather tables + save/load methods (modeled on music).
 - Full Wardrobe tab (WEATHER view + render + routing to catalog).
 - Slayer Shop examples + BUY handler.

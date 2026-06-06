@@ -1,10 +1,15 @@
 package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
+import org.bukkit.Bukkit;
+import org.bukkit.advancement.Advancement;
+import org.bukkit.advancement.AdvancementProgress;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import com.destroystokyo.paper.event.player.PlayerAdvancementCriterionGrantEvent;
+import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
@@ -18,10 +23,16 @@ public class PlayerQuitListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
+
+        // Personalized leave message using rank + active tag (consistent with join and chat)
+        if (plugin.getChatManager() != null) {
+            String display = plugin.getChatManager().getRichDisplayName(player);
+            event.setQuitMessage("§8[§c-§8] " + display + " §7has left the game.");
+        }
 
         if (plugin.getChatManager() != null) {
             plugin.getChatManager().onPlayerQuit(player);
@@ -128,9 +139,15 @@ public class PlayerQuitListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        // Personalized join message using rank + active tag (from ChatManager / RankManager / PlayerTagManager)
+        if (plugin.getChatManager() != null) {
+            String display = plugin.getChatManager().getRichDisplayName(player);
+            event.setJoinMessage("§8[§a+§8] " + display + " §7has joined the game.");
+        }
+
         if (plugin != null) {
             plugin.setServerTabHeaderFooter(player);
         }
@@ -147,14 +164,6 @@ public class PlayerQuitListener implements Listener {
             plugin.getThreadSafety().runAsync(() -> {
                 plugin.getPetManager().loadPlayer(player.getUniqueId());
             });
-
-            // TEMP: Give new players a few starter cosmetic pets for testing
-            var petManager = plugin.getPetManager();
-            var owned = petManager.getOwnedPets(player.getUniqueId());
-            if (owned.isEmpty()) {
-                petManager.addPet(player.getUniqueId(), new com.thenerdcj.pets.CosmeticPet(com.thenerdcj.pets.PetType.BABY_PARROT, "Chirpy"));
-                petManager.addPet(player.getUniqueId(), new com.thenerdcj.pets.CosmeticPet(com.thenerdcj.pets.PetType.CAT, "Whiskers"));
-            }
 
             plugin.getPetManager().onPlayerJoin(player);
         }
@@ -278,6 +287,61 @@ public class PlayerQuitListener implements Listener {
             plugin.getThreadSafety().runAsync(() -> {
                 plugin.getPlayerSkillManager().loadPlayer(player.getUniqueId());
             });
+        }
+
+        // Disable built-in Minecraft (vanilla) advancements/achievements if configured.
+        // Keeps focus on custom Play-to-Win progression (slayer, collections, skills, etc.).
+        // Revoke on join + prevent future via event. Enabled by default.
+        if (plugin.isVanillaAdvancementsDisabled()) {
+            revokeVanillaAdvancements(player);
+        }
+    }
+
+    private void revokeVanillaAdvancements(Player player) {
+        if (player == null) return;
+        java.util.Iterator<Advancement> iterator = Bukkit.advancementIterator();
+        while (iterator.hasNext()) {
+            Advancement advancement = iterator.next();
+            if (!"minecraft".equals(advancement.getKey().getNamespace())) {
+                continue;
+            }
+            AdvancementProgress progress = player.getAdvancementProgress(advancement);
+            for (String criterion : new java.util.ArrayList<>(progress.getAwardedCriteria())) {
+                progress.revokeCriteria(criterion);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onAdvancementDone(PlayerAdvancementDoneEvent event) {
+        if (!plugin.isVanillaAdvancementsDisabled()) {
+            return;
+        }
+        Advancement advancement = event.getAdvancement();
+        if (!"minecraft".equals(advancement.getKey().getNamespace())) {
+            return;
+        }
+        Player player = event.getPlayer();
+        AdvancementProgress progress = player.getAdvancementProgress(advancement);
+        for (String criterion : new java.util.ArrayList<>(progress.getAwardedCriteria())) {
+            progress.revokeCriteria(criterion);
+        }
+    }
+
+    /**
+     * Prevent vanilla Minecraft advancements from ever being granted by cancelling
+     * the criterion grant event. This stops repeated awarding (e.g. "Stone Age"
+     * re-triggering every time cobblestone is placed due to inventory_changed criteria).
+     * Combined with join-time revocation.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onAdvancementCriterionGrant(PlayerAdvancementCriterionGrantEvent event) {
+        if (!plugin.isVanillaAdvancementsDisabled()) {
+            return;
+        }
+        org.bukkit.advancement.Advancement advancement = event.getAdvancement();
+        if ("minecraft".equals(advancement.getKey().getNamespace())) {
+            event.setCancelled(true);
         }
     }
 }

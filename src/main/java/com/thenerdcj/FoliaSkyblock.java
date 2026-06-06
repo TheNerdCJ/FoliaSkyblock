@@ -43,9 +43,13 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import com.thenerdcj.island.generator.VoidChunkGenerator;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.ChunkGenerator;
+
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -120,6 +124,14 @@ public class FoliaSkyblock extends JavaPlugin {
     private AdminIslandInspectGUI adminIslandInspectGUI;
     // Task batch: dedicated SpawnEditGUI (polish for admin spawn fixes)
     private SpawnEditGUI spawnEditGUI;
+
+    // Last known locations for /back (EssentialsX-style). Updated on staff + key player teleports.
+    private final ConcurrentHashMap<UUID, Location> lastLocations = new ConcurrentHashMap<>();
+
+    // Expanded staff panel GUI
+    private StaffGUI staffGUI;
+
+    private StaffCommand staffCommand;
 
     private WardrobeManager wardrobeManager;
     private WardrobeGUI wardrobeGUI;
@@ -238,11 +250,6 @@ public class FoliaSkyblock extends JavaPlugin {
         saveDefaultConfig();
         validateConfiguration();
 
-        // === Auto-download missing soft dependencies (PlaceholderAPI, WorldEdit) ===
-        // Downloads latest versions to plugins/ folder if missing. Requires restart to load.
-        // This makes the plugin more self-contained for fresh servers.
-        new com.thenerdcj.util.DependencyDownloader(this).downloadMissingDependencies();
-
         // Schedulers must exist before managers that register repeating tasks in constructors
         this.threadSafety = new ThreadSafety(this);
         this.nameCache = new NameCache(this);
@@ -301,6 +308,8 @@ public class FoliaSkyblock extends JavaPlugin {
         this.generatorGUI = new GeneratorGUI(this);
         this.adminIslandInspectGUI = new AdminIslandInspectGUI(this);
         this.spawnEditGUI = new SpawnEditGUI(this);
+        // Staff GUI panel (expanded)
+        this.staffGUI = new StaffGUI(this);
 
         // Scheduled tasks - worth recalc now respects config (economy/perf optimization)
         // For large servers, set recalc-interval-minutes high or 0 in config + rely on event-driven adjustBlockWorth in block listeners.
@@ -602,18 +611,6 @@ public class FoliaSkyblock extends JavaPlugin {
         this.worldManager.initializeWorlds();
         MessageUtil.info(getLogger(), "§e[WorldManager] Creating custom void worlds for Skyblock...");
 
-        // Task 2: PAPI expansion registration (soft, after managers ready for stats access). 
-        // Placeholders cover tops, player/island balances, XP level, worth level, progression (tied), party, skills.
-        // Folia-safe (no sched in request). PtW compliant. Compare: Iridium/Superior + Hypixel YT setups rely on this for scoreboards/Discord bots.
-        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
-            try {
-                new com.thenerdcj.placeholder.FoliaSkyblockExpansion(this).register();
-                MessageUtil.info(getLogger(), "§a[PlaceholderAPI] FoliaSkyblock expansion registered successfully.");
-            } catch (Exception e) {
-                MessageUtil.warning(getLogger(), "§c[PlaceholderAPI] Failed to register expansion: " + e.getMessage());
-            }
-        }
-
         this.hologramManager = new HologramManager(this);
         hologramManager.loadAndSpawnAll();
 
@@ -653,6 +650,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public void onDisable() {
         if (hologramManager != null) hologramManager.cleanup();
         if (chestShopManager != null) chestShopManager.flushCoalescedShopSaves();
+        if (questManager != null) questManager.saveAllQuests();
         if (databaseManager != null) databaseManager.close();
         MessageUtil.info(getLogger(), "§e[FoliaSkyblock] Plugin disabled.");
     }
@@ -754,10 +752,10 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("chatbubble", new ChatBubbleCommand(this));
         safeRegisterCommand("bubble", new ChatBubbleCommand(this));
 
-        // Island Weather Cosmetics command (new)
-        safeRegisterCommand("weather", new IslandWeatherCommand(this));
+        // Island Weather Cosmetics command (new) - /weather is staff/admin weather control (per-island dim)
         safeRegisterCommand("islandweather", new IslandWeatherCommand(this));
         safeRegisterCommand("weathereffects", new IslandWeatherCommand(this));
+        safeRegisterCommand("wfx", new IslandWeatherCommand(this));
 
         // Light Accessories command (new)
         safeRegisterCommand("accessories", new AccessoryCommand(this));
@@ -802,6 +800,7 @@ public class FoliaSkyblock extends JavaPlugin {
 
         // Staff
         StaffCommand staffCmd = new StaffCommand(this);
+        this.staffCommand = staffCmd;
         safeRegisterCommand("staff", staffCmd);
         safeRegisterCommand("vanish", staffCmd);
         safeRegisterCommand("fly", staffCmd);
@@ -834,6 +833,14 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("clear", staffCmd);
         safeRegisterCommand("repair", staffCmd);
         safeRegisterCommand("setspawn", staffCmd);
+        // New EssentialsX-style admin movement + tools
+        safeRegisterCommand("top", staffCmd);
+        safeRegisterCommand("back", staffCmd);
+        safeRegisterCommand("jump", staffCmd);
+        safeRegisterCommand("sudo", staffCmd);
+        safeRegisterCommand("socialspy", staffCmd);
+        safeRegisterCommand("time", staffCmd);
+        safeRegisterCommand("weather", staffCmd);
         safeRegisterCommand("isadmin", new AdminCommand(this));
 
         // Bug reporting system (player submit + staff /bug reports)
@@ -937,6 +944,8 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.gui.GeneratorGUI getGeneratorGUI() { return generatorGUI; }
     public com.thenerdcj.gui.AdminIslandInspectGUI getAdminIslandInspectGUI() { return adminIslandInspectGUI; }
     public com.thenerdcj.gui.SpawnEditGUI getSpawnEditGUI() { return spawnEditGUI; }
+    public com.thenerdcj.gui.StaffGUI getStaffGUI() { return staffGUI; }
+    public StaffCommand getStaffCommand() { return staffCommand; }
     public com.thenerdcj.gui.BoosterGUI getBoosterGUI() { return boosterGUI; }
     public AuctionManager getAuctionManager() { return auctionManager; }
     public BazaarManager getBazaarManager() { return bazaarManager; }
@@ -983,6 +992,37 @@ public class FoliaSkyblock extends JavaPlugin {
         } catch (ClassNotFoundException e) {
             return false;
         }
+    }
+
+    /**
+     * Whether built-in Minecraft (vanilla) advancements/achievements are disabled.
+     * When true (default), vanilla achievements are revoked on join and prevented from being earned.
+     * This keeps progression focused on custom Play-to-Win systems.
+     * Config key: disable-vanilla-advancements (boolean, default true)
+     */
+    public boolean isVanillaAdvancementsDisabled() {
+        return getConfig().getBoolean("disable-vanilla-advancements", true);
+    }
+
+    // ==================== TELEPORT HISTORY FOR /back ====================
+    public void recordLastLocation(Player player) {
+        if (player != null) {
+            lastLocations.put(player.getUniqueId(), player.getLocation().clone());
+        }
+    }
+
+    public Location getLastLocation(UUID uuid) {
+        return lastLocations.get(uuid);
+    }
+
+    /**
+     * Teleport helper that records the previous location for /back support.
+     * Use for staff and important player teleports (home, spawn, tpa etc).
+     */
+    public void teleportWithBack(Player player, Location destination) {
+        if (player == null || destination == null || destination.getWorld() == null) return;
+        recordLastLocation(player);
+        player.teleport(destination);
     }
 
     public PunishmentManager getPunishmentManager() { return punishmentManager; }
@@ -1154,6 +1194,13 @@ public class FoliaSkyblock extends JavaPlugin {
         // New reports system note
         if (!getConfig().getBoolean("reports.enabled", true)) {
             MessageUtil.info(getLogger(), "§e[Config] reports.enabled=false — in-game bug reporting disabled.");
+        }
+
+        // Vanilla advancements disable (default on for Play-to-Win focus)
+        if (getConfig().getBoolean("disable-vanilla-advancements", true)) {
+            MessageUtil.info(getLogger(), "§a[Config] Vanilla Minecraft advancements disabled (custom progression only).");
+        } else {
+            MessageUtil.warning(getLogger(), "§e[Config] Vanilla Minecraft advancements enabled (players can earn built-in achievements).");
         }
 
         if (hasIssues) {

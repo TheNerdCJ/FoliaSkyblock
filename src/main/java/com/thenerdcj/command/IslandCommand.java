@@ -235,7 +235,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         MessageUtil.sendMessage(player, "§e/is settings §7- Open Island Settings GUI.");
         MessageUtil.sendMessage(player, "§e/is upgrade §7- Open Island Upgrades GUI.");
         MessageUtil.sendMessage(player, "§e/is border §7- View border size / prestige info.");
-        MessageUtil.sendMessage(player, "§e/is border markers [on|off|toggle] §7- Toggle persistent corner hologram markers.");
+        MessageUtil.sendMessage(player, "§e/is border markers [on|off|toggle] §7- Toggle persistent corner border markers (direct displays, no gameplay impact).");
         MessageUtil.sendMessage(player, "§e/is visit <player> §7- Visit another player's island (if they allow visitors).");
         MessageUtil.sendMessage(player, "§e/is browse | top §7- Browse top islands or visit menu.");
         MessageUtil.sendMessage(player, "§e/is tp <player> §7- Teleport to another player's island.");
@@ -820,7 +820,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         boolean markers = plugin.getIslandSettingsManager()
             .getCachedSettings(island.getGridPosition())
             .isBorderMarkersEnabled();
-        MessageUtil.sendMessage(player, "§7Hologram Markers: " + (markers ? "§aEnabled" : "§7Disabled") + " §8(/is border markers toggle)");
+        MessageUtil.sendMessage(player, "§7Border Markers: " + (markers ? "§aEnabled" : "§7Disabled") + " §8(/is border markers toggle)");
         MessageUtil.sendMessage(player, "§7Upgrade size with §b/is upgrade §7(ISLAND_SIZE)");
     }
 
@@ -865,8 +865,11 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                     }
                     MessageUtil.sendMessage(player, "§aPersistent border hologram markers §aenabled§a! Corners now have markers.");
                 } else {
-                    MessageUtil.sendMessage(player, "§7Persistent border hologram markers §cdisabled§7.");
-                    MessageUtil.sendMessage(player, "§8Existing markers will remain until manually removed or server restart (full auto-clean coming soon).");
+                    if (plugin.getBorderVisualManager() != null) {
+                        plugin.getBorderVisualManager().removeBorderHologramMarkers(island);
+                    }
+                    MessageUtil.sendMessage(player, "§7Persistent border markers §cdisabled§7.");
+                    MessageUtil.sendMessage(player, "§8Markers removed.");
                 }
             });
         });

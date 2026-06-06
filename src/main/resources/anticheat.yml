@@ -36,11 +36,27 @@ dupe:
   cross-claim:
     enabled: true
   # Item transaction (pickup/drop/inv move) rate limiting to catch dupes.
-  # Legitimate play (farming mobs, breaking blocks with many drops, quick inventory) can trigger very fast pickups.
-  # 150ms was too strict and caused false kicks on normal "pick up 3 items quickly".
-  # Recommended 300-500ms. Only high frequency + other signals should flag.
+  # Legitimate play (farming mobs, breaking blocks with many drops like dirt with shovel, crop harvesting (potatoes/carrots etc.),
+  # quickly shift-clicking loot out of farm chests, quick inventory management) can trigger very fast item transactions.
+  # 150ms was too strict and caused false positives on normal mining/farming.
+  # Recommended 300-500ms outer threshold.
+  #
+  # On an island, we suppress the "Very Rapid Item Pickup on Island" flag if the player has a recent own block break
+  # (within recent-block-break-grace-ms) or recent mob kill. This covers:
+  #   - Immediate pickup of drops after breaking crops (potatoes, carrots, wheat, etc.)
+  #   - Collecting a whole farm's yield after a harvesting run (drops + chest loot), including running a 9x9+ plot
+  #     of wheat/potatoes/carrots and picking up the many ground items (wheat + seeds etc.) after the last crop is broken.
+  #     Harvesting + gathering in a 9x9 can easily take 30-60+ seconds; the grace window is measured from the most recent break.
+  #   - Normal mining (shovel dirt, pick stone) + fast pickup
+  # Only when there is NO recent legitimate source AND the actions are extremely spammy (< ~200ms) do we apply a light flag.
   item-rapid-threshold-ms: 400
-  rapid-item-violation-weight: 2   # Lowered from 5 to reduce false positive kicks on legit play
+  rapid-item-violation-weight: 2   # Lowered to reduce false positives on legit play
+  recent-block-break-grace-ms: 60000   # 60s default — covers full harvesting + collection of a 9x9 wheat/potato/carrot plot (or larger). Many rapid pickups happen after the last crop is broken while gathering the drops.
+  recent-mob-kill-grace-ms: 8000
+  # Total items gained in 30s window before "Excessive Item Gain" flag.
+  # Legit play (cobble gens, harvesting, collecting from chests, farms) easily produces hundreds of items quickly.
+  # Dupe would be sudden thousands without visible production. Raised for fewer false positives.
+  item-gain-threshold: 1000
 
 illegal-item:
   scan-enabled: true

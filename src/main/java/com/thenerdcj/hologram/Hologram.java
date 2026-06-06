@@ -1,5 +1,6 @@
 package com.thenerdcj.hologram;
 
+import com.thenerdcj.FoliaSkyblock;
 import org.bukkit.entity.TextDisplay;
 
 import java.util.ArrayList;
@@ -14,10 +15,12 @@ public class Hologram {
 
     private final HologramData data;
     private final List<TextDisplay> displays;
+    private final FoliaSkyblock plugin;
 
-    public Hologram(HologramData data, List<TextDisplay> displays) {
+    public Hologram(HologramData data, List<TextDisplay> displays, FoliaSkyblock plugin) {
         this.data = data;
         this.displays = new ArrayList<>(displays);
+        this.plugin = plugin;
     }
 
     public HologramData getData() {
@@ -35,9 +38,10 @@ public class Hologram {
     public void removeAll() {
         for (TextDisplay display : displays) {
             if (display != null && display.isValid()) {
-                if (display.getScheduler() != null) {
-                    // Best effort: try to remove on the entity's own scheduler
-                    display.getScheduler().run(null, t -> display.remove(), null);
+                if (display.getScheduler() != null && plugin != null) {
+                    // Best effort: try to remove on the entity's own scheduler.
+                    // Must pass non-null plugin to Folia EntityScheduler.
+                    display.getScheduler().run(plugin, t -> display.remove(), null);
                 } else {
                     display.remove();
                 }
@@ -54,8 +58,8 @@ public class Hologram {
         if (index >= 0 && index < displays.size()) {
             TextDisplay display = displays.get(index);
             if (display != null && display.isValid()) {
-                if (display.getScheduler() != null) {
-                    display.getScheduler().run(null, t -> display.text(newText), null);
+                if (display.getScheduler() != null && plugin != null) {
+                    display.getScheduler().run(plugin, t -> display.text(newText), null);
                 } else {
                     display.text(newText);
                 }

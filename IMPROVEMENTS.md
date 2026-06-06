@@ -386,16 +386,16 @@ Compare: now exceeds Iridium/Superior in Folia + explicit party/XP config + muse
 - Comp: museum like Hypixel (YT), more slayer/minion like top servers.
 - Snippet: MuseumManager.donate, SlayerTier.INFERNO...
 
-**5. Schematics + size + worldborder**
-- Verified: size in upgrades/config, visuals in Border, worldborder true, no schem.
-- Changes: config schematics section + note; protection listener isWithin using upgrade size (mechanical); generator stub comment; worldborder already; compile.
+**5. Size + worldborder (schematics/WorldEdit fully removed)**
+- Verified: size in upgrades/config, visuals in Border, worldborder true.
+- Changes: removed all WorldEdit/schematic code, files, deps, docs, config sections; protection listener isWithin using upgrade size (mechanical); worldborder already; compile.
 - Folia: region in visuals; PtW: size from play upgrades.
-- Comp: size like Superior, schem optional like Iridium, border enhanced.
+- Comp: size like Superior, border enhanced. No schematic dep.
 - Snippet: IslandProtectionListener.isWithin...
 
 **6. AC expand + tests**
 - Verified: AC has Neural + many flags.
-- Changes: new flags in AntiCheat (minion/museum/schem); Neural test + samples; more party/dim/AC in DB tests; compile.
+- Changes: new flags in AntiCheat (minion/museum); Neural test + samples; more party/dim/AC in DB tests; compile. (schematic flag removed with WE support)
 - Folia/PtW: flags server; security: audit log.
 - Comp: better than base Iridium AC.
 - Snippet: isFlaggedForMinionMacro, testTrain...
@@ -605,7 +605,7 @@ When you complete an item:
 **Vs SuperiorSkyblock2 / IridiumSkyblock (top community picks):**
 - **This plugin wins on:** Native Folia perf focus (Skyllia/Deluxe are competitors here), strict PtW + detailed design doc (most servers have P2W pressure complaints), built-in everything (no addon fragmentation like BentoBox), deep custom systems (neural anticheat, skills+milestones tied to dims/bosses, per-dim reset safety), modern GUI tech (PDC everywhere).
 - **Gaps / Suggestions to Adopt:**
-  - **Custom schematics / island types:** Current is strong procedural (BiomeTemplate, IslandOreGenerator, variants). Add optional schematic loader (like Iridium/Superior) for admin/donor/prestige unlocked island layouts. Improves variety without breaking generator.
+  - **Custom island types:** Current is strong procedural (BiomeTemplate, IslandOreGenerator, variants, archetypes). No plans for external schematic support (removed).
   - **Collections system:** COMPLETE + synergy - Core per-island unique item discovery + milestone cosmetic unlocks (25 accessory, 50 furniture, etc.), Wardrobe preview, SlayerShop examples with purchase, Prestige extra grants. Full end-to-end. See recent changes in CollectionManager, SlayerShopGUI, PrestigeManager, WardrobeGUI.
   - **Island Housing / Furniture (Deeper set bonuses + variety):** COMPLETE. IslandFurnitureType with furnitureSet + 20+ pieces; full IslandFurnitureManager with place/respawn/preview/remove + persisted placed_furniture table; activeIslandSets recompute on mutate/load; glowing + themed particles (END_ROD/FLAME/PORTAL) for active placed sets; onPlayerEnterIsland pride bursts (central + per-piece, Folia via ThreadSafety); collection XP + set complete IslandXP + bonus unlocks; live active sets display in Wardrobe preview + FurnitureGUI placed view; /furniture list/remove<num> UX; Prestige grants + Slayer shop examples; full hooks in IslandManager/DimensionIslandListener/IslandFurnitureListener. BUILD SUCCESS (268). Purely visual island pride system.
   - **Minion per-assignment UX (polish):** COMPLETE. Shift+Click in MinionsGUI to clear individual minion skin assignment (with manager clearMinionAssignment + explicit DatabaseManager.deleteMinionSkinAssignment); Folia-safe ThreadSafety particle feedback on assign/clear; enhanced actionbar + chat messages + item lore; manager/DB support for removal + persist; builds on prior per-minion foundation (assignments map, load on island, apply in spawn). mvn BUILD SUCCESS. Strong UX parity with furniture list/remove and emote trigger GUI.
@@ -655,7 +655,7 @@ Build remains clean post-fix. Recommend running full test suite with `-Pwith-moc
 - Per-dimension island reset **100% complete**: Proper per-dimension reset time tracking (via `player_dimension_resets` table + `recordIslandReset`/`getLastDimensionReset`), boss-per-island safety checks fully wired (`hasActiveBossOnIsland` + `hasActiveBossOnDimension`), enhanced DimensionResetGUI + ResetConfirmationGUI with Folia-safe async flows, and admin override support. The two lingering TODOs in DatabaseMigration.java have been resolved.
 - GUI migration aggressively advanced (multiple GUIs migrated to use AbstractGUI/BaseGUI + GUIUtils, PDC standardized).
 - Island Worth made fully incremental, persisted via DAO, with Folia RegionScheduler drift correction task, and /is worth breakdown command added.
-- Deepened procedural island variety (no schematics): Added full IslandArchetype + GenerationProfile system. Every island now has a strong, reproducible, biome-faithful "personality" (plateaus vs valleys vs craggy vs dense canopy, etc.) with custom terrain math, varied tree profiles (including fallen logs), and coherent procedural micro-landmarks. Makes each island feel unique while keeping perfect Play-to-Win fairness and Folia safety.
+- Deepened procedural island variety: Added full IslandArchetype + GenerationProfile system. Every island now has a strong, reproducible, biome-faithful "personality" (plateaus vs valleys vs craggy vs dense canopy, etc.) with custom terrain math, varied tree profiles (including fallen logs), and coherent procedural micro-landmarks. Makes each island feel unique while keeping perfect Play-to-Win fairness and Folia safety. (Schematic support fully removed.)
 - Donor personality reroll on dimension reset: Donors can now click "Reroll Island Personality" in the biome selection screen during a per-dimension reset. This generates and persists a new `generation_seed` (v6 migration), resulting in a completely different island layout/archetype while keeping the chosen biome. Purely cosmetic (no resource or progression advantage). Old islands and non-reroll resets remain fully backward compatible (seed=0 falls back to position-derived generation).
 - Admin debug tools added to AdminCommand for worth, minions, anticheat.
 - Folia scheduler coverage expanded in HologramManager and MinionManager, legacy § colors removed in key places (big sweep), comprehensive SoundUtil + sounds on major actions added, significantly improved actionable error messages for level/prestige/requirement gates.
@@ -717,7 +717,7 @@ The "Remaining High-Value Tasks" list and QoL items have largely been executed (
 - Expand AntiCheatManager with the detailed Skyblock exploit guide already in the class. **COMPLETED (this pass)**: Added isFlaggedForQuestExploit / reportHighQuestProgress, isFlaggedForCollectionAbuse / reportCollectionDiscover, isFlaggedForHousingSpam / recordHousingPlace, isFlaggedForMinionSpam / recordMinionPlace, isFlaggedForEnchantPowerAbuse / reportEnchantProc, reportDragonGriefAttempt. Expanded Javadoc guide (items 8-12). Wired guards + reports into EarlyGameListener (quest + XP), CollectionManager/Listener (discover abuse), MinionManager (place + first quest), IslandFurnitureManager + IslandStructureManager (housing spam), EnchantEffectListener (proc farming), IslandProtectionListener (dragon projection). Single source of truth reinforced. BUILD SUCCESS.
 - Last minor GUI holdovers (deprecate legacy AbstractGUI.createItem paths). **COMPLETED**: @Deprecated + javadoc on createItem/createButton + class note pointing to GUIUtils + BaseGUI + MessageUtil.legacy. Migrated holdovers (EnchantingTableGUI full direct GUIUtils + resilient startsWith title guard + MessageUtil title; SlayerAchievementGUI similar + removed delegators). More files already aligned from prior passes.
 - Folia edge cases (world unload, more per-entity schedulers). **COMPLETED**: Added WorldUnloadEvent handler in IslandProtectionListener delegating to HologramManager, MinionManager, IslandFurnitureManager, IslandStructureManager. Implemented onWorldUnload in HologramManager (real: removes displays + tasks for unloaded world) + stubs/real in Minion/Furniture/Structure (clear active entity lists for world). Prevents stale refs on Folia world unload.
-- Optional: Custom schematics support (low priority, "optional" in gaps).
+- (Schematic/WorldEdit support was removed entirely; no plans to re-add.)
 - More H2 tests + admin "island inspect" GUI. **ADVANCED / POLISHED + ENHANCED this pass + continued this compression pass**: 
   - Expanded DatabaseCriticalFlowsTest with real bank/settings/worth roundtrips via IslandDAO (GridPosition, grid PK), dedicated testIslandBank_Settings_Persistence_Roundtrip, enhanced testAdminIslandInspect_DAOAccessFlows with actual fetches (worth/bank/settings/prestige/collections via IslandDAO + Cosmetic/Balance/Punish DAOs + counts). Added warp/rating roundtrips + calls in inspect flow.
   - AdminIslandInspectGUI significantly upgraded + enhanced: real DAO loads (islandDAO.loadIslandWorth/Bank/Settings/Prestige/CollectionCount + new loadIslandWarp/getAvgRating/getRatingCount, cosmetic tag/pet(active), balance, punish), concrete numeric displays (worth/bank/player bal/punish counts/tags/pets + new warp/rating avg/hasWarp section), GridPosition, richer lore, modern title via MessageUtil.legacy, resilient click title check (contains), Javadoc updated for async notes + TODO follow-up. Uses joins for staff tool (rare path). Added warp/ratings section.

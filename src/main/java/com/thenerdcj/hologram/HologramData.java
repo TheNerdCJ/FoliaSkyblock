@@ -19,6 +19,7 @@ public class HologramData {
     private String billboard = "CENTER";
     private String backgroundColor; // e.g. "#00000080" or null for default
     private double scale = 1.0;
+    private float viewRange = 1.0f;
     private boolean seeThrough = false;
     private boolean shadow = true;
     private String permission; // optional permission node or rank name
@@ -64,6 +65,9 @@ public class HologramData {
 
     public double getScale() { return scale; }
     public void setScale(double scale) { this.scale = scale; }
+
+    public float getViewRange() { return viewRange; }
+    public void setViewRange(float viewRange) { this.viewRange = viewRange; }
 
     public boolean isSeeThrough() { return seeThrough; }
     public void setSeeThrough(boolean seeThrough) { this.seeThrough = seeThrough; }

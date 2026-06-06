@@ -25,8 +25,9 @@ import java.util.logging.Level;
  * WorldManager - Creates and manages custom void worlds for FoliaSkyblock.
  * Generates a basic safe spawn platform at the configured center (default 0,100,0) so players don't fall into the void.
  * The platform is minimal: a flat solid area of safe blocks. 
- * This allows admins to build a custom spawn/hub on top or around it without it being overwritten (uses skip-if-built marker).
- * No complex procedural features, no schematics for spawn.
+ * This allows admins to build a custom spawn/hub on top or around it without it being overwritten (uses skip-if-built via foundation block signature; no more floating lodestone marker).
+ * Purely procedural spawn generation (detailed cohesive hub with roads, buildings, nature, NPC areas).
+ * No WorldEdit or schematic support (removed per requirements).
  * Batched for Folia region safety. Join can be blocked until ready via config.
  */
 public class WorldManager {
@@ -42,8 +43,12 @@ public class WorldManager {
     private static final String OVERWORLD_NAME = "skyblock";
     private static final String NETHER_NAME = "skyblock_nether";
     private static final String END_NAME = "skyblock_end";
-    /** Hidden marker placed when hub generation completes (not used by vanilla spawn selection). */
+    /** Material used for legacy "complete" marker (previously placed visibly at +10 Y).
+     *  We no longer place any LODESTONE as part of spawn gen (caused floating blocks in air around spawn).
+     *  Detection now uses foundation block signatures + legacy check for old installs. Kept for compat. */
     private static final Material SPAWN_COMPLETE_MARKER = Material.LODESTONE;
+    /** Y offset (relative to center-y) for the buried signature check (center column foundation). Within layers placed by placeBasePlatformColumn (inner: -4 = DEEPSLATE). */
+    private static final int SPAWN_MARKER_Y_OFFSET = -4;
 
     public WorldManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
@@ -115,6 +120,11 @@ public class WorldManager {
         }
 
         logResolvedWorlds(overworld, nether, end);
+
+        // Apply skyblock-specific gamerules (e.g. disable natural phantoms in Overworld only)
+        configureSkyblockGamerules(overworld);
+        configureSkyblockGamerules(nether);
+        configureSkyblockGamerules(end);
 
         if (overworld != null && !foliaWorldInitCompleted) {
             foliaWorldInitCompleted = true;
@@ -194,12 +204,14 @@ public class WorldManager {
         }
 
         if (levelMatch != null) {
+            configureSkyblockGamerules(levelMatch);
             return levelMatch;
         }
 
         if (anyEnvMatch != null) {
             plugin.getLogger().fine("[WorldManager] Resolved " + environment + " via environment fallback: "
                     + anyEnvMatch.getName());
+            configureSkyblockGamerules(anyEnvMatch);
             return anyEnvMatch;
         }
 
@@ -242,6 +254,28 @@ public class WorldManager {
     }
 
     /**
+     * Applies skyblock-specific gamerules to a dimension.
+     * Currently used to selectively disable natural phantom spawns (insomnia)
+     * while preserving intentional End content (DimensionBoss PHANTOM, membranes, collection).
+     */
+    private void configureSkyblockGamerules(World world) {
+        if (world == null) return;
+
+        World.Environment env = world.getEnvironment();
+
+        if (env == World.Environment.NORMAL) {
+            boolean disableOverworld = plugin.getConfig().getBoolean("mobs.disable-insomnia.overworld", true);
+            if (disableOverworld) {
+                world.setGameRule(GameRule.DO_INSOMNIA, false);
+                plugin.getLogger().info("[WorldManager] Disabled natural phantoms (doInsomnia=false) in Overworld for skyblock balance.");
+            }
+        }
+        // Nether and End left untouched by default.
+        // - End: The custom DimensionBoss.PHANTOM + natural night spawns can still provide membranes/collections.
+        // - You can extend this later for nether/end via config if desired.
+    }
+
+    /**
      * Create a void world asynchronously
      */
     private CompletableFuture<World> createVoidWorldAsync(String worldName, World.Environment environment) {
@@ -263,6 +297,7 @@ public class WorldManager {
                     World world = creator.createWorld();
                     if (world != null) {
                         world.setSpawnLocation(0, SPAWN_Y + 2, 0);
+                        configureSkyblockGamerules(world);
                         if (plugin.isFolia()) {
                             world.getChunkAtAsync(0, 0);
                         } else {
@@ -340,6 +375,42 @@ public class WorldManager {
         return getHubSpawnLocation(resolveSkyblockWorld(World.Environment.NORMAL));
     }
 
+    /**
+     * Sets the global/hub spawn location to the provided position.
+     * Used by staff /setspawn (EssentialsX-style).
+     * - Updates the live world spawn.
+     * - Persists center-x/y/z + yaw/pitch + player-y-offset=0 to config so getHubSpawnLocation and future gens reference the exact landing spot.
+     * Safe for Folia (assumes caller is on correct thread or main for config).
+     */
+    public void setHubSpawnLocation(Location loc) {
+        if (loc == null || loc.getWorld() == null) return;
+        World w = loc.getWorld();
+
+        // Persist centers so our hub logic matches (treat provided loc as final player position => offset 0)
+        // Config changes are safe from any thread.
+        int px = loc.getBlockX();
+        int py = loc.getBlockY();
+        int pz = loc.getBlockZ();
+        plugin.getConfig().set("spawn-platform.center-x", px);
+        plugin.getConfig().set("spawn-platform.center-y", py);
+        plugin.getConfig().set("spawn-platform.center-z", pz);
+        plugin.getConfig().set("spawn-platform.player-y-offset", 0);
+        plugin.getConfig().set("spawn-platform.yaw", loc.getYaw());
+        plugin.getConfig().set("spawn-platform.pitch", loc.getPitch());
+        plugin.saveConfig();
+
+        hubSpawnReady = true;
+
+        // World spawn mutation MUST happen on the global region thread in Folia.
+        final Location finalLoc = loc.clone();
+        plugin.getThreadSafety().runOnMainThread(() -> {
+            w.setSpawnLocation(finalLoc);
+        });
+
+        MessageUtil.info(plugin.getLogger(), "§a[WorldManager] Global spawn set via /setspawn to " +
+                px + "," + py + "," + pz + " (world: " + w.getName() + ")");
+    }
+
     private void completeHubSpawn(World world) {
         Location spawn = getHubSpawnLocation(world);
         if (spawn == null) {
@@ -411,11 +482,30 @@ public class WorldManager {
     }
 
     private boolean isSpawnPlatformBuilt(World world, int cx, int cy, int cz) {
-        return world.getBlockAt(cx, cy + 10, cz).getType() == SPAWN_COMPLETE_MARKER;
+        // Signature check for our generated platform base (prevents re-running gen and overwriting admin custom builds on the spawn platform).
+        // Uses the deep foundation block we place at center (always DEEPSLATE for inner columns).
+        Block buried = world.getBlockAt(cx, cy + SPAWN_MARKER_Y_OFFSET, cz);
+        if (buried.getType() == Material.DEEPSLATE || buried.getType() == SPAWN_COMPLETE_MARKER) {
+            return true;
+        }
+        // Backward compat for worlds generated before the fix: old marker was a LODESTONE at +10 Y (which floated visibly "in the air around spawn").
+        // If that legacy marker still exists, treat as "already built" so we don't clobber on server restart/upgrade.
+        Block legacy = world.getBlockAt(cx, cy + 10, cz);
+        if (legacy.getType() == SPAWN_COMPLETE_MARKER) {
+            return true;
+        }
+        return false;
     }
 
     private void markSpawnPlatformBuilt(World world, int cx, int cy, int cz) {
-        world.getBlockAt(cx, cy + 10, cz).setType(SPAWN_COMPLETE_MARKER);
+        // We no longer place (or rely on) a LODESTONE marker block at all -- previous +10 offset caused visible "lodestone also spawns in the air around spawn".
+        // The platform's own foundation blocks (specifically DEEPSLATE at the buried center bottom) serve as the persistent "built by us" signature.
+        // This call (from skip-if-built paths) now just ensures the signature block is present (in case it was air).
+        // Legacy +10 lodestone (if present from old gens) is left alone; admins can break it manually if desired. We don't create new ones.
+        Block b = world.getBlockAt(cx, cy + SPAWN_MARKER_Y_OFFSET, cz);
+        if (b.getType() == Material.AIR || b.getType() == SPAWN_COMPLETE_MARKER) {
+            b.setType(Material.DEEPSLATE);
+        }
     }
 
     private void preloadSpawnChunks(World world, int blockX, int blockY, int blockZ, int radius, Runnable onReady) {
@@ -1077,37 +1167,6 @@ public class WorldManager {
     }
 
     // (addCohesiveRoadsideDecor and all complex decor removed)
-
-    // ==================== SPAWN SCHEMATIC SUPPORT ====================
-    // The actual WorldEdit-dependent code has been moved to SpawnSchematicPaster
-    // (see com.thenerdcj.util.SpawnSchematicPaster) to avoid NoClassDefFoundError / class loading
-    // failures when WorldEdit is not present on the server.
-    // We safely invoke it via reflection only after confirming the plugin is loaded.
-
-    private boolean tryUseSpawnSchematic(World world, int cx, int cy, int cz) {
-        if (!plugin.getConfig().getBoolean("spawn-schematics.enabled", false)) {
-            return false;
-        }
-
-        org.bukkit.plugin.Plugin wePlugin = Bukkit.getPluginManager().getPlugin("WorldEdit");
-        if (wePlugin == null || !wePlugin.isEnabled()) {
-            MessageUtil.warning(plugin.getLogger(), "§e[WorldManager] spawn-schematics.enabled but WorldEdit not present. Using procedural spawn generator.");
-            return false;
-        }
-
-        try {
-            Class<?> pasterClass = Class.forName("com.thenerdcj.util.SpawnSchematicPaster");
-            java.lang.reflect.Method method = pasterClass.getMethod(
-                "tryUseSpawnSchematic", 
-                org.bukkit.plugin.java.JavaPlugin.class, World.class, int.class, int.class, int.class
-            );
-            Object result = method.invoke(null, plugin, world, cx, cy, cz);
-            return result != null && (Boolean) result;
-        } catch (Exception e) {
-            MessageUtil.log(plugin.getLogger(), Level.SEVERE, "§c[WorldManager] Failed to invoke SpawnSchematicPaster via reflection (WorldEdit may be missing or incompatible)", e);
-            return false;
-        }
-    }
 
     // ==================== UTILITY METHODS ====================
 
