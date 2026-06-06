@@ -4,17 +4,17 @@ import java.util.*;
 
 /**
  * Simple Neural Network for Cheat Detection (Updated)
- *
+ * <p>
  * === TIER 3 REVIEW DECISION ===
- * This is an experimental, hand-written neural network (MLP).
+ * This is an experimental, handwritten neural network (MLP).
  * It is kept for advanced users but is NOT recommended for most servers.
- *
+ * <p>
  * Strong recommendation: Disable the neural component in production or replace the entire
  * AntiCheat system with a mature plugin. The custom heuristics in AntiCheatManager
- * (fastbreak, xray, dupe, XP) are more valuable than the NN for a Skyblock context.
- *
+ * (fast break, xray, dupe, XP) are more valuable than the NN for a Skyblock context.
+ * <p>
  * The network does NOT persist learned weights between restarts.
- *
+ * <p>
  * Lightweight MLP that learns legitimate vs cheating behavior in FoliaSkyblock.
  * High ore rates from upgraded IslandOreGenerator are treated as legitimate.
  */
@@ -118,7 +118,7 @@ public class NeuralCheatDetector {
 
         trainingData.add(new TrainingSample(inputs, target));
         if (trainingData.size() > MAX_TRAINING_SAMPLES) {
-            trainingData.remove(0);
+            trainingData.removeFirst();
         }
     }
 

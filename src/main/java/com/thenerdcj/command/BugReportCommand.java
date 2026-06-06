@@ -76,6 +76,47 @@ public class BugReportCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        // Staff: attach note to a selected report from the GUI (used with "Add Note" button)
+        if (first.equals("note") && (player.hasPermission("foliasb.staff") || player.hasPermission("foliasb.admin"))) {
+            if (args.length < 2) {
+                MessageUtil.sendMessage(player, "§cUsage: /bug note <your note text>");
+                return true;
+            }
+            String noteText = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
+
+            // Prefer the last report the staff explicitly selected in the GUI (via "Add Note" click or report click)
+            Integer targetReport = reportManager.getLastSelectedReport(player.getUniqueId());
+            if (targetReport == null || targetReport <= 0) {
+                MessageUtil.sendMessage(player, "§cNo report selected. Open the reports GUI, click a report (or the Add Note button), then run this command.");
+                return true;
+            }
+
+            reportManager.setPendingNote(targetReport, noteText);
+            MessageUtil.sendMessage(player, "§aNote captured for report #" + targetReport + ".");
+            MessageUtil.sendMessage(player, "§7Now change the status in the reports GUI — the note will be attached.");
+            return true;
+        }
+
+        // Player self-service: view own recent reports (works for everyone)
+        if ((first.equals("list") || first.equals("my") || first.equals("mine")) || args.length == 0) {
+            reportManager.getReportsForPlayer(player.getUniqueId(), 10).thenAccept(ownReports -> {
+                if (ownReports.isEmpty()) {
+                    MessageUtil.sendMessage(player, "§7You have not submitted any bug reports yet. Use §f/bug <description>§7 to submit one.");
+                    return;
+                }
+                MessageUtil.sendMessage(player, "§6Your recent bug reports:");
+                for (BugReport r : ownReports) {
+                    String shortDesc = r.getShortDescription(60);
+                    MessageUtil.sendMessage(player,
+                        "§e#" + r.getId() + " §7[" + r.getCategory().getColor() + r.getCategory().getDisplayName() + "§7] " +
+                        r.getStatus().getColor() + r.getStatus().getDisplayName() +
+                        " §f" + shortDesc);
+                }
+                MessageUtil.sendMessage(player, "§7Use §f/bug <text>§7 to submit a new one. Staff can view full details via /reports.");
+            });
+            return true;
+        }
+
         // Determine category from first word if it matches
         BugReport.Category category = BugReport.Category.BUG;
         int descStart = 0;

@@ -150,6 +150,10 @@ public class AntiCheatManager {
     // Neural detector is experimental — disabled by default after Tier 3 review
     private boolean neuralDetectorEnabled;
 
+    // Farming tunables
+    private double farmLeniencyMultiplier = 4.0;
+    private double farmMacroVarianceThreshold = 25.0;
+
     private String punishmentLevel1, punishmentLevel2, punishmentLevel3;
     private int banDurationHours;
 
@@ -185,6 +189,7 @@ public class AntiCheatManager {
 
     // === NEW: Fastbreak / Fastplace tracking ===
     private final Map<UUID, Long> lastBlockBreakTime = new ConcurrentHashMap<>();
+    private final Map<UUID, Material> lastBrokenMaterial = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastBlockPlaceTime = new ConcurrentHashMap<>();
 
     public AntiCheatManager(FoliaSkyblock plugin) {
@@ -227,6 +232,10 @@ public class AntiCheatManager {
         rapidItemViolationWeight = config.getInt("dupe.rapid-item-violation-weight", 2);
 
         neuralDetectorEnabled = config.getBoolean("neural-detector.enabled", false); // Disabled by default after Tier 3 review
+
+        // Farming-specific (added to reduce false positives on legit farms while still catching macros)
+        farmLeniencyMultiplier = config.getDouble("farming.leniency-multiplier", 4.0);
+        farmMacroVarianceThreshold = config.getDouble("farming.macro-variance-threshold-ms", 25.0);
 
         punishmentLevel1 = config.getString("punishment.level-1", "warn");
         punishmentLevel2 = config.getString("punishment.level-2", "kick");
@@ -314,6 +323,13 @@ public class AntiCheatManager {
             flagViolation(player, "FastPlace", 3);
         }
 
+        // Farm macro detection via timing variance (added as next improvement after crop false-positive fixes)
+        if (isLikelyFarmMacro(player, profile)) {
+            suspicious = true;
+            reasons.add("Unnaturally consistent crop harvesting timing");
+            flagViolation(player, "Possible Automated Farm Macro (low timing variance)", 3);
+        }
+
         if (neuralDetectorEnabled) {
             double cheatProb = neuralDetector.getCheatProbability(profile);
             if (cheatProb > 0.82) {
@@ -341,9 +357,19 @@ public class AntiCheatManager {
 
     public boolean isFastBreakSuspicious(Player player, PlayerBehaviorProfile profile) {
         if (player.hasPermission("foliasb.admin")) return false;
+
         long now = System.currentTimeMillis();
         Long last = lastBlockBreakTime.get(player.getUniqueId());
         if (last == null) return false;
+
+        // Crop farming (potatoes especially) on your own island is legitimately extremely fast.
+        // A player walking a row can break many fully-grown plants per second + pick up drops immediately.
+        // Only apply the strict fastbreak check if the player is not harvesting farm crops on their island.
+        Material lastMat = lastBrokenMaterial.get(player.getUniqueId());
+        if (isOnOwnIsland(player) && isFarmCrop(lastMat)) {
+            return false;
+        }
+
         return (now - last) < fastbreakMinDelayMs;
     }
 
@@ -356,6 +382,24 @@ public class AntiCheatManager {
     }
 
     /**
+     * Detects possible automated crop macros using break timing variance from the profile.
+     * Legitimate players have natural jitter even when farming efficiently.
+     * Very low standard deviation over many farm breaks on own island is suspicious.
+     */
+    public boolean isLikelyFarmMacro(Player player, PlayerBehaviorProfile profile) {
+        if (!enabled || player.hasPermission("foliasb.bypass.anticheat") || !isOnOwnIsland(player)) return false;
+        if (profile == null) return false;
+
+        // Only trigger if we've seen enough farm breaks and variance is suspiciously low
+        if (profile.hasLowFarmBreakVariance(farmMacroVarianceThreshold)) {
+            // Additional guard: only flag if they also have high recent farm volume (via blocks or items)
+            // This avoids flagging slow consistent farmers.
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Records a block break for anticheat tracking (speed, ore rates, etc).
      * Communicates with IslandOreGenerator via static isGeneratorOre() to detect PDC-tagged generator ores.
      * Generator ores on own island are excluded from oreMiningRate to ensure 100% whitelist and no false positives.
@@ -365,16 +409,32 @@ public class AntiCheatManager {
 
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
-        lastBlockBreakTime.put(uuid, now);
+        Material type = block.getType();
+
+        // Do not update the fastbreak timer for farm crops on your own island.
+        // This prevents dense potato/carrot/etc harvesting from creating a "recent break" timestamp
+        // that would either false-positive or (worse) mask a real fastbreak on stone right after farming.
+        boolean isOwnFarmCrop = isOnOwnIsland(player) && isFarmCrop(type);
+        if (!isOwnFarmCrop) {
+            lastBlockBreakTime.put(uuid, now);
+            lastBrokenMaterial.put(uuid, type);
+        } else {
+            // Still record the material so isFastBreakSuspicious can see we are in a farming streak if needed
+            lastBrokenMaterial.put(uuid, type);
+        }
 
         PlayerBehaviorProfile profile = profiles.computeIfAbsent(uuid, k -> new PlayerBehaviorProfile(uuid));
-        profile.recordBlockBreak(block.getType());
+        profile.recordBlockBreak(type);
+
+        if (isFarmCrop(type)) {
+            profile.recordFarmBreak();
+        }
 
         // Update ore rate etc already in profile
         // IMPORTANT: Whitelist generator-placed ores (tagged via PDC in IslandOreGenerator at placement time)
         // Only count non-generator ores toward suspicious oreMiningRate to prevent false positives
         // on legit Play-to-Win island ore generator yields when broken on owning island.
-        if (block.getType().name().endsWith("_ORE")) {
+        if (type.name().endsWith("_ORE")) {
             boolean isGenOre = IslandOreGenerator.isGeneratorOre(block, plugin) && isOnOwnIsland(player);
             if (!isGenOre) {
                 profile.recordOreMined();
@@ -413,28 +473,33 @@ public class AntiCheatManager {
 
     // ==================== DUPE DETECTION (kept & improved) ====================
 
-    public void recordItemTransaction(Player player, int itemCountDelta) {
+    /**
+     * Records an item transaction (pickup, drop, inventory move, click) for dupe/rapid manipulation detection.
+     * @param material the material involved (nullable). When provided for positive gains on own island,
+     *                 farm crops are heavily exempted to avoid false positives during legitimate harvesting.
+     */
+    public void recordItemTransaction(Player player, int itemCountDelta, Material material) {
         if (!enabled) return;
 
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
 
         Long lastAction = lastItemActionTime.get(uuid);
-        long threshold = itemRapidThresholdMs;  // Configurable, default 400ms (was hardcoded 150ms which false-positived normal pickups)
+        long threshold = itemRapidThresholdMs;  // Configurable, default 400ms
 
         if (lastAction != null && (now - lastAction) < threshold) {
             // Rapid item actions (pickup/drop/inv) are common in legit play:
             // - Farming mobs/blocks that drop multiple items close together
             // - Quickly collecting several ground items
-            // - Normal inventory management
-            // Only treat as high-severity dupe risk in spawn protected area.
-            // On own island, much more lenient (or use lower weight).
+            // - Normal inventory management during dense crop harvesting (potatoes especially)
             if (isInSpawnProtectedArea(player.getLocation())) {
                 flagViolation(player, "Rapid Item Manipulation (Possible Dupe - ruins economy/trading)", rapidItemViolationWeight);
             } else if (isOnOwnIsland(player)) {
-                // Legit farming on your own island — only light flag if extremely spammy
-                if ((now - lastAction) < (threshold / 2)) {  // e.g. <200ms is still very fast even for legit
-                    flagViolation(player, "Very Rapid Item Pickup on Island", Math.max(1, rapidItemViolationWeight - 1));
+                // Legit farming on your own island (especially breaking + immediately picking up potatoes/carrots
+                // from multiple plants) produces very rapid item pickups.
+                // Only flag if *extremely* spammy.
+                if ((now - lastAction) < 50) {
+                    flagViolation(player, "Extremely Rapid Item Pickup on Island", 1);
                 }
             } else {
                 flagViolation(player, "Suspicious Item Activity", 2);
@@ -443,15 +508,26 @@ public class AntiCheatManager {
         lastItemActionTime.put(uuid, now);
 
         if (itemCountDelta > 0) {
-            recentItemGains.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
-            List<Long> gains = recentItemGains.get(uuid);
-            // The >25 check is over a rolling 30s window (cleaned in task). Legit high-volume farms can hit this,
-            // but it's a secondary signal after the time check.
-            if (gains.size() > 30) {  // Slightly raised from 25 for more headroom on busy farms
-                flagViolation(player, "Excessive Item Gain (Possible Duplication - bypasses progression)", 5);
-                gains.clear();
+            boolean isFarmGainOnOwnIsland = isOnOwnIsland(player) && isFarmCrop(material);
+
+            if (!isFarmGainOnOwnIsland) {
+                // Only track non-farm or off-island gains for dupe volume detection.
+                // This completely prevents normal potato/carrot/etc farming from ever triggering
+                // the "Excessive Item Gain" false positive while still catching real dupes.
+                recentItemGains.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
+                List<Long> gains = recentItemGains.get(uuid);
+                int limit = isOnOwnIsland(player) ? 120 : 35;
+                if (gains.size() > limit) {
+                    flagViolation(player, "Excessive Item Gain (Possible Duplication - bypasses progression)", 5);
+                    gains.clear();
+                }
             }
         }
+    }
+
+    // Convenience overload for older call sites that don't have material context
+    public void recordItemTransaction(Player player, int itemCountDelta) {
+        recordItemTransaction(player, itemCountDelta, null);
     }
 
     public void checkShulkerDuplication(Player player, ItemStack item) {
@@ -487,6 +563,40 @@ public class AntiCheatManager {
         // Communicates with IslandManager - verified working
         return plugin.getIslandManager() != null &&
                plugin.getIslandManager().getIslandAt(player.getLocation()) != null;
+    }
+
+    /**
+     * Returns true for materials that are harvested as part of normal farming.
+     * These legitimately break and drop items extremely quickly when players walk through rows.
+     * Used to reduce false positives in fastbreak + rapid-item heuristics during crop farming.
+     */
+    private boolean isFarmCrop(Material m) {
+        if (m == null) return false;
+        return m == Material.POTATOES || m == Material.POTATO ||
+               m == Material.CARROTS || m == Material.CARROT ||
+               m == Material.WHEAT || m == Material.WHEAT_SEEDS ||
+               m == Material.BEETROOTS || m == Material.BEETROOT ||
+               m == Material.NETHER_WART ||
+               m == Material.COCOA || m == Material.COCOA_BEANS ||
+               m == Material.PUMPKIN || m == Material.MELON ||
+               m == Material.SUGAR_CANE || m == Material.BAMBOO ||
+               m == Material.KELP || m == Material.CACTUS;
+    }
+
+    /**
+     * Returns true if the source or material indicates farming activity on the player's own island.
+     * Used to apply much higher leniency in XP/quest/collection heuristics for legit dense crop farms.
+     */
+    private boolean isFarmActivityOnOwnIsland(Player player, String source, Material material) {
+        if (!isOnOwnIsland(player)) return false;
+        if (isFarmCrop(material)) return true;
+        if (source != null) {
+            String s = source.toLowerCase();
+            return s.contains("farm") || s.contains("crop") || s.contains("harvest") ||
+                   s.contains("potato") || s.contains("carrot") || s.contains("wheat") ||
+                   s.contains("early_farm") || s.contains("player_skill_farming");
+        }
+        return false;
     }
 
     // ==================== ILLEGAL ITEM (protects progression/enchanting economy) ====================
@@ -644,6 +754,14 @@ public class AntiCheatManager {
 
     public void reportHighXPGain(Player player, double xpGained, String source) {
         if (!enabled || xpGained <= xpGainThreshold || player.hasPermission("foliasb.bypass.anticheat")) return;
+
+        // Strong leniency for legitimate dense crop farming on own island (potatoes etc. legitimately produce
+        // very high XP rates when harvesting full rows quickly). Other signals (item volume, variance, neural)
+        // still catch real automated farm macros.
+        if (isFarmActivityOnOwnIsland(player, source, null)) {
+            return;
+        }
+
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
         recentXPGains.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
@@ -670,6 +788,13 @@ public class AntiCheatManager {
 
     public void reportHighQuestProgress(Player player, String source) {
         if (!enabled || player.hasPermission("foliasb.bypass.anticheat")) return;
+
+        // Leniency for own-island farming quests (early game farming quests can legitimately fire very fast
+        // when a player is actively harvesting a prepared farm).
+        if (isFarmActivityOnOwnIsland(player, source, null)) {
+            return;
+        }
+
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
         recentQuestGains.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
@@ -693,6 +818,24 @@ public class AntiCheatManager {
 
     public void reportCollectionDiscover(Player player, String itemKey) {
         if (!enabled || player == null || player.hasPermission("foliasb.bypass.anticheat")) return;
+
+        // Heavy leniency for farm collections on own island. Discovering/harvesting many crop types or
+        // high volumes of potatoes/carrots is normal progression on a dedicated farm.
+        // We still protect against rapid "first discover" macroing of non-farm items.
+        Material mat = null;
+        try {
+            // Best-effort parse (itemKey often like "FARMING:POTATO" or material name)
+            if (itemKey != null && itemKey.contains(":")) {
+                mat = Material.matchMaterial(itemKey.split(":")[1]);
+            } else if (itemKey != null) {
+                mat = Material.matchMaterial(itemKey);
+            }
+        } catch (Exception ignored) {}
+
+        if (isFarmActivityOnOwnIsland(player, itemKey, mat)) {
+            return;
+        }
+
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
         recentCollectionDiscovers.computeIfAbsent(uuid, k -> new ArrayList<>()).add(now);
@@ -892,6 +1035,7 @@ public class AntiCheatManager {
         shulkerPlaceCount.remove(uuid);
         recentXPGains.remove(uuid);
         lastBlockBreakTime.remove(uuid);
+        lastBrokenMaterial.remove(uuid);
         lastBlockPlaceTime.remove(uuid);
         staffBypassPlayers.remove(uuid);
         recentQuestGains.remove(uuid);

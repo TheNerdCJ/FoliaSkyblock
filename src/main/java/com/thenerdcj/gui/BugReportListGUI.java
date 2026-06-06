@@ -46,8 +46,11 @@ public class BugReportListGUI implements InventoryHolder, Listener {
     private final NamespacedKey REPORT_ID_KEY;
     private final NamespacedKey ACTION_KEY;
 
-    // Per-staff selection for detail view (so clicking report selects it, status buttons act on selection or the clicked one)
+    // Per-staff pagination + selection (matching AdminIslandInspectGUI / modern GUI patterns)
+    private final Map<UUID, Integer> playerPages = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> selectedReport = new ConcurrentHashMap<>();
+    // Simple pending note state (staff clicks "Add Note" then types in chat or uses a follow-up command)
+    private final Map<UUID, Integer> pendingNoteReport = new ConcurrentHashMap<>();
 
     public BugReportListGUI(FoliaSkyblock plugin) {
         this(plugin, true);
@@ -77,10 +80,10 @@ public class BugReportListGUI implements InventoryHolder, Listener {
 
         staff.openInventory(inventory);
 
-        // Async load open reports, then populate on main
-        reportManager.getOpenReports(45).thenAccept(reports -> {
+        // Async load a healthy number for pagination (large servers can have many reports)
+        reportManager.getOpenReports(200).thenAccept(reports -> {
             plugin.getThreadSafety().runOnMainThread(() -> {
-                if (staff.getOpenInventory().getTopInventory().getHolder() != this) return; // closed already
+                if (staff.getOpenInventory().getTopInventory().getHolder() != this) return;
                 populate(staff, reports);
             });
         });
@@ -89,14 +92,24 @@ public class BugReportListGUI implements InventoryHolder, Listener {
     private void populate(Player staff, List<BugReport> reports) {
         if (inventory == null) return;
 
+        int page = playerPages.getOrDefault(staff.getUniqueId(), 0);
+        int itemsPerPage = 45;
+        int total = reports.size();
+        int totalPages = Math.max(1, (total + itemsPerPage - 1) / itemsPerPage);
+        if (page >= totalPages) page = totalPages - 1;
+        playerPages.put(staff.getUniqueId(), page);
+
         inventory.clear();
 
         int count = reports.size();
-        inventory = Bukkit.createInventory(this, 54, MessageUtil.legacy("§c§lBug Reports §7(" + count + " open)"));
+        inventory = Bukkit.createInventory(this, 54, MessageUtil.legacy("§c§lBug Reports §7(" + count + " open) §8p" + (page + 1) + "/" + totalPages));
+
+        int start = page * itemsPerPage;
+        int end = Math.min(start + itemsPerPage, total);
 
         int slot = 0;
-        for (BugReport r : reports) {
-            if (slot >= 45) break;
+        for (int i = start; i < end; i++) {
+            BugReport r = reports.get(i);
 
             Material icon = switch (r.getCategory()) {
                 case EXPLOIT -> Material.TNT;
@@ -121,10 +134,9 @@ public class BugReportListGUI implements InventoryHolder, Listener {
             inventory.setItem(slot++, item);
         }
 
-        // Info / selected slot
+        // Info / selected slot (slot 49 is standard close area, we use 49 for detail like other GUIs)
         int selectedId = selectedReport.getOrDefault(staff.getUniqueId(), -1);
         if (selectedId > 0) {
-            // Try to find and show more detail (we have the list, but for freshness we could fetch; here use in-memory for speed)
             for (BugReport r : reports) {
                 if (r.getId() == selectedId) {
                     ItemStack detail = buildDetailItem(r);
@@ -138,24 +150,42 @@ public class BugReportListGUI implements InventoryHolder, Listener {
             inventory.setItem(49, info);
         }
 
-        // Controls
+        // Standard navigation (45/49/53 pattern used across modern GUIs)
+        if (page > 0) {
+            ItemStack prev = GUIUtils.createItem(Material.ARROW, "§e« Previous Page",
+                    "§7Page " + page + " of " + totalPages);
+            attachActionPDC(prev, "page:prev");
+            inventory.setItem(45, prev);
+        } else {
+            ItemStack refresh = GUIUtils.createItem(Material.EMERALD, "§aRefresh",
+                    "§7Reload open reports list");
+            inventory.setItem(45, refresh);
+        }
+
         ItemStack close = GUIUtils.createItem(Material.BARRIER, "§cClose");
-        inventory.setItem(53, close);
+        inventory.setItem(49, close);  // note: we may overwrite with detail above; close is still reachable via action
 
-        ItemStack refresh = GUIUtils.createItem(Material.EMERALD, "§aRefresh",
-                "§7Reload open reports list");
-        inventory.setItem(45, refresh);
+        if (page < totalPages - 1) {
+            ItemStack next = GUIUtils.createItem(Material.ARROW, "§eNext Page »",
+                    "§7Page " + (page + 2) + " of " + totalPages);
+            attachActionPDC(next, "page:next");
+            inventory.setItem(53, next);
+        }
 
-        // Status quick-action buttons (they will carry the selected or last-clicked via logic in click)
-        // For simplicity and robustness, clicking these will act on the currently selected report if any,
-        // otherwise the last interacted report id from PDC on the buttons themselves can be set on selection.
+        // Status action buttons (bottom row)
         addStatusButton(46, Material.LIME_WOOL, "§aMark FIXED", BugReport.Status.FIXED);
         addStatusButton(47, Material.YELLOW_WOOL, "§eMark INVESTIGATING", BugReport.Status.INVESTIGATING);
         addStatusButton(48, Material.ORANGE_WOOL, "§6Mark DUPLICATE", BugReport.Status.DUPLICATE);
         addStatusButton(50, Material.RED_WOOL, "§cMark WONTFIX", BugReport.Status.WONTFIX);
         addStatusButton(51, Material.LIGHT_BLUE_WOOL, "§bRe-OPEN", BugReport.Status.OPEN);
 
-        staff.openInventory(inventory); // re-open to apply new inv contents
+        // Small "add note" helper on the status row
+        ItemStack noteBtn = GUIUtils.createItem(Material.WRITABLE_BOOK, "§6Add Note",
+                "§7Click then type a note in chat", "§7(for the currently selected report)");
+        attachActionPDC(noteBtn, "action:add_note");
+        inventory.setItem(52, noteBtn);
+
+        staff.openInventory(inventory);
     }
 
     private void addStatusButton(int slot, Material mat, String name, BugReport.Status status) {
@@ -246,18 +276,50 @@ public class BugReportListGUI implements InventoryHolder, Listener {
         String action = getActionFromItem(clicked);
 
         if (clicked.getType() == Material.BARRIER) {
+            pendingNoteReport.remove(staff.getUniqueId());
             staff.closeInventory();
             return;
         }
 
-        if (clicked.getType() == Material.EMERALD) {
-            // Refresh
+        // Pagination nav
+        if (action != null && action.equals("page:prev")) {
+            int p = playerPages.getOrDefault(staff.getUniqueId(), 0);
+            playerPages.put(staff.getUniqueId(), Math.max(0, p - 1));
+            staff.closeInventory();
+            new BugReportListGUI(plugin).open(staff);
+            return;
+        }
+        if (action != null && action.equals("page:next")) {
+            int p = playerPages.getOrDefault(staff.getUniqueId(), 0);
+            playerPages.put(staff.getUniqueId(), p + 1);
             staff.closeInventory();
             new BugReportListGUI(plugin).open(staff);
             return;
         }
 
-        // Status action button
+        if (clicked.getType() == Material.EMERALD) {
+            // Refresh
+            playerPages.remove(staff.getUniqueId());
+            pendingNoteReport.remove(staff.getUniqueId());
+            staff.closeInventory();
+            new BugReportListGUI(plugin).open(staff);
+            return;
+        }
+
+        // Add note (selects report and tells staff to use chat or /bug note)
+        if (action != null && action.equals("action:add_note")) {
+            int target = selectedReport.getOrDefault(staff.getUniqueId(), reportId != null ? reportId : -1);
+            if (target <= 0) {
+                MessageUtil.sendMessage(staff, "§cSelect a report first (click it), then click Add Note.");
+                return;
+            }
+            pendingNoteReport.put(staff.getUniqueId(), target);
+            MessageUtil.sendMessage(staff, "§6Note mode active for report #" + target + ". Type your note in chat or use §f/bug note <text>§6. It will be attached on next status change.");
+            staff.closeInventory();
+            return;
+        }
+
+        // Status action button — supports pending note from "Add Note"
         if (action != null && action.startsWith("status:")) {
             String statusName = action.substring("status:".length());
             BugReport.Status targetStatus = BugReport.Status.fromString(statusName);
@@ -268,11 +330,18 @@ public class BugReportListGUI implements InventoryHolder, Listener {
                 return;
             }
 
-            reportManager.resolveReport(targetReport, targetStatus, staff, null)
+            // If staff previously clicked "Add Note" and then used /bug note <text>, the manager will have it.
+            String note = reportManager.consumePendingNote(targetReport);
+            pendingNoteReport.remove(staff.getUniqueId()); // clear any selection marker
+
+            if (note != null && !note.isEmpty()) {
+                MessageUtil.sendMessage(staff, "§aNote attached to report #" + targetReport + ".");
+            }
+
+            reportManager.resolveReport(targetReport, targetStatus, staff, note)
                 .thenAccept(success -> {
                     if (success) {
                         plugin.getThreadSafety().runOnMainThread(() -> {
-                            // Re-open fresh list
                             staff.closeInventory();
                             new BugReportListGUI(plugin).open(staff);
                         });
@@ -281,21 +350,12 @@ public class BugReportListGUI implements InventoryHolder, Listener {
             return;
         }
 
-        // Report item clicked -> select for detail + show full info
+        // Report item clicked -> select
         if (reportId != null && reportId > 0) {
             selectedReport.put(staff.getUniqueId(), reportId);
-
-            // Fetch fresh for full desc and re-populate
-            reportManager.getReport(reportId).thenAccept(report -> {
-                plugin.getThreadSafety().runOnMainThread(() -> {
-                    if (report != null) {
-                        // Rebuild a quick view or just refresh whole list (simplest reliable)
-                        staff.closeInventory();
-                        new BugReportListGUI(plugin).open(staff);
-                        // After open, the selected will cause detail to render
-                    }
-                });
-            });
+            reportManager.recordStaffReportSelection(staff.getUniqueId(), reportId); // for /bug note convenience
+            staff.closeInventory();
+            new BugReportListGUI(plugin).open(staff);
         }
     }
 }

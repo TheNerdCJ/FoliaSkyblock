@@ -225,4 +225,38 @@ public class BugReportManager {
             plugin.getLogger().warning("[BugReportManager] Failed to append to bug_reports.md (non-fatal): " + e.getMessage());
         }
     }
+
+    // ==================== PENDING STAFF NOTES (for GUI "Add Note" + /bug note flow) ====================
+
+    private final java.util.Map<Integer, String> pendingNotes = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Called by the command after staff clicks "Add Note" in the GUI and then runs /bug note <text>. */
+    public void setPendingNote(int reportId, String note) {
+        if (note != null && !note.trim().isEmpty()) {
+            pendingNotes.put(reportId, note.trim());
+        }
+    }
+
+    /** Consumes (and returns) a pending note when a staff member resolves the report. */
+    public String consumePendingNote(int reportId) {
+        return pendingNotes.remove(reportId);
+    }
+
+    public boolean hasPendingNote(int reportId) {
+        return pendingNotes.containsKey(reportId);
+    }
+
+    // ==================== STAFF SELECTION TRACKING (for /bug note convenience) ====================
+
+    private final java.util.Map<UUID, Integer> lastSelectedReportByStaff = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public void recordStaffReportSelection(UUID staffUuid, int reportId) {
+        if (staffUuid != null && reportId > 0) {
+            lastSelectedReportByStaff.put(staffUuid, reportId);
+        }
+    }
+
+    public Integer getLastSelectedReport(UUID staffUuid) {
+        return lastSelectedReportByStaff.get(staffUuid);
+    }
 }

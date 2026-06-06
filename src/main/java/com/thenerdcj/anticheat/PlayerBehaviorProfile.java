@@ -44,6 +44,12 @@ public class PlayerBehaviorProfile {
     private int blocksBrokenTotal = 0;
     private long lastBlockBreakTime = 0;
 
+    // Farming metrics (to detect automated crop macros with unnatural timing consistency)
+    private final List<Long> recentFarmBreakTimes = new ArrayList<>();
+    private static final int MAX_FARM_BREAK_SAMPLES = 30;
+    private long lastFarmBreakTime = 0;
+    private double farmBreakIntervalStdDev = 0.0;
+
     private boolean hasLegitimateSpeed = false;
     private boolean hasLegitimateReach = false;
     private boolean hasHighEnchantments = false;
@@ -134,6 +140,44 @@ public class PlayerBehaviorProfile {
         }
 
         lastActivity = now;
+    }
+
+    /**
+     * Specialized record for farm crop breaks. Used for variance-based macro detection.
+     * Legit players have natural timing jitter; macros tend toward extremely consistent intervals.
+     */
+    public void recordFarmBreak() {
+        long now = System.currentTimeMillis();
+
+        if (lastFarmBreakTime > 0) {
+            long interval = now - lastFarmBreakTime;
+            recentFarmBreakTimes.add(interval);
+            if (recentFarmBreakTimes.size() > MAX_FARM_BREAK_SAMPLES) {
+                recentFarmBreakTimes.remove(0);
+            }
+            recalculateFarmBreakVariance();
+        }
+
+        lastFarmBreakTime = now;
+        lastActivity = now;
+    }
+
+    private void recalculateFarmBreakVariance() {
+        if (recentFarmBreakTimes.size() < 5) {
+            farmBreakIntervalStdDev = 100.0; // high = legit by default
+            return;
+        }
+
+        double mean = recentFarmBreakTimes.stream().mapToDouble(Long::doubleValue).average().orElse(200.0);
+        double variance = recentFarmBreakTimes.stream()
+                .mapToDouble(i -> Math.pow(i - mean, 2))
+                .average().orElse(0.0);
+        farmBreakIntervalStdDev = Math.sqrt(variance);
+    }
+
+    public double getFarmBreakIntervalStdDev() { return farmBreakIntervalStdDev; }
+    public boolean hasLowFarmBreakVariance(double threshold) { 
+        return farmBreakIntervalStdDev < threshold && recentFarmBreakTimes.size() >= 8; 
     }
 
     public long getLastBlockBreakTime() { return lastBlockBreakTime; }

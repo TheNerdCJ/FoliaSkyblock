@@ -89,11 +89,13 @@ public class AntiCheatListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInventoryMoveItem(InventoryMoveItemEvent e) {
         if (e.getSource().getHolder() instanceof Player player) {
-            antiCheatManager.recordItemTransaction(player, 1);
+            ItemStack moved = e.getItem();
+            antiCheatManager.recordItemTransaction(player, 1, moved != null ? moved.getType() : null);
             antiCheatManager.checkContainerDuplication(player, e.getSource().getLocation().getBlock());
         }
         if (e.getDestination().getHolder() instanceof Player player2) {
-            antiCheatManager.recordItemTransaction(player2, 1);
+            ItemStack moved = e.getItem();
+            antiCheatManager.recordItemTransaction(player2, 1, moved != null ? moved.getType() : null);
         }
     }
 
@@ -113,13 +115,13 @@ public class AntiCheatListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerDropItem(PlayerDropItemEvent e) {
-        antiCheatManager.recordItemTransaction(e.getPlayer(), -1);
+        antiCheatManager.recordItemTransaction(e.getPlayer(), -1, e.getItemDrop().getItemStack().getType());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerPickupItem(PlayerPickupItemEvent e) {
         ItemStack item = e.getItem().getItemStack();
-        antiCheatManager.recordItemTransaction(e.getPlayer(), item.getAmount());
+        antiCheatManager.recordItemTransaction(e.getPlayer(), item.getAmount(), item.getType());
 
         if (antiCheatManager.scanForIllegalItem(e.getPlayer(), item)) {
             e.setCancelled(true);
@@ -134,7 +136,7 @@ public class AntiCheatListener implements Listener {
 
         ItemStack current = e.getCurrentItem();
         if (current != null) {
-            antiCheatManager.recordItemTransaction(player, current.getAmount());
+            antiCheatManager.recordItemTransaction(player, current.getAmount(), current.getType());
             if (antiCheatManager.scanForIllegalItem(player, current)) {
                 e.setCancelled(true);
             }

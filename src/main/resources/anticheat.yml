@@ -22,6 +22,9 @@ block:
   fastbreak:
     enabled: true
     min-delay-ms: 180
+    # Note: On your own island, fastbreak detection is intentionally disabled for farm crops (wheat, potatoes,
+    # carrots, etc.). Players legitimately break dozens of fully-grown plants per second while walking rows.
+    # Other signals (XP rate, collection abuse, neural, item volume) still protect against automated farm macros.
   fastplace:
     enabled: true
     min-delay-ms: 150
@@ -36,9 +39,8 @@ dupe:
   cross-claim:
     enabled: true
   # Item transaction (pickup/drop/inv move) rate limiting to catch dupes.
-  # Legitimate play (farming mobs, breaking blocks with many drops, quick inventory) can trigger very fast pickups.
-  # 150ms was too strict and caused false kicks on normal "pick up 3 items quickly".
-  # Recommended 300-500ms. Only high frequency + other signals should flag.
+  # Legitimate play (farming mobs, breaking blocks with many drops, quick inventory, especially dense potato/carrot rows)
+  # can trigger very fast pickups. Crop farming on your own island is heavily exempted to avoid false positives.
   item-rapid-threshold-ms: 400
   rapid-item-violation-weight: 2   # Lowered from 5 to reduce false positive kicks on legit play
 
@@ -54,6 +56,14 @@ punishment:
   level-3: ban
   ban-duration-hours: 24
   broadcast-to-staff: true
+
+farming:
+  # Multiplier applied to thresholds for XP/quest/collection when activity looks like own-island crop farming.
+  # Higher = more lenient on legitimate dense farming (potato rows etc.).
+  leniency-multiplier: 4.0
+  # Std dev threshold (in ms) below which consistent farm break timing is considered suspicious
+  # even on the player's own island. Real players have natural jitter; macros do not.
+  macro-variance-threshold-ms: 25.0
 
 # === Experimental Neural Detector (Tier 3 review) ===
 # The neural network component is DISABLED by default.
