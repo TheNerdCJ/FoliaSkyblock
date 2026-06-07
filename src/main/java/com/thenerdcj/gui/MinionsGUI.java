@@ -348,7 +348,7 @@ public class MinionsGUI implements Listener {
                             // Clear this minion's assignment
                             minionManager.clearSkinAssignmentForMinionSlot(id, minionNum, player.getUniqueId());
                             player.sendMessage("§eCleared skin assignment for minion #" + minionNum + " §7(now uses global active)");
-                            player.sendActionBar("§7Minion #" + minionNum + " assignment cleared");
+                            MessageUtil.sendActionBar(player, "§7Minion #" + minionNum + " assignment cleared");
                             // Folia-safe feedback particles
                             com.thenerdcj.util.ThreadSafety ts = plugin.getThreadSafety();
                             org.bukkit.Location pLoc = player.getLocation();
@@ -362,7 +362,7 @@ public class MinionsGUI implements Listener {
                             if (current != null && !current.isNone()) {
                                 minionManager.assignSkinToMinionSlot(id, minionNum, current, player.getUniqueId());
                                 player.sendMessage("§aAssigned " + current.getDisplayName() + " skin to minion #" + minionNum + " §7(overrides global)");
-                                player.sendActionBar("§aMinion #" + minionNum + " now uses " + current.getDisplayName());
+                                MessageUtil.sendActionBar(player, "§aMinion #" + minionNum + " now uses " + current.getDisplayName());
                                 // Folia-safe feedback particles
                                 com.thenerdcj.util.ThreadSafety ts = plugin.getThreadSafety();
                                 org.bukkit.Location pLoc = player.getLocation();

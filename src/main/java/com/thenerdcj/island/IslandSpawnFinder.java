@@ -14,7 +14,7 @@ import org.bukkit.block.Block;
  */
 public final class IslandSpawnFinder {
 
-    private static final int DEFAULT_SEARCH_RADIUS = 12;
+    private static final int DEFAULT_SEARCH_RADIUS = 8; // Reduced for smaller compact starting islands (BiomeTemplate min/max radii now ~3-8)
 
     private IslandSpawnFinder() {}
 

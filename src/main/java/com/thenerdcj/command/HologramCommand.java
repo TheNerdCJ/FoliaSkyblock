@@ -178,14 +178,13 @@ public class HologramCommand implements CommandExecutor {
     private void createHologram(Player player, String name) {
         Location loc = player.getLocation();
         HologramData data = new HologramData(name, loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
-        // Use the hologram name as the initial title line.
-        // The player can edit the displayed text (via setline/addline/etc) without affecting the internal name/identifier.
-        data.addLine(name);
+        // No forced default text. Users add their own lines (with & colors) via addline/setline.
+        // This prevents unwanted "Welcome to FoliaSkyblock" on every new hologram.
 
         plugin.getDatabaseManager().saveHologram(data).thenAccept(success -> {
             if (success) {
                 hologramManager.spawnHologram(data);
-                player.sendMessage("§aHologram '" + name + "' created and spawned.");
+                player.sendMessage("§aHologram '" + name + "' created (empty). Use /holo addline " + name + " <text> to add content (& colors supported).");
             } else {
                 player.sendMessage("§cFailed to save hologram (name may already exist).");
             }

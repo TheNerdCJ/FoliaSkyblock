@@ -140,8 +140,17 @@ public class IslandOreGenerator implements Listener {
             return false;
         }
 
-        block.setType(chosen);
-        tagGeneratorOre(block);
+        // Properly replace via the forming state (more reliable than direct setType inside form event)
+        event.getNewState().setType(chosen);
+
+        // Tag the forming state so the placed block carries the generator ore PDC for anti-cheat
+        if (event.getNewState() instanceof PersistentDataHolder holder) {
+            holder.getPersistentDataContainer().set(generatorOreBlockKey, PersistentDataType.BYTE, (byte) 1);
+        }
+
+        // Also record in legacy chunk PDC for compatibility with isGeneratorOre checks
+        tagGeneratorOreChunkLegacy(block);
+
         return true;
     }
 

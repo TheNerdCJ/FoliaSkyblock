@@ -105,7 +105,9 @@ public class IslandSettingsMainGUI extends BaseGUI {
                 "§7Allow leaves to decay naturally", settings.isLeafDecayEnabled(), "TOGGLE_LEAVES"));
 
         ItemStack borderBtn = GUIUtils.createItem(Material.BLUE_STAINED_GLASS_PANE, "§9Border Color",
-                "§7Current: §b" + settings.getBorderColor(), "§7Click to cycle");
+                "§7Current: §b" + settings.getBorderColor(),
+                "§7Click to cycle presets.",
+                "§7Supports hex: #RRGGBB or #RGB (set via /isadmin border setcolor #hex)");
         ItemMeta borderMeta = borderBtn.getItemMeta();
         if (borderMeta != null) {
             borderMeta.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "CYCLE_BORDER_COLOR");
@@ -165,7 +167,17 @@ public class IslandSettingsMainGUI extends BaseGUI {
                 settings.setBorderColor(next);
                 plugin.getIslandSettingsManager().saveSettings(settings);
                 player.sendMessage("§aBorder color changed to §b" + next);
-                reopen(player);
+
+                // Immediately refresh the island's worldborder + colored particles for live feedback
+                plugin.getThreadSafety().runOnMainThread(() -> {
+                    if (player.isOnline()) {
+                        var island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                        if (island != null && plugin.getBorderVisualManager() != null) {
+                            plugin.getBorderVisualManager().forceBorderRefresh(player, island);
+                        }
+                    }
+                    reopen(player);
+                });
             });
             return;
         }

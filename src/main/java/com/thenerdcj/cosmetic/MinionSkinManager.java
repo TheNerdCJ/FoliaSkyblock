@@ -1,6 +1,7 @@
 package com.thenerdcj.cosmetic;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
 import com.thenerdcj.util.ThreadSafety;
 import org.bukkit.Bukkit;
 import org.bukkit.Particle;
@@ -61,7 +62,7 @@ public class MinionSkinManager {
                 for (int m : COLLECTION_MILESTONES) {
                     if (count == m) {
                         player.sendMessage("§6§l★ Minion Collector Milestone! ★ §e" + count + " unique minion skins unlocked!");
-                        player.sendActionBar("§6Minion Skin Collection: " + count + " / " + (MinionSkin.values().length - 1));
+                        MessageUtil.sendActionBar(player, "§6Minion Skin Collection: " + count + " / " + (MinionSkin.values().length - 1));
                         break;
                     }
                 }

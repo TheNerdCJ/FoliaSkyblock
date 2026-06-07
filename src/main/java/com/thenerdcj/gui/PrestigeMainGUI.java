@@ -49,9 +49,10 @@ public class PrestigeMainGUI extends BaseGUI {
     @Override
     protected String formatTitle(Player player, int page) {
         Island island = sessionIslands.get(player.getUniqueId());
-        int current = island != null && plugin.getPrestigeManager() != null
-                ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
-        return "§6§lIsland Prestige §7(Lv " + current + ")";
+        com.thenerdcj.manager.PrestigeManager pm = plugin.getPrestigeManager();
+        int p = island != null && pm != null ? pm.getPrestigeLevel(island) : 0;
+        int eff = island != null && pm != null ? pm.getEffectiveLevel(island) : (island != null ? island.getLevel() : 0);
+        return "§6§lIsland Prestige §7(P" + p + " • Eff " + eff + ")";
     }
 
     @Override
@@ -86,12 +87,14 @@ public class PrestigeMainGUI extends BaseGUI {
         double xpMult = (pm.getPrestigeMultiplier(island, PrestigeManager.PrestigeMultiplierType.XP) - 1) * 100;
         double worthMult = (pm.getPrestigeMultiplier(island, PrestigeManager.PrestigeMultiplierType.WORTH) - 1) * 100;
 
+        int effLevel = island != null && pm != null ? pm.getEffectiveLevel(island) : (island != null ? island.getLevel() : 0);
         gui.setItem(4, GUIUtils.createItem(Material.NETHER_STAR, "§e§lCurrent Prestige: §b" + current,
                 "§7Permanent multipliers active:",
                 "§a+" + String.format("%.1f", xpMult) + "% §7Island XP",
                 "§a+" + String.format("%.1f", worthMult) + "% §7Worth",
                 "",
-                "§7Higher prestige = stronger bonuses"));
+                "§7Effective island height (prestige incorporated): §b" + effLevel,
+                "§7Higher prestige = stronger bonuses + higher effective level"));
 
         int minLevel = plugin.getConfig().getInt("island.prestige.requirements.min_island_level", 50);
         double minWorth = plugin.getConfig().getDouble("island.prestige.requirements.min_worth", 250000);
@@ -110,19 +113,39 @@ public class PrestigeMainGUI extends BaseGUI {
                 reqFooter));
 
         if (canPrestige) {
-            ItemStack prestigeBtn = GUIUtils.createNavButton(Material.EMERALD_BLOCK, "§a§lPRESTIGE NOW",
-                    ACTION_KEY, "PRESTIGE");
-            ItemMeta pMeta = prestigeBtn.getItemMeta();
-            if (pMeta != null) {
-                pMeta.setLore(java.util.List.of(
-                        "§7This will reset your island level & XP",
-                        "§7in exchange for permanent power.",
+            // Default path: prestige + reset using the island's current biome (no cascade to other dims)
+            ItemStack defaultBtn = GUIUtils.createNavButton(Material.EMERALD_BLOCK, "§a§lPRESTIGE + RESET",
+                    ACTION_KEY, "PRESTIGE_DEFAULT");
+            ItemMeta dMeta = defaultBtn.getItemMeta();
+            if (dMeta != null) {
+                dMeta.setLore(java.util.List.of(
+                        "§7Reset this island to a fresh starter",
+                        "§7using its §ecurrent biome§7 (default).",
+                        "§7Your prestige level increases.",
                         "",
-                        "§c§lWARNING: This is a major reset!",
-                        "§7Click to confirm"));
-                prestigeBtn.setItemMeta(pMeta);
+                        "§7Other dimensions are §cnot§7 affected.",
+                        "§c§lWARNING: Physical island will be reset!"));
+                defaultBtn.setItemMeta(dMeta);
             }
-            gui.setItem(14, prestigeBtn);
+            gui.setItem(11, defaultBtn);
+
+            // Prestige-exclusive "choose any biome" path (no donor requirement).
+            // This is only available when the player has met the prestige requirements.
+            // Selecting a different biome will also reset their Nether & End islands.
+            ItemStack chooseBtn = GUIUtils.createNavButton(Material.NETHER_STAR, "§d§lPRESTIGE + CHOOSE BIOME",
+                    ACTION_KEY, "PRESTIGE_CHOOSE_BIOME");
+            ItemMeta cMeta = chooseBtn.getItemMeta();
+            if (cMeta != null) {
+                cMeta.setLore(java.util.List.of(
+                        "§7Prestige perk: freely pick §eany§7 biome for the rebirth.",
+                        "§7If you pick a §edifferent§7 biome, your",
+                        "§7Nether and End islands will §calso§7 be reset to fresh starters.",
+                        "",
+                        "§7This gives a true fresh multi-dimension start for your new prestige run.",
+                        "§c§lWARNING: Physical islands will be reset!"));
+                chooseBtn.setItemMeta(cMeta);
+            }
+            gui.setItem(15, chooseBtn);
         }
 
         gui.setItem(22, GUIUtils.createItem(Material.BOOK, "§ePrestige Info",
@@ -151,12 +174,29 @@ public class PrestigeMainGUI extends BaseGUI {
         if (island == null) {
             return;
         }
-        if ("PRESTIGE".equals(action)) {
+        if ("PRESTIGE_DEFAULT".equals(action)) {
             SoundUtil.click(player);
             player.closeInventory();
+            // Uses current biome as "default", no cascade
             boolean success = plugin.getPrestigeManager().performPrestige(island, player);
             if (!success) {
                 SoundUtil.error(player);
+            }
+        } else if ("PRESTIGE_CHOOSE_BIOME".equals(action)) {
+            SoundUtil.click(player);
+            player.closeInventory();
+            // Store context so the biome picker knows to do a prestige rebirth + possible cascade
+            if (plugin.getPrestigeManager() != null) {
+                plugin.getPrestigeManager().startPrestigeBiomeChoice(player, island, true /* cascade other dims when new biome chosen */);
+            }
+            // Open the biome selector in prestige-rebirth mode.
+            // This bypasses the normal donor requirement so any player who has reached the prestige
+            // requirements can freely choose any biome (prestige-exclusive perk).
+            // The picker will detect the pending context and route through PrestigeManager.
+            if (plugin.getBiomeSelectionGUI() != null) {
+                plugin.getBiomeSelectionGUI().open(player, true, org.bukkit.World.Environment.NORMAL, true);
+            } else {
+                MessageUtil.sendMessage(player, "§cBiome selector unavailable right now.");
             }
         }
     }

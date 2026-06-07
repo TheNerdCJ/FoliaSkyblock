@@ -473,6 +473,7 @@ public class AdminCommand implements CommandExecutor {
     private void handleBorderCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
             MessageUtil.sendMessage(sender, "§cUsage: /isadmin border <setsize|setcolor> <player> <value>");
+            MessageUtil.sendMessage(sender, "§7  setcolor supports named colors or hex (#RRGGBB or #RGB) for custom particle borders");
             return;
         }
 
@@ -512,7 +513,9 @@ public class AdminCommand implements CommandExecutor {
                     });
                 });
             } else if (sub.equals("setcolor")) {
-                String color = args[3].toUpperCase();
+                String raw = args[3];
+                // Preserve hex case (e.g. #aabbcc), uppercase only named colors
+                String color = raw.startsWith("#") ? raw : raw.toUpperCase();
                 plugin.getIslandSettingsManager().getSettings(pos).thenAccept(settings -> {
                     settings.setBorderColor(color);
                     plugin.getIslandSettingsManager().saveSettings(settings);
@@ -521,6 +524,11 @@ public class AdminCommand implements CommandExecutor {
                         MessageUtil.sendMessage(sender, "§aSet border color for " + target.getName() + "'s island to §b" + color + ".");
                         if (target.isOnline()) {
                             MessageUtil.sendMessage(target, "§aAn admin has changed your island border color to §b" + color + ".");
+                            // Live update the visuals (WorldBorder + colored particles) for the target
+                            Island targetIsland = plugin.getIslandManager().getIsland(target.getUniqueId(), target.getWorld().getEnvironment());
+                            if (targetIsland != null && plugin.getBorderVisualManager() != null) {
+                                plugin.getBorderVisualManager().forceBorderRefresh(target, targetIsland);
+                            }
                         }
                     });
                 });

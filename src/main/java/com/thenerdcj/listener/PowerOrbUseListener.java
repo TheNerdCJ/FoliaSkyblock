@@ -3,6 +3,7 @@ package com.thenerdcj.listener;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.cosmetic.PowerOrbSkin;
 import com.thenerdcj.cosmetic.PowerOrbSkinManager;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -59,7 +60,7 @@ public class PowerOrbUseListener implements Listener {
         orbManager.triggerOrbEffect(player, skin);
 
         // Cosmetic feedback
-        player.sendActionBar("§b✧ Power Orb released: " + (skin.isNone() ? "§7Default" : skin.getRarity().getColorCode() + skin.getDisplayName()));
+        MessageUtil.sendActionBar(player, "§b✧ Power Orb released: " + (skin.isNone() ? "§7Default" : skin.getRarity().getColorCode() + skin.getDisplayName()));
 
         // Optional: consume one use (makes them feel like a limited cosmetic tool)
         // For now we just give a short cooldown feel via message if spammed

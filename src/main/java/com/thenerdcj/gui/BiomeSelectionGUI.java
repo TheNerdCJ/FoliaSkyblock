@@ -58,10 +58,26 @@ public class BiomeSelectionGUI implements Listener {
      * @param dimension  The target dimension (Overworld/Nether/End)
      */
     public void open(Player player, boolean isReset, World.Environment dimension) {
-        // Only donors can choose custom biomes (on both creation and reset)
-        if (!player.hasPermission("foliasb.donor") && !player.hasPermission("foliasb.donor.biome")) {
-            player.sendMessage("§cOnly donors can select custom biomes on island creation or reset!");
-            return;
+        open(player, isReset, dimension, false);
+    }
+
+    /**
+     * Opens the biome selection GUI.
+     * @param player          The player opening the GUI
+     * @param isReset         true = this is part of a per-dimension reset flow
+     * @param dimension       The target dimension (Overworld/Nether/End)
+     * @param prestigeRebirth true = this is a prestige rebirth choice. In this mode the player
+     *                        (who has met prestige requirements) may freely choose *any* biome
+     *                        even without the donor biome perk. This is prestige-exclusive.
+     */
+    public void open(Player player, boolean isReset, World.Environment dimension, boolean prestigeRebirth) {
+        // Normal donor gate for create/reset. Prestige rebirth explicitly allows any biome
+        // for the island owner who has reached the prestige requirements.
+        if (!prestigeRebirth) {
+            if (!player.hasPermission("foliasb.donor") && !player.hasPermission("foliasb.donor.biome")) {
+                player.sendMessage("§cOnly donors can select custom biomes on island creation or reset!");
+                return;
+            }
         }
 
         String dimDisplay = switch (dimension) {
@@ -71,11 +87,13 @@ public class BiomeSelectionGUI implements Listener {
         };
 
         // Modernized: full dynamic title through MessageUtil.legacy
-        String fullTitle = GUI_TITLE +
-                (isReset ? " §7(Reset " + dimDisplay + "§7)" : " §7(" + dimDisplay + "§7)");
-        Inventory gui = Bukkit.createInventory(null, 45, MessageUtil.legacy(fullTitle));
+        String suffix = prestigeRebirth
+                ? " §7(Prestige Rebirth)"
+                : (isReset ? " §7(Reset " + dimDisplay + "§7)" : " §7(" + dimDisplay + "§7)");
+        String fullTitle = GUI_TITLE + suffix;
+        Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy(fullTitle));
 
-        gui.setItem(4, createTitleItem(isReset, dimDisplay));
+        gui.setItem(4, createTitleItem(isReset, dimDisplay, prestigeRebirth));
 
         int playerMainLevel = getPlayerMainIslandLevel(player);
 
@@ -86,38 +104,68 @@ public class BiomeSelectionGUI implements Listener {
         int endReq = plugin.getConfig().getInt("island.dimension_requirements.end", 30);
 
         if (dimension == World.Environment.NORMAL) {
-            gui.setItem(10, createBiomeItem(Material.GRASS_BLOCK, "§aPlains", "PLAINS", dimension, isReset));
-            gui.setItem(12, createBiomeItem(Material.OAK_LOG, "§2Forest", "FOREST", dimension, isReset));
-            gui.setItem(14, createBiomeItem(Material.SAND, "§eDesert", "DESERT", dimension, isReset));
-            gui.setItem(16, createBiomeItem(Material.SPRUCE_LOG, "§bTaiga", "TAIGA", dimension, isReset));
-            gui.setItem(20, createBiomeItem(Material.JUNGLE_LOG, "§2Jungle", "JUNGLE", dimension, isReset));
-            // Expanded overworld biome selection (donor perk)
-            gui.setItem(22, createBiomeItem(Material.ACACIA_LOG, "§6Savanna", "SAVANNA", dimension, isReset));
-            gui.setItem(24, createBiomeItem(Material.BIRCH_LOG, "§fBirch Forest", "BIRCH_FOREST", dimension, isReset));
-            gui.setItem(26, createBiomeItem(Material.CHERRY_LEAVES, "§dCherry Grove", "CHERRY_GROVE", dimension, isReset));
-            gui.setItem(32, createBiomeItem(Material.MYCELIUM, "§5Mushroom Fields", "MUSHROOM_FIELDS", dimension, isReset));
+            // Clean grid layout for 54-slot (6 rows) inventory - rows 1-4 for ~35+ overworld biomes (slots 9-44)
+            int slot = 9;
+            gui.setItem(slot++, createBiomeItem(Material.GRASS_BLOCK, "§aPlains", "PLAINS", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.OAK_LOG, "§2Forest", "FOREST", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SAND, "§eDesert", "DESERT", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SPRUCE_LOG, "§bTaiga", "TAIGA", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.JUNGLE_LOG, "§2Jungle", "JUNGLE", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.ACACIA_LOG, "§6Savanna", "SAVANNA", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.BIRCH_LOG, "§fBirch Forest", "BIRCH_FOREST", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.CHERRY_LEAVES, "§dCherry Grove", "CHERRY_GROVE", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.OAK_LEAVES, "§aFlower Forest", "FLOWER_FOREST", dimension, isReset, prestigeRebirth));
 
-            // Nether & End unlock information (based on main island level from config)
+            gui.setItem(slot++, createBiomeItem(Material.GRASS_BLOCK, "§bMeadow", "MEADOW", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.DARK_OAK_LOG, "§8Dark Forest", "DARK_FOREST", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.OAK_LOG, "§2Swamp", "SWAMP", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.MANGROVE_LOG, "§aMangrove Swamp", "MANGROVE_SWAMP", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.RED_SAND, "§cBadlands", "BADLANDS", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SPRUCE_LOG, "§bGrove", "GROVE", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SNOW_BLOCK, "§fSnowy Plains", "SNOWY_PLAINS", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SPRUCE_LOG, "§bSnowy Taiga", "SNOWY_TAIGA", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.MYCELIUM, "§5Mushroom Fields", "MUSHROOM_FIELDS", dimension, isReset, prestigeRebirth));
+
+            gui.setItem(slot++, createBiomeItem(Material.SPRUCE_LOG, "§2Old Growth Pine Taiga", "OLD_GROWTH_PINE_TAIGA", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SPRUCE_LOG, "§2Old Growth Spruce Taiga", "OLD_GROWTH_SPRUCE_TAIGA", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.OAK_LOG, "§aWindswept Forest", "WINDSWEPT_FOREST", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.BAMBOO, "§2Bamboo Jungle", "BAMBOO_JUNGLE", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.STONE, "§7Windswept Hills", "WINDSWEPT_HILLS", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.STONE, "§7Stony Shore", "STONY_SHORE", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SAND, "§eBeach", "BEACH", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SNOW_BLOCK, "§fSnowy Beach", "SNOWY_BEACH", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.STONE, "§7Stony Peaks", "STONY_PEAKS", dimension, isReset, prestigeRebirth));
+
+            gui.setItem(slot++, createBiomeItem(Material.STONE, "§7Jagged Peaks", "JAGGED_PEAKS", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SNOW_BLOCK, "§fFrozen Peaks", "FROZEN_PEAKS", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.SNOW_BLOCK, "§fSnowy Slopes", "SNOWY_SLOPES", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.BIRCH_LOG, "§fOld Growth Birch Forest", "OLD_GROWTH_BIRCH_FOREST", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.JUNGLE_LOG, "§2Sparse Jungle", "SPARSE_JUNGLE", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.PACKED_ICE, "§bIce Spikes", "ICE_SPIKES", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.OAK_LOG, "§aSunflower Plains", "SUNFLOWER_PLAINS", dimension, isReset, prestigeRebirth));
+            gui.setItem(slot++, createBiomeItem(Material.OAK_LOG, "§6Wooded Badlands", "WOODED_BADLANDS", dimension, isReset, prestigeRebirth));
+
+            // Nether & End unlock information moved to row 5 (slots 45+)
             if (playerMainLevel < netherReq) {
-                gui.setItem(28, createLockedItem("§cNether Island", "§7Reach level " + netherReq + " on main island to unlock"));
+                gui.setItem(45, createLockedItem("§cNether Island", "§7Reach level " + netherReq + " on main island to unlock"));
             } else {
-                gui.setItem(28, createInfoItem("§cNether Island", "§7Use §b/is create nether §7(donor for biome)"));
+                gui.setItem(45, createInfoItem("§cNether Island", "§7Use §b/is create nether §7(donor for biome)"));
             }
 
             if (playerMainLevel < endReq) {
-                gui.setItem(34, createLockedItem("§5End Island", "§7Reach level " + endReq + " on main island to unlock"));
+                gui.setItem(47, createLockedItem("§5End Island", "§7Reach level " + endReq + " on main island to unlock"));
             } else {
-                gui.setItem(34, createInfoItem("§5End Island", "§7Use §b/is create end §7(donor for biome)"));
+                gui.setItem(47, createInfoItem("§5End Island", "§7Use §b/is create end §7(donor for biome)"));
             }
         } else if (dimension == World.Environment.NETHER) {
             if (playerMainLevel >= netherReq) {
-                gui.setItem(22, createBiomeItem(Material.NETHERRACK, "§cNether Wastes", "NETHER_WASTES", dimension, isReset));
+                gui.setItem(22, createBiomeItem(Material.NETHERRACK, "§cNether Wastes", "NETHER_WASTES", dimension, isReset, prestigeRebirth));
             } else {
                 gui.setItem(22, createLockedItem("§cNether Wastes", "§7Requires main island level " + netherReq + "+"));
             }
         } else if (dimension == World.Environment.THE_END) {
             if (playerMainLevel >= endReq) {
-                gui.setItem(22, createBiomeItem(Material.END_STONE, "§5The End", "THE_END", dimension, isReset));
+                gui.setItem(22, createBiomeItem(Material.END_STONE, "§5The End", "THE_END", dimension, isReset, prestigeRebirth));
             } else {
                 gui.setItem(22, createLockedItem("§5The End", "§7Requires main island level " + endReq + "+"));
             }
@@ -125,7 +173,7 @@ public class BiomeSelectionGUI implements Listener {
 
         // Fill empty slots with glass panes - modernized
         ItemStack glass = GUIUtils.createItem(Material.GRAY_STAINED_GLASS_PANE, " ");
-        for (int i = 0; i < 45; i++) {
+        for (int i = 0; i < 54; i++) {
             if (gui.getItem(i) == null) {
                 gui.setItem(i, glass);
             }
@@ -147,7 +195,7 @@ public class BiomeSelectionGUI implements Listener {
                 rerollMeta.getPersistentDataContainer().set(new NamespacedKey(plugin, "target_dimension"), PersistentDataType.STRING, dimension.name());
                 reroll.setItemMeta(rerollMeta);
             }
-            gui.setItem(40, reroll);
+            gui.setItem(49, reroll);
         }
 
         player.openInventory(gui);
@@ -161,31 +209,54 @@ public class BiomeSelectionGUI implements Listener {
         open(player, false);
     }
 
-    private ItemStack createTitleItem(boolean isReset, String dimDisplay) {
-        String name = isReset ? "§6§lChoose New Biome for Reset" : "§6§lChoose Your Starting Biome";
-        String[] lore = isReset
-                ? new String[]{
-                        "§7Dimension: " + dimDisplay,
-                        "§cThis will reset your island in this dimension with the new biome!",
-                        "§7Only donors can choose custom biomes on reset."
-                  }
-                : new String[]{
-                        "§7Dimension: " + dimDisplay,
-                        "§7Donor perk: pick your favorite starting biome"
-                  };
+    private ItemStack createTitleItem(boolean isReset, String dimDisplay, boolean prestigeRebirth) {
+        String name;
+        String[] lore;
+
+        if (prestigeRebirth) {
+            name = "§6§lChoose Biome for Prestige Rebirth";
+            lore = new String[]{
+                    "§7This is a prestige-exclusive option.",
+                    "§7You may freely pick §eany§7 biome for your new run.",
+                    "§7(Choosing a different biome will also reset your other dimension islands.)",
+                    "§cThis will prestige your island and generate a fresh starter."
+            };
+        } else if (isReset) {
+            name = "§6§lChoose New Biome for Reset";
+            lore = new String[]{
+                    "§7Dimension: " + dimDisplay,
+                    "§cThis will reset your island in this dimension with the new biome!",
+                    "§7Only donors can choose custom biomes on reset."
+            };
+        } else {
+            name = "§6§lChoose Your Starting Biome";
+            lore = new String[]{
+                    "§7Dimension: " + dimDisplay,
+                    "§7Donor perk: pick your favorite starting biome"
+            };
+        }
 
         ItemStack item = GUIUtils.createItem(Material.NETHER_STAR, name, lore);
         return item; // No extra PDC needed on the header
     }
 
     private ItemStack createBiomeItem(Material material, String name, String biomeKey,
-                                      World.Environment dimension, boolean isReset) {
-        String[] lore = isReset
-                ? new String[]{
-                        "§7Click to §creset§7 your " + dimension.name() + " island to this biome",
-                        "§cAll current progress in this dimension will be lost!"
-                  }
-                : new String[]{"§7Click to create your " + dimension.name() + " island with this biome"};
+                                      World.Environment dimension, boolean isReset, boolean prestigeRebirth) {
+        String[] lore;
+        if (prestigeRebirth) {
+            lore = new String[]{
+                    "§7Click to §6PRESTIGE & RESET§7 your island to this biome",
+                    "§7You will receive your new Prestige level and a fresh starter island.",
+                    "§cAll current progress on this island will be lost (prestige & cosmetics are kept)."
+            };
+        } else if (isReset) {
+            lore = new String[]{
+                    "§7Click to §creset§7 your " + dimension.name() + " island to this biome",
+                    "§cAll current progress in this dimension will be lost!"
+            };
+        } else {
+            lore = new String[]{"§7Click to create your " + dimension.name() + " island with this biome"};
+        }
 
         ItemStack item = GUIUtils.createItem(material, name, lore);
 
@@ -286,6 +357,14 @@ public class BiomeSelectionGUI implements Listener {
         player.closeInventory();
 
         boolean wantsReroll = pendingPersonalityRerolls.remove(player.getUniqueId()) != null && isReset;
+
+        // Prestige rebirth special case (player came here from PrestigeMainGUI "Choose New Biome")
+        if (plugin.getPrestigeManager() != null &&
+                plugin.getPrestigeManager().hasPendingPrestigeBiomeChoice(player.getUniqueId())) {
+            // We consume inside finishPrestigeBiomeChoice
+            plugin.getPrestigeManager().finishPrestigeBiomeChoice(player, biome, wantsReroll);
+            return;
+        }
 
         if (isReset) {
             plugin.getIslandManager().resetIslandWithBiome(player, biome, dimension, wantsReroll);

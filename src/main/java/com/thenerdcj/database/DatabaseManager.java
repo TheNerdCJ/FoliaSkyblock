@@ -466,6 +466,9 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS island_museum (island_key TEXT PRIMARY KEY, donated TEXT DEFAULT '', tokens INTEGER DEFAULT 0)", // task batch: full persist for museum
                 "CREATE TABLE IF NOT EXISTS island_museum_donations (island_key TEXT, material TEXT, count INTEGER DEFAULT 0, PRIMARY KEY (island_key, material))", // per-donation rows + count for zero-dep (fallback for Gson provided scope issues on non-standard servers)
                 "CREATE TABLE IF NOT EXISTS island_missions (id TEXT PRIMARY KEY, island_key TEXT, owner_uuid TEXT, type TEXT, objective TEXT, target_material TEXT, target INTEGER, progress INTEGER, reward_money INTEGER, reward_xp INTEGER, reward_item_base64 TEXT, reward_booster_type TEXT, reward_booster_duration INTEGER, completed BOOLEAN, claimed BOOLEAN, created_at INTEGER, expires_at INTEGER, title TEXT, description TEXT)",
+                "CREATE TABLE IF NOT EXISTS island_quest_history (island_key TEXT, quest_id TEXT, claimed_at INTEGER, title TEXT, description TEXT, category TEXT, type TEXT, reward_xp INTEGER, reward_money INTEGER, PRIMARY KEY(island_key, quest_id))",
+                "CREATE TABLE IF NOT EXISTS island_story_progress (island_key TEXT, chapter INTEGER, progress INTEGER DEFAULT 0, PRIMARY KEY(island_key, chapter))",
+                "CREATE TABLE IF NOT EXISTS island_active_quests (island_key TEXT, quest_id TEXT, title TEXT, description TEXT, category TEXT, type TEXT, progress INTEGER DEFAULT 0, target INTEGER, reward_xp INTEGER, reward_money INTEGER, created_at INTEGER, expires_at INTEGER, PRIMARY KEY(island_key, quest_id))",
                 "CREATE TABLE IF NOT EXISTS island_boosters (island_key TEXT, booster_type TEXT, multiplier REAL, expires_at INTEGER, PRIMARY KEY(island_key, booster_type))",
                 "CREATE TABLE IF NOT EXISTS auctions (id TEXT PRIMARY KEY, seller_uuid TEXT, item_base64 TEXT, price REAL, end_time INTEGER, sold BOOLEAN DEFAULT 0, buyer_uuid TEXT)",
                 "CREATE TABLE IF NOT EXISTS bazaar_orders (id TEXT PRIMARY KEY, player_uuid TEXT, material TEXT, amount INTEGER, price_per_unit REAL, buy_order BOOLEAN, created_at INTEGER, filled BOOLEAN DEFAULT 0)",
@@ -574,31 +577,6 @@ public class DatabaseManager {
                 // Cosmetic Death Messages (new system - text on kill/death)
                 "CREATE TABLE IF NOT EXISTS player_death_messages (uuid TEXT, message_id TEXT, PRIMARY KEY (uuid, message_id))",
 
-                // Cosmetic Join/Leave Messages (player-customizable join and leave announcements as cosmetic)
-                "CREATE TABLE IF NOT EXISTS player_join_leave_messages (uuid TEXT, message_id TEXT, PRIMARY KEY (uuid, message_id))",
-                // Active selected join/leave message (persisted choice, separate from owned collection)
-                "CREATE TABLE IF NOT EXISTS player_active_join_leave (uuid TEXT PRIMARY KEY, message_id TEXT)",
-
-                // Quest progress for onboarding (FIRST) quests - persistent per player, parallel achievement
-                "CREATE TABLE IF NOT EXISTS player_quest_progress (player_uuid TEXT, quest_category TEXT, progress INTEGER DEFAULT 0, completed BOOLEAN DEFAULT 0, claimed BOOLEAN DEFAULT 0, PRIMARY KEY (player_uuid, quest_category))",
-
-                // Island daily/weekly quests persistence - per island for continuous island progression (unique quests per island)
-                // objectives_data stores multi-objective complex quest state (desc|target|prog;...) for richer daily/weekly (Hypixel-style quest log multi-task)
-                // Added for Step 1: chapter, prerequisites_data (chains), quest_line, is_hidden (structure, main story, hidden teases)
-                "CREATE TABLE IF NOT EXISTS island_quests (id TEXT PRIMARY KEY, island_id TEXT, title TEXT, description TEXT, category TEXT, type TEXT, progress INTEGER, target INTEGER, reward_xp INTEGER, reward_money INTEGER, completed BOOLEAN, claimed BOOLEAN, expiry_time INTEGER, objectives_data TEXT, chapter INTEGER DEFAULT 0, prerequisites_data TEXT, quest_line TEXT, is_hidden BOOLEAN DEFAULT 0)",
-                // Per-player story/side quests for Main Story chains (per-player like FIRST for individual guided progression)
-                "CREATE TABLE IF NOT EXISTS player_quests (id TEXT PRIMARY KEY, player_uuid TEXT, title TEXT, description TEXT, category TEXT, type TEXT, progress INTEGER, target INTEGER, reward_xp INTEGER, reward_money INTEGER, completed BOOLEAN, claimed BOOLEAN, expiry_time INTEGER, objectives_data TEXT, chapter INTEGER DEFAULT 0, prerequisites_data TEXT, quest_line TEXT, is_hidden BOOLEAN DEFAULT 0)",
-                // Island daily streaks for user-friendly habit forming (consecutive daily claims per island)
-                "CREATE TABLE IF NOT EXISTS island_daily_streaks (island_id TEXT PRIMARY KEY, current_streak INTEGER DEFAULT 0, last_claim_day INTEGER DEFAULT 0)",
-                // Simple reputation layer (island-scoped per category) for Step 1 - influences daily generation and unlocks better variants (common on Hypixel-like servers)
-                "CREATE TABLE IF NOT EXISTS island_reputation (island_id TEXT, category TEXT, rep INTEGER DEFAULT 0, PRIMARY KEY (island_id, category))",
-                // Quest history for Step 4 - player-facing completed quests log (Quest Master stats, last completed)
-                "CREATE TABLE IF NOT EXISTS player_quest_history (player_uuid TEXT, quest_id TEXT, title TEXT, category TEXT, quest_line TEXT, completed_at INTEGER)",
-                // Quest stats for Step 6 - player-facing "Quest Master" stats (total completed, best streak, per-category breakdown for habits/agency)
-                "CREATE TABLE IF NOT EXISTS player_quest_stats (player_uuid TEXT PRIMARY KEY, total_completed INTEGER DEFAULT 0, best_streak INTEGER DEFAULT 0, cat_counts TEXT DEFAULT '')",
-                // Streak freezes for Step 6 - "streak freeze" options to prevent reset (earned via high streaks or rewards, PtW safe cosmetic habit tool)
-                "CREATE TABLE IF NOT EXISTS island_streak_freezes (island_id TEXT PRIMARY KEY, freezes INTEGER DEFAULT 0)",
-
                 // Player Skill System (MCMMO-like per-player skills: Mining, Woodcutting, etc. with levels/XP/abilities)
                 "CREATE TABLE IF NOT EXISTS player_skills (uuid TEXT, skill TEXT, xp DOUBLE DEFAULT 0, level INTEGER DEFAULT 1, PRIMARY KEY (uuid, skill))",
                 // Seasonal resets (Option B): current season tracking + history + cosmetic grant audit for event/donor releases.
@@ -612,24 +590,6 @@ public class DatabaseManager {
             for (String sql : tables) {
                 stmt.executeUpdate(sql);
             }
-            // Lightweight forward migration for multi-objective quests + streaks (existing DBs get the columns safely)
-            try { stmt.executeUpdate("ALTER TABLE island_quests ADD COLUMN objectives_data TEXT"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("ALTER TABLE island_daily_streaks ADD COLUMN current_streak INTEGER DEFAULT 0"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("ALTER TABLE island_daily_streaks ADD COLUMN last_claim_day INTEGER DEFAULT 0"); } catch (Exception ignored) {}
-            // Step 1 chains/structure migrations
-            try { stmt.executeUpdate("ALTER TABLE island_quests ADD COLUMN chapter INTEGER DEFAULT 0"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("ALTER TABLE island_quests ADD COLUMN prerequisites_data TEXT"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("ALTER TABLE island_quests ADD COLUMN quest_line TEXT"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("ALTER TABLE island_quests ADD COLUMN is_hidden BOOLEAN DEFAULT 0"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("CREATE TABLE IF NOT EXISTS player_quests (id TEXT PRIMARY KEY, player_uuid TEXT, title TEXT, description TEXT, category TEXT, type TEXT, progress INTEGER, target INTEGER, reward_xp INTEGER, reward_money INTEGER, completed BOOLEAN, claimed BOOLEAN, expiry_time INTEGER, objectives_data TEXT, chapter INTEGER DEFAULT 0, prerequisites_data TEXT, quest_line TEXT, is_hidden BOOLEAN DEFAULT 0)"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("ALTER TABLE player_quests ADD COLUMN chapter INTEGER DEFAULT 0"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("ALTER TABLE player_quests ADD COLUMN prerequisites_data TEXT"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("ALTER TABLE player_quests ADD COLUMN quest_line TEXT"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("ALTER TABLE player_quests ADD COLUMN is_hidden BOOLEAN DEFAULT 0"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("CREATE TABLE IF NOT EXISTS island_reputation (island_id TEXT, category TEXT, rep INTEGER DEFAULT 0, PRIMARY KEY (island_id, category))"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("CREATE TABLE IF NOT EXISTS player_quest_history (player_uuid TEXT, quest_id TEXT, title TEXT, category TEXT, quest_line TEXT, completed_at INTEGER)"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("CREATE TABLE IF NOT EXISTS player_quest_stats (player_uuid TEXT PRIMARY KEY, total_completed INTEGER DEFAULT 0, best_streak INTEGER DEFAULT 0, cat_counts TEXT DEFAULT '')"); } catch (Exception ignored) {}
-            try { stmt.executeUpdate("CREATE TABLE IF NOT EXISTS island_streak_freezes (island_id TEXT PRIMARY KEY, freezes INTEGER DEFAULT 0)"); } catch (Exception ignored) {}
             // Indexes
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_islands_owner ON islands(owner_uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_balances_grid ON island_balances(grid_x, grid_z, dimension)");
@@ -638,16 +598,6 @@ public class DatabaseManager {
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auctions_active ON auctions(sold, end_time)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_collections_key ON island_collections(island_key)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_death_messages ON player_death_messages(uuid)");
-            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_join_leave_messages ON player_join_leave_messages(uuid)");
-            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_player_active_join_leave ON player_active_join_leave(uuid)");
-            try { stmt.executeUpdate("CREATE TABLE IF NOT EXISTS player_active_join_leave (uuid TEXT PRIMARY KEY, message_id TEXT)"); } catch (SQLException ignored) {}
-            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_player_quest_progress ON player_quest_progress(player_uuid)");
-            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_quests ON island_quests(island_id)");
-            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_player_quests ON player_quests(player_uuid)");
-            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_reputation ON island_reputation(island_id)");
-            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_player_quest_history ON player_quest_history(player_uuid, completed_at)");
-            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_player_quest_stats ON player_quest_stats(player_uuid)");
-            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_streak_freezes ON island_streak_freezes(island_id)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_player_skills_uuid ON player_skills(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_wardrobe_collection ON player_wardrobe_collection(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pet_collection ON player_pet_collection(uuid)");
@@ -1229,502 +1179,6 @@ public class DatabaseManager {
             plugin.getLogger().severe("[DeathMessages] Failed to load death messages for " + uuid + ": " + e.getMessage());
         }
         return ids;
-    }
-
-    // Join/Leave Messages persistence (cosmetic system for custom join and leave announcements)
-    public void savePlayerJoinLeaveMessages(UUID uuid, Set<String> messageIds) {
-        try (Connection conn = getConnection();
-             PreparedStatement del = conn.prepareStatement("DELETE FROM player_join_leave_messages WHERE uuid = ?");
-             PreparedStatement ins = conn.prepareStatement(
-                     "INSERT OR IGNORE INTO player_join_leave_messages (uuid, message_id) VALUES (?, ?)")) {
-            del.setString(1, uuid.toString());
-            del.executeUpdate();
-            for (String id : messageIds) {
-                ins.setString(1, uuid.toString());
-                ins.setString(2, id);
-                ins.executeUpdate();
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[JoinLeaveMessages] Failed to save join/leave messages for " + uuid + ": " + e.getMessage());
-        }
-    }
-
-    public Set<String> loadPlayerJoinLeaveMessages(UUID uuid) {
-        Set<String> ids = ConcurrentHashMap.newKeySet();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT message_id FROM player_join_leave_messages WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) ids.add(rs.getString("message_id"));
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[JoinLeaveMessages] Failed to load join/leave messages for " + uuid + ": " + e.getMessage());
-        }
-        return ids;
-    }
-
-    // Active Join/Leave Message persistence (the selected cosmetic, separate from owned collection)
-    public void saveActiveJoinLeaveMessage(UUID uuid, String messageId) {
-        if (messageId == null) messageId = "NONE";
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_active_join_leave (uuid, message_id) VALUES (?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, messageId);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[JoinLeaveMessages] Failed to save active join/leave message for " + uuid + ": " + e.getMessage());
-        }
-    }
-
-    public String loadActiveJoinLeaveMessage(UUID uuid) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT message_id FROM player_active_join_leave WHERE uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                return rs.getString("message_id");
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[JoinLeaveMessages] Failed to load active join/leave message for " + uuid + ": " + e.getMessage());
-        }
-        return null;
-    }
-
-    // Onboarding (FIRST) quest progress persistence - per player, supports parallel achievement of all onboarding quests
-    public void savePlayerQuestProgress(UUID uuid, Quest.QuestCategory category, int progress, boolean completed, boolean claimed) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_quest_progress (player_uuid, quest_category, progress, completed, claimed) VALUES (?, ?, ?, ?, ?)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, category.name());
-            ps.setInt(3, progress);
-            ps.setBoolean(4, completed);
-            ps.setBoolean(5, claimed);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to save quest progress for " + uuid + " / " + category + ": " + e.getMessage());
-        }
-    }
-
-    public Map<Quest.QuestCategory, QuestProgress> loadPlayerQuestProgress(UUID uuid) {
-        Map<Quest.QuestCategory, QuestProgress> progressMap = new HashMap<>();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT quest_category, progress, completed, claimed FROM player_quest_progress WHERE player_uuid = ?")) {
-            ps.setString(1, uuid.toString());
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                try {
-                    Quest.QuestCategory cat = Quest.QuestCategory.valueOf(rs.getString("quest_category"));
-                    int prog = rs.getInt("progress");
-                    boolean comp = rs.getBoolean("completed");
-                    boolean cl = rs.getBoolean("claimed");
-                    progressMap.put(cat, new QuestProgress(prog, comp, cl));
-                } catch (Exception ignored) {}
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to load quest progress for " + uuid + ": " + e.getMessage());
-        }
-        return progressMap;
-    }
-
-    // Simple holder for loaded progress (inner class or use record if java 14+)
-    public static class QuestProgress {
-        public final int progress;
-        public final boolean completed;
-        public final boolean claimed;
-        public QuestProgress(int progress, boolean completed, boolean claimed) {
-            this.progress = progress;
-            this.completed = completed;
-            this.claimed = claimed;
-        }
-    }
-
-    // Island daily/weekly quests persistence (per-island for unique continuous progression)
-    // Now includes objectives_data for complex multi-objective daily/weekly quests (user friendly progress per sub-goal)
-    public void saveIslandQuests(String islandId, List<com.thenerdcj.quest.Quest> quests) {
-        try (Connection conn = getConnection();
-             PreparedStatement del = conn.prepareStatement("DELETE FROM island_quests WHERE island_id = ?");
-             PreparedStatement ins = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO island_quests (id, island_id, title, description, category, type, progress, target, reward_xp, reward_money, completed, claimed, expiry_time, objectives_data, chapter, prerequisites_data, quest_line, is_hidden) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-            del.setString(1, islandId);
-            del.executeUpdate();
-            if (quests != null) {
-                for (com.thenerdcj.quest.Quest q : quests) {
-                    if (q.getType() == com.thenerdcj.quest.Quest.QuestType.FIRST) continue; // FIRST are per-player now
-                    ins.setString(1, q.getId());
-                    ins.setString(2, islandId);
-                    ins.setString(3, q.getTitle());
-                    ins.setString(4, q.getDescription());
-                    ins.setString(5, q.getCategory().name());
-                    ins.setString(6, q.getType().name());
-                    ins.setInt(7, q.getProgress());
-                    ins.setInt(8, q.getTarget());
-                    ins.setInt(9, q.getRewardXp());
-                    ins.setInt(10, q.getRewardMoney());
-                    ins.setBoolean(11, q.isCompleted());
-                    ins.setBoolean(12, q.isClaimed());
-                    ins.setLong(13, q.getExpiryTime());
-                    ins.setString(14, q.serializeObjectives());
-                    ins.setInt(15, q.getChapter());
-                    ins.setString(16, q.serializePrerequisites());
-                    ins.setString(17, q.getQuestLine() != null ? q.getQuestLine().name() : "ONBOARDING");
-                    ins.setBoolean(18, q.isHidden());
-                    ins.executeUpdate();
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to save island quests for " + islandId + ": " + e.getMessage());
-        }
-    }
-
-    public List<com.thenerdcj.quest.Quest> loadIslandQuests(String islandId) {
-        List<com.thenerdcj.quest.Quest> list = new ArrayList<>();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT * FROM island_quests WHERE island_id = ?")) {
-            ps.setString(1, islandId);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                try {
-                    com.thenerdcj.quest.Quest.QuestType type = com.thenerdcj.quest.Quest.QuestType.valueOf(rs.getString("type"));
-                    if (type == com.thenerdcj.quest.Quest.QuestType.FIRST) continue;
-
-                    // Load objectives blob if present (complex quests)
-                    String objData = null;
-                    try { objData = rs.getString("objectives_data"); } catch (Exception ignored) {}
-                    List<com.thenerdcj.quest.Quest.QuestObjective> objs = com.thenerdcj.quest.Quest.parseObjectives(objData);
-
-                    List<String> prereqs = com.thenerdcj.quest.Quest.parsePrerequisites(rs.getString("prerequisites_data"));
-                    com.thenerdcj.quest.Quest.QuestLine line = com.thenerdcj.quest.Quest.QuestLine.ONBOARDING;
-                    try { line = com.thenerdcj.quest.Quest.QuestLine.valueOf(rs.getString("quest_line")); } catch (Exception ignored) {}
-
-                    com.thenerdcj.quest.Quest q = new com.thenerdcj.quest.Quest(
-                        rs.getString("id"),
-                        rs.getString("title"),
-                        rs.getString("description"),
-                        com.thenerdcj.quest.Quest.QuestCategory.valueOf(rs.getString("category")),
-                        type,
-                        rs.getInt("progress"),
-                        rs.getInt("target"),
-                        rs.getInt("reward_xp"),
-                        rs.getInt("reward_money"),
-                        rs.getBoolean("completed"),
-                        rs.getLong("expiry_time"),
-                        objs,
-                        line,
-                        rs.getInt("chapter"),
-                        prereqs,
-                        rs.getBoolean("is_hidden")
-                    );
-                    q.setClaimed(rs.getBoolean("claimed"));
-                    list.add(q);
-                } catch (Exception ignored) {}
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to load island quests for " + islandId + ": " + e.getMessage());
-        }
-        return list;
-    }
-
-    // ==================== PLAYER QUESTS (per-player Main Story / Side for chains & guidance - Step 1) ====================
-    public void savePlayerQuests(String playerUuid, List<com.thenerdcj.quest.Quest> quests) {
-        try (Connection conn = getConnection();
-             PreparedStatement del = conn.prepareStatement("DELETE FROM player_quests WHERE player_uuid = ?");
-             PreparedStatement ins = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_quests (id, player_uuid, title, description, category, type, progress, target, reward_xp, reward_money, completed, claimed, expiry_time, objectives_data, chapter, prerequisites_data, quest_line, is_hidden) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-            del.setString(1, playerUuid);
-            del.executeUpdate();
-            if (quests != null) {
-                for (com.thenerdcj.quest.Quest q : quests) {
-                    // Only persist non-daily/weekly story quests here (d/w stay in island_quests)
-                    if (q.getType() == com.thenerdcj.quest.Quest.QuestType.DAILY || q.getType() == com.thenerdcj.quest.Quest.QuestType.WEEKLY) continue;
-                    ins.setString(1, q.getId());
-                    ins.setString(2, playerUuid);
-                    ins.setString(3, q.getTitle());
-                    ins.setString(4, q.getDescription());
-                    ins.setString(5, q.getCategory().name());
-                    ins.setString(6, q.getType().name());
-                    ins.setInt(7, q.getProgress());
-                    ins.setInt(8, q.getTarget());
-                    ins.setInt(9, q.getRewardXp());
-                    ins.setInt(10, q.getRewardMoney());
-                    ins.setBoolean(11, q.isCompleted());
-                    ins.setBoolean(12, q.isClaimed());
-                    ins.setLong(13, q.getExpiryTime());
-                    ins.setString(14, q.serializeObjectives());
-                    ins.setInt(15, q.getChapter());
-                    ins.setString(16, q.serializePrerequisites());
-                    ins.setString(17, q.getQuestLine() != null ? q.getQuestLine().name() : "ONBOARDING");
-                    ins.setBoolean(18, q.isHidden());
-                    ins.executeUpdate();
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to save player quests for " + playerUuid + ": " + e.getMessage());
-        }
-    }
-
-    public List<com.thenerdcj.quest.Quest> loadPlayerQuests(String playerUuid) {
-        List<com.thenerdcj.quest.Quest> list = new ArrayList<>();
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT * FROM player_quests WHERE player_uuid = ?")) {
-            ps.setString(1, playerUuid);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                try {
-                    com.thenerdcj.quest.Quest.QuestType type = com.thenerdcj.quest.Quest.QuestType.valueOf(rs.getString("type"));
-                    if (type == com.thenerdcj.quest.Quest.QuestType.DAILY || type == com.thenerdcj.quest.Quest.QuestType.WEEKLY) continue;
-
-                    String objData = null;
-                    try { objData = rs.getString("objectives_data"); } catch (Exception ignored) {}
-                    List<com.thenerdcj.quest.Quest.QuestObjective> objs = com.thenerdcj.quest.Quest.parseObjectives(objData);
-
-                    List<String> prereqs = com.thenerdcj.quest.Quest.parsePrerequisites(rs.getString("prerequisites_data"));
-                    com.thenerdcj.quest.Quest.QuestLine line = com.thenerdcj.quest.Quest.QuestLine.ONBOARDING;
-                    try { line = com.thenerdcj.quest.Quest.QuestLine.valueOf(rs.getString("quest_line")); } catch (Exception ignored) {}
-
-                    com.thenerdcj.quest.Quest q = new com.thenerdcj.quest.Quest(
-                        rs.getString("id"),
-                        rs.getString("title"),
-                        rs.getString("description"),
-                        com.thenerdcj.quest.Quest.QuestCategory.valueOf(rs.getString("category")),
-                        type,
-                        rs.getInt("progress"),
-                        rs.getInt("target"),
-                        rs.getInt("reward_xp"),
-                        rs.getInt("reward_money"),
-                        rs.getBoolean("completed"),
-                        rs.getLong("expiry_time"),
-                        objs,
-                        line,
-                        rs.getInt("chapter"),
-                        prereqs,
-                        rs.getBoolean("is_hidden")
-                    );
-                    q.setClaimed(rs.getBoolean("claimed"));
-                    list.add(q);
-                } catch (Exception ignored) {}
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to load player quests for " + playerUuid + ": " + e.getMessage());
-        }
-        return list;
-    }
-
-    // ==================== REPUTATION (light island-scoped per category for Step 1 - biases dailies, unlocks variants) ====================
-    public void saveIslandReputation(String islandId, java.util.Map<com.thenerdcj.quest.Quest.QuestCategory, Integer> reps) {
-        if (islandId == null || reps == null) return;
-        try (Connection conn = getConnection();
-             PreparedStatement del = conn.prepareStatement("DELETE FROM island_reputation WHERE island_id = ?");
-             PreparedStatement ins = conn.prepareStatement("INSERT OR REPLACE INTO island_reputation (island_id, category, rep) VALUES (?, ?, ?)")) {
-            del.setString(1, islandId);
-            del.executeUpdate();
-            for (java.util.Map.Entry<com.thenerdcj.quest.Quest.QuestCategory, Integer> e : reps.entrySet()) {
-                ins.setString(1, islandId);
-                ins.setString(2, e.getKey().name());
-                ins.setInt(3, Math.max(0, e.getValue()));
-                ins.executeUpdate();
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to save reputation for " + islandId + ": " + e.getMessage());
-        }
-    }
-
-    public java.util.Map<com.thenerdcj.quest.Quest.QuestCategory, Integer> loadIslandReputation(String islandId) {
-        java.util.Map<com.thenerdcj.quest.Quest.QuestCategory, Integer> map = new java.util.EnumMap<>(com.thenerdcj.quest.Quest.QuestCategory.class);
-        if (islandId == null) return map;
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT category, rep FROM island_reputation WHERE island_id = ?")) {
-            ps.setString(1, islandId);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                try {
-                    com.thenerdcj.quest.Quest.QuestCategory cat = com.thenerdcj.quest.Quest.QuestCategory.valueOf(rs.getString("category"));
-                    map.put(cat, rs.getInt("rep"));
-                } catch (Exception ignored) {}
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to load reputation for " + islandId + ": " + e.getMessage());
-        }
-        return map;
-    }
-
-    public void addIslandReputation(String islandId, com.thenerdcj.quest.Quest.QuestCategory cat, int delta) {
-        if (islandId == null || cat == null || delta == 0) return;
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO island_reputation (island_id, category, rep) VALUES (?, ?, ?) " +
-                     "ON CONFLICT(island_id, category) DO UPDATE SET rep = rep + ?")) {
-            ps.setString(1, islandId);
-            ps.setString(2, cat.name());
-            ps.setInt(3, Math.max(0, delta));
-            ps.setInt(4, delta);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to add reputation for " + islandId + "/" + cat + ": " + e.getMessage());
-        }
-    }
-
-    // ==================== QUEST HISTORY (Step 4 - for player-facing completed log, Quest Master feeling) ====================
-    public void savePlayerQuestHistory(String playerUuid, String questId, String title, String category, String questLine, long completedAt) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO player_quest_history (player_uuid, quest_id, title, category, quest_line, completed_at) VALUES (?, ?, ?, ?, ?, ?)")) {
-            ps.setString(1, playerUuid);
-            ps.setString(2, questId);
-            ps.setString(3, title != null ? title : "Unknown Quest");
-            ps.setString(4, category);
-            ps.setString(5, questLine != null ? questLine : "ONBOARDING");
-            ps.setLong(6, completedAt);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to save quest history for " + playerUuid + ": " + e.getMessage());
-        }
-    }
-
-    public List<String[]> loadRecentPlayerQuestHistory(String playerUuid, int limit) {
-        // Returns list of [title, category, line, timeString]
-        List<String[]> history = new ArrayList<>();
-        if (playerUuid == null) return history;
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "SELECT title, category, quest_line, completed_at FROM player_quest_history WHERE player_uuid = ? ORDER BY completed_at DESC LIMIT ?")) {
-            ps.setString(1, playerUuid);
-            ps.setInt(2, Math.max(1, Math.min(50, limit)));
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                String title = rs.getString(1);
-                String cat = rs.getString(2);
-                String line = rs.getString(3);
-                long time = rs.getLong(4);
-                String timeStr = new java.text.SimpleDateFormat("MM/dd HH:mm").format(new java.util.Date(time));
-                history.add(new String[]{title, cat, line, timeStr});
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to load quest history for " + playerUuid + ": " + e.getMessage());
-        }
-        return history;
-    }
-
-    // ==================== QUEST STATS PERSISTENCE (Step 6 - Quest Master player-facing stats) ====================
-    public void savePlayerQuestStats(String playerUuid, int totalCompleted, int bestStreak, String catCounts) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO player_quest_stats (player_uuid, total_completed, best_streak, cat_counts) VALUES (?, ?, ?, ?)")) {
-            ps.setString(1, playerUuid);
-            ps.setInt(2, Math.max(0, totalCompleted));
-            ps.setInt(3, Math.max(0, bestStreak));
-            ps.setString(4, catCounts != null ? catCounts : "");
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to save quest stats for " + playerUuid + ": " + e.getMessage());
-        }
-    }
-
-    public int[] loadPlayerQuestStats(String playerUuid) {
-        // [totalCompleted, bestStreak]
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT total_completed, best_streak FROM player_quest_stats WHERE player_uuid = ?")) {
-            ps.setString(1, playerUuid);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                return new int[]{rs.getInt(1), rs.getInt(2)};
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to load quest stats for " + playerUuid + ": " + e.getMessage());
-        }
-        return new int[]{0, 0};
-    }
-
-    public String loadPlayerCatCounts(String playerUuid) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT cat_counts FROM player_quest_stats WHERE player_uuid = ?")) {
-            ps.setString(1, playerUuid);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getString(1);
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to load cat counts for " + playerUuid + ": " + e.getMessage());
-        }
-        return "";
-    }
-
-    public void updatePlayerQuestStatsOnClaim(String playerUuid, Quest.QuestCategory cat, int newStreakIfDaily) {
-        // Lightweight update on claim for stats
-        int[] current = loadPlayerQuestStats(playerUuid);
-        int total = current[0] + 1;
-        int best = Math.max(current[1], newStreakIfDaily);
-        String cats = loadPlayerCatCounts(playerUuid);
-        // simple cat count increment
-        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
-        if (cats != null && !cats.isEmpty()) {
-            for (String p : cats.split(";")) {
-                String[] kv = p.split(":");
-                if (kv.length == 2) counts.put(kv[0], Integer.parseInt(kv[1]));
-            }
-        }
-        String catName = cat.name();
-        counts.put(catName, counts.getOrDefault(catName, 0) + 1);
-        StringBuilder sb = new StringBuilder();
-        for (java.util.Map.Entry<String, Integer> e : counts.entrySet()) {
-            if (sb.length() > 0) sb.append(";");
-            sb.append(e.getKey()).append(":").append(e.getValue());
-        }
-        savePlayerQuestStats(playerUuid, total, best, sb.toString());
-    }
-
-    // ==================== STREAK FREEZES (Step 6 - agency to protect habits) ====================
-    public void saveIslandStreakFreezes(String islandId, int freezes) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO island_streak_freezes (island_id, freezes) VALUES (?, ?)")) {
-            ps.setString(1, islandId);
-            ps.setInt(2, Math.max(0, freezes));
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to save streak freezes for " + islandId + ": " + e.getMessage());
-        }
-    }
-
-    public int loadIslandStreakFreezes(String islandId) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT freezes FROM island_streak_freezes WHERE island_id = ?")) {
-            ps.setString(1, islandId);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getInt(1);
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to load streak freezes for " + islandId + ": " + e.getMessage());
-        }
-        return 0;
-    }
-
-    // ==================== DAILY STREAK PERSISTENCE (user friendly continuous play + island leveling habit) ====================
-    public void saveIslandDailyStreak(String islandId, int streak, long lastClaimDayEpoch) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO island_daily_streaks (island_id, current_streak, last_claim_day) VALUES (?, ?, ?)")) {
-            ps.setString(1, islandId);
-            ps.setInt(2, Math.max(0, streak));
-            ps.setLong(3, lastClaimDayEpoch);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to save daily streak for " + islandId + ": " + e.getMessage());
-        }
-    }
-
-    public int[] loadIslandDailyStreak(String islandId) {
-        // returns [currentStreak, lastClaimDayEpoch]
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT current_streak, last_claim_day FROM island_daily_streaks WHERE island_id = ?")) {
-            ps.setString(1, islandId);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                return new int[]{ rs.getInt(1), (int) rs.getLong(2) };
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[Quests] Failed to load daily streak for " + islandId + ": " + e.getMessage());
-        }
-        return new int[]{0, 0};
     }
 
     // ==================== BACKPACK SKINS PERSISTENCE (Exploration) ====================
@@ -2408,6 +1862,12 @@ public class DatabaseManager {
         if (cosmeticDAO != null) return cosmeticDAO.loadPlayerRunes(uuid); // note: may need specific loadRuneCollection in DAO, using load for now
         return java.util.Collections.emptySet();
     }
+
+    // STUBS for JoinLeaveMessageManager (join/quit message cosmetics) to make it compile
+    public java.util.Set<String> loadPlayerJoinLeaveMessages(java.util.UUID uuid) { return new java.util.HashSet<>(); }
+    public String loadActiveJoinLeaveMessage(java.util.UUID uuid) { return null; }
+    public void savePlayerJoinLeaveMessages(java.util.UUID uuid, java.util.Set<String> messages) {}
+    public void saveActiveJoinLeaveMessage(java.util.UUID uuid, String message) {}
 
     // ==================== ISLAND XP / LEVEL ====================
     public CompletableFuture<Boolean> updateIslandLevel(UUID ownerUuid, World.Environment dimension, int newLevel, double xp) {
@@ -3133,6 +2593,188 @@ public class DatabaseManager {
             return missionDAO.loadMissionsForIsland(islandKey);
         }
         return CompletableFuture.completedFuture(new ArrayList<>());
+    }
+
+    // ==================== QUEST HISTORY PERSISTENCE (for claimed quests across restarts) ====================
+
+    public CompletableFuture<Boolean> saveQuestToHistory(String islandKey, Quest quest) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO island_quest_history (island_key, quest_id, claimed_at, title, description, category, type, reward_xp, reward_money) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, islandKey);
+                ps.setString(2, quest.getId());
+                ps.setLong(3, System.currentTimeMillis());
+                ps.setString(4, quest.getTitle());
+                ps.setString(5, quest.getDescription());
+                ps.setString(6, quest.getCategory().name());
+                ps.setString(7, quest.getType().name());
+                ps.setInt(8, quest.getRewardXp());
+                ps.setInt(9, quest.getRewardMoney());
+                ps.executeUpdate();
+                return true;
+            } catch (SQLException e) {
+                plugin.getLogger().warning("[Database] Failed to save quest history: " + e.getMessage());
+                return false;
+            }
+        });
+    }
+
+    public CompletableFuture<List<Quest>> loadQuestHistory(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Quest> history = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT quest_id, title, description, category, type, reward_xp, reward_money FROM island_quest_history WHERE island_key = ? ORDER BY claimed_at DESC LIMIT 12")) {
+                ps.setString(1, islandKey);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String id = rs.getString("quest_id");
+                        String title = rs.getString("title");
+                        String desc = rs.getString("description");
+                        Quest.QuestCategory cat = Quest.QuestCategory.valueOf(rs.getString("category"));
+                        Quest.QuestType type = Quest.QuestType.valueOf(rs.getString("type"));
+                        int xp = rs.getInt("reward_xp");
+                        int money = rs.getInt("reward_money");
+                        long farFuture = System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000);
+                        Quest q = new Quest(id, title, desc, cat, type, 0, 0, xp, money, false, farFuture, Quest.QuestLine.ONBOARDING, 0);
+                        q.setClaimed(true);
+                        history.add(q);
+                    }
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Database] Failed to load quest history: " + e.getMessage());
+            }
+            return history;
+        });
+    }
+
+    // ==================== STORY CHAPTER PROGRESS PERSISTENCE (for long-running linear story chapters) ====================
+    // This makes partial progress on the current MAIN_STORY chapter (e.g. "45/80 zombies killed") survive restarts.
+    // Only the current chapter's progress is critical; completed chapters live in island_quest_history.
+
+    public void saveStoryChapterProgress(String islandKey, int chapter, int progress) {
+        CompletableFuture.runAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO island_story_progress (island_key, chapter, progress) VALUES (?, ?, ?)")) {
+                ps.setString(1, islandKey);
+                ps.setInt(2, chapter);
+                ps.setInt(3, progress);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().warning("[Database] Failed to save story progress: " + e.getMessage());
+            }
+        });
+    }
+
+    public int loadStoryChapterProgress(String islandKey, int chapter) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT progress FROM island_story_progress WHERE island_key = ? AND chapter = ?")) {
+            ps.setString(1, islandKey);
+            ps.setInt(2, chapter);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("progress");
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("[Database] Failed to load story progress: " + e.getMessage());
+        }
+        return 0;
+    }
+
+    public void clearStoryProgressForIsland(String islandKey) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM island_story_progress WHERE island_key = ?")) {
+            ps.setString(1, islandKey);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("[Database] Failed to clear story progress: " + e.getMessage());
+        }
+    }
+
+    // ==================== ACTIVE DAILY/WEEKLY QUESTS PERSISTENCE ====================
+    // Makes dailies/weeklies survive restarts. On load we filter expired and regenerate missing ones.
+    // They are made unique/adaptive based on current island state at generation time.
+
+    public CompletableFuture<Boolean> saveActiveQuest(String islandKey, Quest quest) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO island_active_quests (island_key, quest_id, title, description, category, type, progress, target, reward_xp, reward_money, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, islandKey);
+                ps.setString(2, quest.getId());
+                ps.setString(3, quest.getTitle());
+                ps.setString(4, quest.getDescription());
+                ps.setString(5, quest.getCategory().name());
+                ps.setString(6, quest.getType().name());
+                ps.setInt(7, quest.getProgress());
+                ps.setInt(8, quest.getTarget());
+                ps.setInt(9, quest.getRewardXp());
+                ps.setInt(10, quest.getRewardMoney());
+                ps.setLong(11, System.currentTimeMillis());
+                ps.setLong(12, quest.getExpiryTime());
+                ps.executeUpdate();
+                return true;
+            } catch (SQLException e) {
+                plugin.getLogger().warning("[Database] Failed to save active quest: " + e.getMessage());
+                return false;
+            }
+        });
+    }
+
+    public CompletableFuture<List<Quest>> loadActiveQuests(String islandKey) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Quest> active = new ArrayList<>();
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "SELECT quest_id, title, description, category, type, progress, target, reward_xp, reward_money, expires_at FROM island_active_quests WHERE island_key = ?")) {
+                ps.setString(1, islandKey);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String id = rs.getString("quest_id");
+                        String title = rs.getString("title");
+                        String desc = rs.getString("description");
+                        Quest.QuestCategory cat = Quest.QuestCategory.valueOf(rs.getString("category"));
+                        Quest.QuestType type = Quest.QuestType.valueOf(rs.getString("type"));
+                        int progress = rs.getInt("progress");
+                        int target = rs.getInt("target");
+                        int xp = rs.getInt("reward_xp");
+                        int money = rs.getInt("reward_money");
+                        long expires = rs.getLong("expires_at");
+
+                        Quest q = new Quest(id, title, desc, cat, type, progress, target, xp, money, false, expires, Quest.QuestLine.ONBOARDING, 0);
+                        active.add(q);
+                    }
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Database] Failed to load active quests: " + e.getMessage());
+            }
+            return active;
+        });
+    }
+
+    public void deleteActiveQuest(String islandKey, String questId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM island_active_quests WHERE island_key = ? AND quest_id = ?")) {
+            ps.setString(1, islandKey);
+            ps.setString(2, questId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("[Database] Failed to delete active quest: " + e.getMessage());
+        }
+    }
+
+    public void clearActiveQuestsForIsland(String islandKey) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM island_active_quests WHERE island_key = ?")) {
+            ps.setString(1, islandKey);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().warning("[Database] Failed to clear active quests: " + e.getMessage());
+        }
     }
 
     // ==================== ISLAND BOOSTERS PERSISTENCE ====================

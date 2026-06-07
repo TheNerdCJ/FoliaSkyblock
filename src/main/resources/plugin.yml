@@ -5,6 +5,7 @@ api-version: 1.21
 load: STARTUP
 folia-supported: true
 author: TheNerdCJ
+
 description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, economy, trading, Play-to-Win progression, and full EssentialsX-style QoL commands.
 
 commands:
@@ -118,7 +119,7 @@ commands:
   challenge:
     description: View daily, weekly, and progression challenges
     usage: /<command>
-    aliases: [challenges, daily]
+    aliases: [challenges]
 
   trade:
     description: Open the island trading GUI
@@ -194,11 +195,6 @@ commands:
     usage: /<command>
     aliases: [deathmessage, killmessages, killmessage]
 
-  joinmessages:
-    description: Open the Cosmetic Join/Leave Messages menu (custom text on join and leave)
-    usage: /<command>
-    aliases: [leavemessages, joinleave]
-
   wardrobe:
     description: Open the wardrobe to save and swap armor + equipment loadouts
     usage: /<command>
@@ -261,7 +257,7 @@ commands:
   quests:
     description: Open quest log and refresh dailies
     usage: /<command>
-    aliases: [quest, dailies]
+    aliases: [quest, daily, dailies]
 
   overhead:
     description: Open overhead cosmetic options

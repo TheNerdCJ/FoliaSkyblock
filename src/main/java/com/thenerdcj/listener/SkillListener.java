@@ -41,17 +41,6 @@ public class SkillListener implements Listener {
             if (ns > 500_000L) plugin.getLogger().info("[SkillListener] PROFILE: processBlockBreak took " + (ns / 1_000_000.0) + " ms");
         }
 
-        // Step 5: Hook skills to quests (per-player and island)
-        if (plugin.getQuestManager() != null) {
-            com.thenerdcj.quest.Quest.QuestCategory qcat = mapSkillToQuestCategory(e.getBlock().getType());
-            String playerKey = p.getUniqueId().toString();
-            plugin.getQuestManager().addProgressToIsland(playerKey, qcat, 1);
-            com.thenerdcj.island.Island isl = plugin.getIslandManager() != null ? plugin.getIslandManager().getIsland(p.getUniqueId(), p.getWorld().getEnvironment()) : null;
-            if (isl != null) {
-                plugin.getQuestManager().addProgressToIsland(isl.getId(), qcat, 1);
-            }
-        }
-
         // Handle actual extra drops for active abilities (mining super breaker, wood feller) - safe, post-vanilla, no worth/anti-cheat impact
         com.thenerdcj.skills.SkillType activeSkill = null;
         if (sm.isAbilityActive(p.getUniqueId(), com.thenerdcj.skills.SkillType.MINING)) {
@@ -84,14 +73,6 @@ public class SkillListener implements Listener {
                 long ns = System.nanoTime() - start;
                 if (ns > 500_000L) plugin.getLogger().info("[SkillListener] PROFILE: processMobKill took " + (ns / 1_000_000.0) + " ms");
             }
-
-            // Step 5: Hook mob kills from skills to combat quest progress
-            if (plugin.getQuestManager() != null) {
-                String playerKey = p.getUniqueId().toString();
-                plugin.getQuestManager().addProgressToIsland(playerKey, com.thenerdcj.quest.Quest.QuestCategory.COMBAT, 1);
-                com.thenerdcj.island.Island isl = plugin.getIslandManager() != null ? plugin.getIslandManager().getIsland(p.getUniqueId(), p.getWorld().getEnvironment()) : null;
-                if (isl != null) plugin.getQuestManager().addProgressToIsland(isl.getId(), com.thenerdcj.quest.Quest.QuestCategory.COMBAT, 1);
-            }
         }
     }
 
@@ -108,20 +89,6 @@ public class SkillListener implements Listener {
                 long ns = System.nanoTime() - start;
                 if (ns > 500_000L) plugin.getLogger().info("[SkillListener] PROFILE: processFish took " + (ns / 1_000_000.0) + " ms");
             }
-
-            // Step 5: Hook fish from skills to exploration quest progress
-            if (plugin.getQuestManager() != null) {
-                String playerKey = p.getUniqueId().toString();
-                plugin.getQuestManager().addProgressToIsland(playerKey, com.thenerdcj.quest.Quest.QuestCategory.EXPLORATION, 1);
-                com.thenerdcj.island.Island isl = plugin.getIslandManager() != null ? plugin.getIslandManager().getIsland(p.getUniqueId(), p.getWorld().getEnvironment()) : null;
-                if (isl != null) plugin.getQuestManager().addProgressToIsland(isl.getId(), com.thenerdcj.quest.Quest.QuestCategory.EXPLORATION, 1);
-            }
         }
-    }
-
-    private com.thenerdcj.quest.Quest.QuestCategory mapSkillToQuestCategory(org.bukkit.Material material) {
-        if (material.name().contains("ORE") || material == org.bukkit.Material.STONE) return com.thenerdcj.quest.Quest.QuestCategory.MINING;
-        if (material.name().contains("LOG") || material.name().contains("LEAVES")) return com.thenerdcj.quest.Quest.QuestCategory.FARMING;
-        return com.thenerdcj.quest.Quest.QuestCategory.CHALLENGE;
     }
 }

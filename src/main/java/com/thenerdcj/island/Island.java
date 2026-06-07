@@ -420,10 +420,10 @@ public class Island {
      * This is a convenience fallback.
      */
     public int getExtraBuildRadius() {
-        return getUpgradeLevel(IslandUpgrade.ISLAND_SIZE) * 8;
+        return getUpgradeLevel(IslandUpgrade.ISLAND_SIZE) * 2;  // compact small starters
     }
 
     public int getEffectiveIslandRadius() {
-        return 256 + getExtraBuildRadius();
+        return 8 + getExtraBuildRadius();  // very small PMC-style starting base
     }
 }

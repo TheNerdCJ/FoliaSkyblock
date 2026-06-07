@@ -41,7 +41,14 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
     private final List<String> dimensions = Arrays.asList("normal", "nether", "end", "overworld");
     private final List<String> ranks = Arrays.asList("OWNER", "MODERATOR", "GUEST");
     private final List<String> biomes = Arrays.asList(
-        "PLAINS", "FOREST", "DESERT", "TAIGA", "JUNGLE", 
+        "PLAINS", "FOREST", "DESERT", "TAIGA", "JUNGLE",
+        "SAVANNA", "BIRCH_FOREST", "CHERRY_GROVE", "FLOWER_FOREST", "MEADOW",
+        "DARK_FOREST", "SWAMP", "MANGROVE_SWAMP", "BADLANDS",
+        "GROVE", "SNOWY_PLAINS", "SNOWY_TAIGA", "MUSHROOM_FIELDS",
+        "OLD_GROWTH_PINE_TAIGA", "OLD_GROWTH_SPRUCE_TAIGA", "WINDSWEPT_FOREST", "BAMBOO_JUNGLE",
+        "WINDSWEPT_HILLS", "STONY_SHORE", "BEACH", "SNOWY_BEACH",
+        "STONY_PEAKS", "JAGGED_PEAKS", "FROZEN_PEAKS", "SNOWY_SLOPES",
+        "OLD_GROWTH_BIRCH_FOREST", "SPARSE_JUNGLE", "ICE_SPIKES", "SUNFLOWER_PLAINS", "WOODED_BADLANDS",
         "NETHER_WASTES", "THE_END"
     );
 
@@ -814,7 +821,7 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         MessageUtil.sendMessage(player, "§7Current Radius: §a" + radius + " blocks");
         MessageUtil.sendMessage(player, "§7Size Upgrade Level: §b" + sizeLevel);
         if (prestige > 0) {
-            MessageUtil.sendMessage(player, "§7Prestige Bonus: §d+" + (prestige * plugin.getConfig().getInt("upgrades.island-size.prestige-bonus.extra-per-prestige", 16)) + " radius");
+            MessageUtil.sendMessage(player, "§7Prestige Bonus: §d+" + (prestige * plugin.getConfig().getInt("upgrades.island-size.prestige-bonus.extra-per-prestige", 2)) + " radius");
         }
         // Folia-safe: use cached value (non-blocking). Background refresh if needed.
         boolean markers = plugin.getIslandSettingsManager()

@@ -226,6 +226,31 @@ spawn-platform:
   batch-delay-ticks: 1
   phase-delay-ticks: 5
 
+# Spawn schematics support has been removed.
+# The plugin is fully independent: no WorldEdit, no FAWE, no ProtocolLib, no PlaceholderAPI, and no other external soft dependencies or auto-downloaders. All features use native Paper/Folia APIs and internal code.
+# Spawn is always generated procedurally via the built-in generator (small PMC-style compact bases + biomes).
+# The keys below are kept only for backward-compat with old configs and are ignored.
+spawn-schematics:
+  enabled: false
+  # Folder relative to plugin data folder.
+  folder: "spawn-schematics"
+  # If true and multiple schems, pick random one on first gen and persist the choice.
+  random-once: true
+  # Automatically download schematics on first run if folder is empty (requires direct HTTPS links to .schem files).
+  # Set enabled: true and provide direct download URLs (not pages, but raw file links).
+  # Example sources: public GitHub raw, or direct from schematic sites. The plugin will download them once.
+  auto-download:
+    enabled: true
+    urls:
+      # See SPAWN_SCHEMATICS.md (in plugin root) for 5+ recommended free complex skyblock spawn/hub schematics
+      # from PlanetMinecraft (e.g. Island SkyBlock Spawn 80x100, Legendary Big SkyBlock Spawn 150x150,
+      # Hub "Floating Worlds", Epic Large Spawn, SKYBLOCK SPAWN - Duskhaven 500x500).
+      # Download .schem from the PMC page, then host for direct raw access (GitHub repo raw URL recommended).
+      # Replace below with your direct links for automatic download + random selection on first spawn gen.
+      - "https://example.com/path/to/complex-skyblock-spawn.schem"  # e.g. from https://www.planetminecraft.com/project/island-skyblock-spawn-free-download-80x100-maps-schematic-1-16x/
+      - "https://raw.githubusercontent.com/YourUser/Schematics/main/big-skyblock-spawn.schem"  # from https://www.planetminecraft.com/project/legendary-big-skyblock-spawn-free-download-150x150-maps-download-1-16x/
+      # Add more (Floating Worlds etc.) for random choice among complex designs. See MD for full list + instructions.
+
 # Seasonal server-wide resets (Option B full impl: data wipe + staggered RegionScheduler plot clears for fresh competitive seasons every ~3 months).
 # Enables seasonal events while preserving donor cosmetics (player_* tables via CosmeticDAO already survive).
 # Trigger is manual via /isadmin season reset <season-id> CONFIRM [--dry-run] for safety.
@@ -356,12 +381,12 @@ upgrades:
   ore-generator:
     bonus-per-level: 0.35               # Weight multiplier for better ores
   island-size:
-    radius-per-level: 8                 # Extra blocks radius per level
-    base-radius: 256                    # Starting protected/build radius (before any upgrades)
-    max-radius: 512                     # Hard cap (can be increased by high Prestige)
+    radius-per-level: 2                 # Extra blocks radius per level (even smaller compact PMC-style starters)
+    base-radius: 8                      # Starting protected/build radius (before any upgrades) - very small compact base for new islands
+    max-radius: 128                     # Hard cap (kept modest for compact feel even at high levels/prestige)
     prestige-bonus:
       enabled: true
-      extra-per-prestige: 16            # Additional radius per prestige level
+      extra-per-prestige: 2             # Additional radius per prestige level (modest, keeps focus on small starters)
     visuals:
       enabled: true
       worldborder: true                 # Use per-player WorldBorder for nice visuals
@@ -371,6 +396,11 @@ upgrades:
       # Colored borders now respect island_settings.border_color (BLUE, RED, GREEN, GOLD, PURPLE, PINK, etc.)
       # Admin commands: /isadmin border setsize <player> <blocks>  and  setcolor <player> <color>
       # Hologram markers and auto WorldBorder on movement are available via BorderVisualManager
+  # Note: External schematic support (WorldEdit etc.) has been fully removed. Procedural generation only.
+  schematics:
+    enabled: false  # set true + WE/FAWE on cp for admin custom island bases (procedural remains default for Play-to-Win fairness; schems for events/donors cosmetic only)
+    # In IslandGenerator: if enabled and plugin present, can paste schematic at center before/after procedural features.
+    # Spawn hub also supports separate schematics (see spawn-schematics section) for complex community designs.
   spawner-rate:
     speed-bonus-per-level: 0.15         # +15% spawner activation speed
   mob-cap:

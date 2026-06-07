@@ -198,12 +198,7 @@ public class IslandDAO extends BaseDAO {
             "DELETE FROM island_boosters WHERE island_key = ?",
             "DELETE FROM island_collections WHERE island_key = ?",
             "DELETE FROM island_active_weather WHERE island_key = ?",
-            "DELETE FROM island_active_music WHERE island_key = ?",
-            // Quest system per-island tables (use island_id column as per their schema)
-            "DELETE FROM island_quests WHERE island_id = ?",
-            "DELETE FROM island_daily_streaks WHERE island_id = ?",
-            "DELETE FROM island_streak_freezes WHERE island_id = ?",
-            "DELETE FROM island_reputation WHERE island_id = ?"
+            "DELETE FROM island_active_music WHERE island_key = ?"
         };
         for (String sql : keyCleanups) {
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -1947,15 +1942,13 @@ public class IslandDAO extends BaseDAO {
 
                     // Per-island key + grid cleanups for all known island_* tables (extended from cleanupIslandData)
                     // Key-based (island_key = owner_dim usually)
-                    // Includes quest system island-scoped tables for proper fresh season reset of dailies/weekly/streaks/rep/freezes
                     String[] keyTables = {
                         "island_upgrades", "island_levels", "island_skills", "island_milestones",
                         "island_fuel", "island_boosters", "island_collections",
                         "island_active_weather", "island_active_music",
                         "island_missions", "island_prestige", "island_shop_purchases",
                         "island_museum", "island_museum_donations",
-                        "minion_skin_assignments",
-                        "island_quests", "island_daily_streaks", "island_streak_freezes", "island_reputation"
+                        "minion_skin_assignments"
                     };
                     for (String t : keyTables) {
                         try (PreparedStatement ps = conn.prepareStatement("DELETE FROM " + t)) {

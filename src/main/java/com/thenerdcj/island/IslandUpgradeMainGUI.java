@@ -166,7 +166,7 @@ public class IslandUpgradeMainGUI extends BaseGUI {
             case CROP_GROWTH -> "+" + (level * 25) + "% growth speed";
             case ORE_GENERATOR -> "Better ores from generators (Lv." + level + ")";
             case ISLAND_SIZE -> {
-                int perLevel = plugin.getConfig().getInt("upgrades.island-size.radius-per-level", 8);
+                int perLevel = plugin.getConfig().getInt("upgrades.island-size.radius-per-level", 2);
                 yield "+" + (level * perLevel) + " block radius";
             }
             case MINION_SLOTS -> "+" + level + " minion slots";

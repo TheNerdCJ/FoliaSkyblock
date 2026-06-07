@@ -58,9 +58,13 @@ public class GeneratorMainGUI extends BaseGUI {
         int level = plugin.getIslandUpgradeManager() != null
                 ? plugin.getIslandUpgradeManager().getOreGeneratorLevel(island)
                 : 0;
+        int activeQuests = plugin.getQuestManager() != null
+                ? plugin.getQuestManager().getActiveQuestsCount(island.getId())
+                : 0;
         gui.setItem(13, GUIUtils.createItem(Material.DIAMOND_PICKAXE, "§e§lGenerator Status",
                 "§7Ore Generator Level: §b" + level,
                 "§7Cobble gens produce better ores",
+                "§7Quests In Progress: §b" + activeQuests,
                 "",
                 "§7Full customization coming soon!",
                 "§7(Per-island type toggles, speed, etc.)"));

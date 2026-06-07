@@ -73,37 +73,53 @@ import java.util.concurrent.ConcurrentHashMap;
  *    - High volume on low level gens = suspicious.
  *
  * 6. FLY/SPEED / MOVEMENT:
- *    - Basic speed/fly thresholds, weights.
- *    - Config: speed/fly.
+ *    - Heavily lenient on own island (normal sprinting, elytra flying, speed pots while farming are expected).
+ *    - Only strict in public/spawn/nether/end areas.
+ *    - Config: movement.speed/fly.
+ *    - See isSpeedSuspicious + hasLegitimateSpeedSource (now includes elytra, fireworks, high boots, pots).
  *
- * 7. OTHER (hopper dupe across claims, combat macros, etc.):
+ * 7. FASTBREAK / FASTPLACE:
+ *    - Completely disabled on own island (rapid breaking/placing is normal for terraforming, tree clearing, crop rows).
+ *    - Only active off-island or in shared/public areas.
+ *    - Config: block.fastbreak/fastplace.
+ *
+ * 8. OTHER (hopper dupe across claims, combat macros, etc.):
  *    - See HopperDupeListener integration.
  *    - NeuralCheatDetector for advanced patterns (experimental, default off).
  *
- * 8. QUEST SPAM / EARLY-GAME EXPLOIT (bypasses onboarding balance and Play-to-Win first-island design):
+ * 9. QUEST SPAM / EARLY-GAME EXPLOIT (bypasses onboarding balance and Play-to-Win first-island design):
  *    - Track recentQuestGains window; isFlaggedForQuestExploit + reportHighQuestProgress.
  *    - Called from EarlyGameListener (all FIRST categories) and MinionManager first-minion hook.
  *    - Flags "High Quest Progress (Possible Macro/Exploit - bypasses early game balance)".
+ *    - Lenient on own-island farming activity.
  *
- * 9. COLLECTION ABUSE / MACRO (rapid first-discover or milestone farming for tokens/XP/cosmetics):
+ * 10. COLLECTION ABUSE / MACRO (rapid first-discover or milestone farming for tokens/XP/cosmetics):
  *    - recentCollectionDiscovers; isFlaggedForCollectionAbuse + reportCollectionDiscover.
  *    - Integrated in CollectionManager.discover and CollectionListener paths (MONITOR).
  *    - Prevents macroing unique item finds to farm collection rewards (25/50/100 milestone cosmetics/tokens).
+ *    - Heavy leniency for farm-related discoveries on own island.
  *
- * 10. DRAGON GRIEF / ISLAND PROJECTION BYPASS:
+ * 11. DRAGON GRIEF / ISLAND PROJECTION BYPASS:
  *    - reportDragonGriefAttempt (player-aware when possible) for attempts to damage non-home islands via dragon.
  *    - Called from IslandProtectionListener onEntityExplode / crystal attribution mismatch paths.
  *    - Flags "Dragon grief attempt on non-home island (projection violation)".
  *
- * 11. MINION / HOUSING SPAM (duping, placement spam causing lag or grief):
+ * 12. MINION / HOUSING SPAM (duping, placement spam causing lag or grief):
  *    - recordMinionPlace + isFlaggedForMinionSpam; recordHousingPlace + isFlaggedForHousingSpam.
  *    - Wired in MinionManager.placeMinion success + IslandFurnitureManager / IslandStructure place.
  *    - Rate limit + flag "Minion/Housing placement spam (possible dupe/lag induction)".
  *
- * 12. ENCHANT POWER FARMING / ANVIL ABUSE (rapid custom enchant stacking or proc spam):
+ * 13. ENCHANT POWER FARMING / ANVIL ABUSE (rapid custom enchant stacking or proc spam):
  *    - isFlaggedForEnchantPowerAbuse + reportEnchantProc / recordAnvilCombine.
  *    - Used by EnchantingTableGUI, AnvilListener, EnchantEffectListener for high-volume custom power.
  *    - Protects custom enchant economy (no free power creep bypassing progression).
+ *
+ * PHILOSOPHY (updated for realistic skyblock play, based on common Hypixel/CubeCraft-style videos):
+ * - Private islands: extremely high tolerance. Almost all "fast" or "high volume" activity is legit.
+ * - Public/shared areas (spawn, nether, end, other islands): strict.
+ * - Focus on Play-to-Win bypasses (XP/quest macros that skip leveling/dimensions) and cross-claim dupes.
+ * - Generator ores on own island are whitelisted.
+ * - Farm activity (crops + ground blocks) gets massive leniency everywhere the heuristics allow.
  *
  * ENFORCEMENT:
  *    - flagViolation(player, reason, severity) -> increments violations, alerts if perm.
@@ -120,7 +136,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *    - Expand this guide with more Skyblock-specific (e.g. new dupe methods, generator throttling).
  *    - Add logging/auditing for sensitive ops.
  *    - Profile hot paths.
- *    - Ensure no false positives on legit high-level islands/parties.
+ *    - Ensure no false positives on legit high-level islands/parties. (Major focus of this pass: own-island movement + fastbreak now fully lenient.)
  */
 
 public class AntiCheatManager {
@@ -358,23 +374,25 @@ public class AntiCheatManager {
     public boolean isFastBreakSuspicious(Player player, PlayerBehaviorProfile profile) {
         if (player.hasPermission("foliasb.admin")) return false;
 
+        // In real skyblock (Hypixel etc.), players break blocks extremely fast on their private islands
+        // for terraforming, tree farms, crop rows, etc. Fastbreak checks on own island cause massive
+        // false positives. We only apply fastbreak suspicion off-island or in public/shared areas.
+        if (isOnOwnIsland(player)) return false;
+
         long now = System.currentTimeMillis();
         Long last = lastBlockBreakTime.get(player.getUniqueId());
         if (last == null) return false;
-
-        // Crop farming (potatoes especially) on your own island is legitimately extremely fast.
-        // A player walking a row can break many fully-grown plants per second + pick up drops immediately.
-        // Only apply the strict fastbreak check if the player is not harvesting farm crops on their island.
-        Material lastMat = lastBrokenMaterial.get(player.getUniqueId());
-        if (isOnOwnIsland(player) && isFarmCrop(lastMat)) {
-            return false;
-        }
 
         return (now - last) < fastbreakMinDelayMs;
     }
 
     public boolean isFastPlaceSuspicious(Player player) {
         if (player.hasPermission("foliasb.admin")) return false;
+
+        // Placing blocks extremely fast is normal on your own island (building, terraforming, farm setup).
+        // Real skyblock players place dozens of blocks per second when working on their island.
+        if (isOnOwnIsland(player)) return false;
+
         long now = System.currentTimeMillis();
         Long last = lastBlockPlaceTime.get(player.getUniqueId());
         if (last == null) return false;
@@ -411,17 +429,11 @@ public class AntiCheatManager {
         long now = System.currentTimeMillis();
         Material type = block.getType();
 
-        // Do not update the fastbreak timer for farm crops on your own island.
-        // This prevents dense potato/carrot/etc harvesting from creating a "recent break" timestamp
-        // that would either false-positive or (worse) mask a real fastbreak on stone right after farming.
-        boolean isOwnFarmCrop = isOnOwnIsland(player) && isFarmCrop(type);
-        if (!isOwnFarmCrop) {
-            lastBlockBreakTime.put(uuid, now);
-            lastBrokenMaterial.put(uuid, type);
-        } else {
-            // Still record the material so isFastBreakSuspicious can see we are in a farming streak if needed
-            lastBrokenMaterial.put(uuid, type);
-        }
+        // Always record break time and material for profile stats (ore rates, xray, farming variance, etc.).
+        // The fastbreak check itself is now disabled entirely on own island (see isFastBreakSuspicious)
+        // because rapid breaking is normal and expected for terraforming/farming on private islands.
+        lastBlockBreakTime.put(uuid, now);
+        lastBrokenMaterial.put(uuid, type);
 
         PlayerBehaviorProfile profile = profiles.computeIfAbsent(uuid, k -> new PlayerBehaviorProfile(uuid));
         profile.recordBlockBreak(type);
@@ -583,6 +595,10 @@ public class AntiCheatManager {
                m == Material.KELP || m == Material.CACTUS;
     }
 
+    // Note: Fastbreak is now fully disabled on own island (see isFastBreakSuspicious).
+    // Rapid breaking of dirt, leaves, crops, etc. is completely normal skyblock island gameplay.
+    // We keep isFarmCrop for other leniency (item gains, XP, quests, etc.).
+
     /**
      * Returns true if the source or material indicates farming activity on the player's own island.
      * Used to apply much higher leniency in XP/quest/collection heuristics for legit dense crop farms.
@@ -652,23 +668,29 @@ public class AntiCheatManager {
     }
 
     private void executePunishment(Player player, String level, String reason) {
-        switch (level.toLowerCase()) {
-            case "warn":
-                player.sendMessage("§c[AntiCheat] Warning: " + reason);
-                break;
-            case "kick":
-                player.kickPlayer("§c[AntiCheat] Kicked for: " + reason);
-                break;
-            case "ban":
-                Bukkit.getBanList(org.bukkit.BanList.Type.NAME).addBan(
-                        player.getName(), "AntiCheat: " + reason,
-                        new Date(System.currentTimeMillis() + (banDurationHours * 3600L * 1000L)),
-                        "FoliaSkyblock AntiCheat");
-                player.kickPlayer("§cBanned for: " + reason);
-                break;
-            default:
-                player.sendMessage("§c[AntiCheat] " + reason);
-        }
+        if (player == null || !player.isOnline()) return;
+
+        // Folia-safe: punishments that affect the player (kick/ban) must be scheduled to avoid region threading issues.
+        // Use global scheduler for cross-thread safety.
+        plugin.getThreadSafety().runOnMainThread(() -> {
+            switch (level.toLowerCase()) {
+                case "warn":
+                    player.sendMessage("§c[AntiCheat] Warning: " + reason);
+                    break;
+                case "kick":
+                    player.kickPlayer("§c[AntiCheat] Kicked for: " + reason);
+                    break;
+                case "ban":
+                    Bukkit.getBanList(org.bukkit.BanList.Type.NAME).addBan(
+                            player.getName(), "AntiCheat: " + reason,
+                            new Date(System.currentTimeMillis() + (banDurationHours * 3600L * 1000L)),
+                            "FoliaSkyblock AntiCheat");
+                    player.kickPlayer("§cBanned for: " + reason);
+                    break;
+                default:
+                    player.sendMessage("§c[AntiCheat] " + reason);
+            }
+        });
     }
 
     // ==================== HELPERS ====================
@@ -684,6 +706,12 @@ public class AntiCheatManager {
     }
 
     private boolean isSpeedSuspicious(Player player, PlayerBehaviorProfile profile) {
+        // On your own island, high movement speed is completely normal and expected.
+        // Players constantly sprint, jump, use elytra, speed pots, etc. while farming/ building.
+        // Real skyblock gameplay on private islands involves very high "speed" that would false-positive
+        // any public-server tuned anti-cheat. We heavily exempt own-island movement.
+        if (isOnOwnIsland(player)) return false;
+
         if (player.isFlying() || player.getAllowFlight() || player.hasPermission("foliasb.admin")) return false;
         double current = calculateCurrentSpeed(player);
         double avg = profile.getAverageSpeed();
@@ -698,12 +726,31 @@ public class AntiCheatManager {
     }
 
     private boolean hasLegitimateSpeedSource(Player player) {
+        // Common legitimate high-speed sources in skyblock (from typical Hypixel/CubeCraft gameplay videos):
+        // - Speed potions (very common for farming)
+        // - Elytra (constant flying around your island is normal)
+        // - High-level boots (soul speed on soul sand, depth strider in water)
+        // - Fireworks for elytra boosts
         if (player.hasPotionEffect(PotionEffectType.SPEED)) return true;
+
+        ItemStack chest = player.getInventory().getChestplate();
+        if (chest != null && chest.getType() == Material.ELYTRA) return true;
+
         ItemStack boots = player.getInventory().getBoots();
         if (boots != null) {
-            if (boots.getEnchantmentLevel(Enchantment.DEPTH_STRIDER) > 3 || boots.getEnchantmentLevel(Enchantment.SOUL_SPEED) > 3) return true;
+            if (boots.getEnchantmentLevel(Enchantment.DEPTH_STRIDER) > 3 ||
+                boots.getEnchantmentLevel(Enchantment.SOUL_SPEED) > 3) return true;
         }
-        return player.getInventory().getChestplate() != null && player.getInventory().getChestplate().getType() == Material.ELYTRA;
+
+        // Fireworks in hand for elytra is a very common legit movement method on islands.
+        ItemStack main = player.getInventory().getItemInMainHand();
+        ItemStack off = player.getInventory().getItemInOffHand();
+        if ((main != null && main.getType() == Material.FIREWORK_ROCKET) ||
+            (off != null && off.getType() == Material.FIREWORK_ROCKET)) {
+            return true;
+        }
+
+        return false;
     }
 
     private boolean hasLegitimateFlySource(Player player) {
@@ -788,6 +835,17 @@ public class AntiCheatManager {
 
     public void reportHighQuestProgress(Player player, String source) {
         if (!enabled || player.hasPermission("foliasb.bypass.anticheat")) return;
+
+        // Strong leniency for early game quests on own island.
+        // New players legitimately dig dirt, place blocks, kill a few mobs etc. very quickly
+        // at the very start while building their first base (exactly what the early_ quests encourage).
+        // "digging dirt at the start" should never flag as macro.
+        if (source != null) {
+            String s = source.toLowerCase();
+            if (s.startsWith("early_") && isOnOwnIsland(player)) {
+                return;
+            }
+        }
 
         // Leniency for own-island farming quests (early game farming quests can legitimately fire very fast
         // when a player is actively harvesting a prepared farm).
@@ -1095,7 +1153,7 @@ public class AntiCheatManager {
     }
 
     // ==================== TASK 6: EXPANDED HEURISTICS + NEURAL SAMPLES ====================
-    // New for museum/minion abuse (from logs + popular YT dupe videos for expanded features).
+    // New for museum/minion/schematic abuse (from logs + popular YT dupe videos for expanded features).
     // Neural: add training samples in test + runtime profile updates.
     public boolean isFlaggedForMinionMacro(Player player, int placedThisMinute) {
         if (placedThisMinute > 15) {
@@ -1110,7 +1168,7 @@ public class AntiCheatManager {
     }
 
     public boolean isFlaggedForSchematicAbuse(Player player) {
-        // Stub (schematic support removed; kept for potential future generator extensions).
+        // Hook from generator if schematics on; rate limit pastes.
         return false;
     }
 }

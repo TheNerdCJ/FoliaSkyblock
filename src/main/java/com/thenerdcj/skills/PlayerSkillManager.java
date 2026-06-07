@@ -1,6 +1,7 @@
 package com.thenerdcj.skills;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
 import com.thenerdcj.util.ThreadSafety;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -284,7 +285,7 @@ public class PlayerSkillManager {
         if ((skill == SkillType.MINING && isAbilityActive(player.getUniqueId(), SkillType.MINING)) ||
             (skill == SkillType.WOODCUTTING && isAbilityActive(player.getUniqueId(), SkillType.WOODCUTTING))) {
             if (Math.random() < 0.5) {
-                player.sendActionBar("§6" + (skill == SkillType.MINING ? "Double drop" : "Feller") + " chance!");
+                MessageUtil.sendActionBar(player, "§6" + (skill == SkillType.MINING ? "Double drop" : "Feller") + " chance!");
             }
         }
     }
@@ -296,7 +297,7 @@ public class PlayerSkillManager {
             int level = getSkillLevel(player.getUniqueId(), SkillType.COMBAT);
             if (level >= 15 && Math.random() < 0.1 + (level * 0.002)) {
                 xp *= 1.5; // crit bonus
-                player.sendActionBar("§cCombat crit! Bonus XP");
+                MessageUtil.sendActionBar(player, "§cCombat crit! Bonus XP");
             }
             addSkillXp(player, skill, xp);
         }
@@ -308,7 +309,7 @@ public class PlayerSkillManager {
         // Fishing ability: at high level, chance for bonus XP or "treasure" message (can hook for extra item later)
         if (getSkillLevel(player.getUniqueId(), SkillType.FISHING) >= 20 && Math.random() < 0.15) {
             addSkillXp(player, SkillType.FISHING, 5.0); // bonus
-            player.sendActionBar("§bLucky catch! Bonus fishing XP");
+            MessageUtil.sendActionBar(player, "§bLucky catch! Bonus fishing XP");
         }
     }
 

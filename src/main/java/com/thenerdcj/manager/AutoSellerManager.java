@@ -3,6 +3,7 @@ package com.thenerdcj.manager;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandUpgrade;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -50,7 +51,7 @@ public class AutoSellerManager {
 
             if (earned > 0) {
                 plugin.getIslandBankManager().deposit(island.getGridPosition(), earned);
-                player.sendActionBar("§7[Auto-Sell] §a+$" + String.format("%,.0f", earned) + " §7to island bank");
+                MessageUtil.sendActionBar(player, "§7[Auto-Sell] §a+$" + String.format("%,.0f", earned) + " §7to island bank");
             }
         }
     }

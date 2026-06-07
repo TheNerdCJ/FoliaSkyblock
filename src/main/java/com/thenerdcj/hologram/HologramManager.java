@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.TextDisplay;
+import net.kyori.adventure.text.Component;
 import com.thenerdcj.util.MessageUtil;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -117,10 +118,9 @@ public class HologramManager {
                             .replace("%island_worth_level%", "N/A");
                     }
 
+                    // Use MessageUtil.legacy so both & and § color codes work reliably for holograms.
                     entity.text(MessageUtil.legacy(processedLine));
-                    String bb = data.getBillboard();
-                    if (bb == null || bb.isEmpty()) bb = "CENTER";
-                    entity.setBillboard(org.bukkit.entity.Display.Billboard.valueOf(bb.toUpperCase()));
+                    entity.setBillboard(org.bukkit.entity.Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
                     entity.setSeeThrough(data.isSeeThrough());
                     entity.setShadowed(data.isShadow());
                     entity.setTransformation(new Transformation(

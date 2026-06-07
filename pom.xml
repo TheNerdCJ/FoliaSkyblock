@@ -29,6 +29,7 @@
             <id>jitpack.io</id>
             <url>https://jitpack.io</url>
         </repository>
+
     </repositories>
 
     <dependencies>
@@ -130,11 +131,45 @@
                         <configuration>
                             <finalName>FoliaSkyblock</finalName>
                             <minimizeJar>true</minimizeJar>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.thenerdcj.FoliaSkyblock</mainClass>
                                 </transformer>
                             </transformers>
+                            <!-- Aggressive but safe minification for smaller final JAR size.
+                                 - minimizeJar removes unused classes from shaded deps.
+                                 - Specific includes protect HikariCP and SQLite (they use service loaders, native code, reflection).
+                                 - General excludes remove signatures, multi-release junk, etc. (safe, standard practice).
+                                 This reduces size without breaking runtime functionality for DB, logging, or core features. -->
+                            <filters>
+                                <!-- Protect critical runtime libs -->
+                                <filter>
+                                    <artifact>com.zaxxer:HikariCP</artifact>
+                                    <includes>
+                                        <include>**/*</include>
+                                    </includes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.xerial:sqlite-jdbc</artifact>
+                                    <includes>
+                                        <include>**/*</include>
+                                    </includes>
+                                </filter>
+                                <!-- Global safe excludes to trim fat (signatures, MR-JAR noise, etc.) -->
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>META-INF/versions/**</exclude>
+                                        <exclude>META-INF/services/com.sun.*</exclude>
+                                        <exclude>**/module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                         </configuration>
                     </execution>
                 </executions>

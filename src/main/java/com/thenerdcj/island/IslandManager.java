@@ -87,7 +87,7 @@ public class IslandManager {
 
     // ==================== ISLAND CREATION ====================
     public CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension) {
-        return createIsland(player, biomeName, dimension, false);
+        return createIsland(player, biomeName, dimension, false, false);
     }
 
     /**
@@ -97,6 +97,17 @@ public class IslandManager {
      * Only honored for actual donors. Purely cosmetic.
      */
     public CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension, boolean donorRerollPersonality) {
+        return createIsland(player, biomeName, dimension, donorRerollPersonality, false);
+    }
+
+    /**
+     * Internal creation used by prestige rebirth (and potentially other admin/force paths).
+     * When bypassDimensionGates=true, the Nether/End level requirement checks against main island are skipped.
+     * This is required when rebirthing all of a player's dimensions together during a prestige action
+     * (the "main" is also being reset to level 1 at the same moment).
+     */
+    CompletableFuture<Boolean> createIsland(Player player, String biomeName, World.Environment dimension,
+                                            boolean donorRerollPersonality, boolean bypassDimensionGates) {
         if (plugin.getSeasonManager() != null && plugin.getSeasonManager().isResetInProgress()) {
             plugin.getThreadSafety().sendMessageSafely(player, "§cSeasonal reset in progress. Please wait a moment and try again.");
             return CompletableFuture.completedFuture(false);
@@ -104,7 +115,8 @@ public class IslandManager {
         // === TASK 1: ENFORCE DIM LEVEL GATES (before allocating grid position - prevents waste/leaks) ===
         // Uses main island XP level (from skills/play, not worth). Config driven. Play-to-Win: cannot buy/skip, must grind main.
         // Cross-refs: Island.hasUnlocked* (soft), BiomeSelectionGUI (display), IslandCommand (pre-check), Island (level/xp).
-        if (dimension != World.Environment.NORMAL) {
+        // The bypass is only used for prestige rebirth flows where we are resetting the main + aux dims together.
+        if (dimension != World.Environment.NORMAL && !bypassDimensionGates) {
             int mainLvl = getMainIslandLevel(player.getUniqueId());
             int req = getDimensionLevelRequirement(dimension);
             if (mainLvl < req) {
@@ -163,20 +175,24 @@ public class IslandManager {
                                     biome = Biome.PLAINS;
                                 }
 
-                                // Early game / onboarding: seed first-island quests immediately (per-player for parallel, persistent)
-                                // Daily/weekly per-island for unique island progression
+                                // Early game / onboarding: seed first-island quests immediately (in-mem, lightweight)
                                 if (plugin.getQuestManager() != null) {
-                                    String playerKey = player.getUniqueId().toString();
-                                    plugin.getQuestManager().generateOnboardingQuests(playerKey);
+                                    plugin.getQuestManager().generateOnboardingQuests(island.getId());
                                     plugin.getQuestManager().generateDailyQuests(island.getId());
                                     plugin.getQuestManager().generateWeeklyQuests(island.getId());
-                                    // Main Story chains are generated inside generateOnboardingQuests (Step 1)
                                 }
 
                                 runGenerationOnRegionScheduler(player, island, biome, isDonor);
 
                                 final Island created = island;
                                 final Player onlinePlayer = player;
+                                // Ensure any pre-existing prestige (from previous run) is loaded for the stable key
+                                if (plugin.getPrestigeManager() != null) {
+                                    final String pKey = created.getId();
+                                    plugin.getDatabaseManager().loadIslandPrestige(pKey).thenAccept(lvl -> {
+                                        plugin.getPrestigeManager().loadPrestigeForIsland(pKey, lvl);
+                                    });
+                                }
                                 plugin.getThreadSafety().runOnMainThread(() -> {
                                     if (!onlinePlayer.isOnline()) return;
                                     MessageUtil.sendMessage(onlinePlayer, "§a§lIsland created in " + dimension.name() + "!");
@@ -232,6 +248,14 @@ public class IslandManager {
                     // Core Collections (per-island unique discovery tracking)
                     if (plugin.getCollectionManager() != null) {
                         plugin.getCollectionManager().loadForIsland(islandKey);
+                    }
+
+                    // Prestige (stable owner+dim key) — load into PrestigeManager cache so getPrestigeLevel + getEffectiveLevel work immediately
+                    if (plugin.getPrestigeManager() != null) {
+                        final String pKey = island.getId();
+                        plugin.getDatabaseManager().loadIslandPrestige(pKey).thenAccept(lvl -> {
+                            plugin.getPrestigeManager().loadPrestigeForIsland(pKey, lvl);
+                        });
                     }
                 }
             } catch (Exception e) {
@@ -481,10 +505,8 @@ public class IslandManager {
             return;
         }
 
-        // Clear any active island world border before teleporting to global spawn (island==null).
-        // This prevents the Minecraft "outside border" red vignette/ring effect when arriving at spawn
-        // (spawn is far outside the player's island border).
-        if (island == null && plugin.getBorderVisualManager() != null) {
+        // If teleporting to global spawn (island=null), clear any island border immediately to prevent red hue at destination
+        if (island == null && plugin.getBorderVisualManager() != null && player.isOnline()) {
             plugin.getBorderVisualManager().clearPlayerWorldBorder(player);
         }
 
@@ -523,16 +545,12 @@ public class IslandManager {
             if (island != null) {
                 MessageUtil.sendMessage(player, "§aTeleported to your island!");
             } else {
-                MessageUtil.sendMessage(player, "§aTeleported to spawn!");
+                MessageUtil.sendMessage(player, "§aTeleported to spawn.");
             }
         }
         plugin.getThreadSafety().runOnMainThreadLater(() -> {
             if (player.isOnline() && plugin.getBorderVisualManager() != null) {
-                if (island != null) {
-                    plugin.getBorderVisualManager().updatePlayerWorldBorder(player, island);
-                } else {
-                    plugin.getBorderVisualManager().clearPlayerWorldBorder(player);
-                }
+                plugin.getBorderVisualManager().updatePlayerWorldBorder(player, island);
             }
         }, 15L);
     }
@@ -744,6 +762,75 @@ public class IslandManager {
                 plugin.getThreadSafety().sendMessageSafely(player,
                         "§cFailed to reset island. Please try again or contact staff.");
             }
+        });
+    }
+
+    /**
+     * Force-rebirth an island as part of a prestige action.
+     * - Bypasses normal reset cooldowns, combat tags, and active boss checks.
+     * - For non-overworld dimensions, bypasses the main-island level gate (we are rebirthing the main at the same time).
+     * - Allocates a fresh plot, creates a small starter island of the requested biome, and ensures the
+     *   new prestige level (already persisted under the stable owner_dim key) is attached.
+     * - After creation, the normal create post-steps (quest seeding for the new run, etc.) run.
+     */
+    public void performPrestigeIslandRebirth(Player player, String biomeName, World.Environment dimension, boolean donorRerollPersonality) {
+        if (player == null || dimension == null) return;
+        UUID owner = player.getUniqueId();
+
+        // Remove any stale in-memory island for this dim so the new one is used after create
+        Map<World.Environment, Island> map = playerIslands.get(owner);
+        if (map != null) {
+            map.remove(dimension);
+        }
+
+        // Delete old data (cleans upgrades, levels, collections, active data etc. for the old grid)
+        databaseManager.deleteIsland(owner, dimension).thenAccept(deleted -> {
+            gridManager.deletePlayerIsland(owner, dimension);
+
+            // Create using the bypass so dim gates don't block during a multi-dim prestige rebirth
+            createIsland(player, biomeName, dimension, donorRerollPersonality, true /* bypassDimensionGates */)
+                    .thenAccept(success -> {
+                        if (!success) {
+                            plugin.getThreadSafety().sendMessageSafely(player,
+                                    "§cPrestige rebirth failed for " + dimension.name() + ". Contact staff if this persists.");
+                            return;
+                        }
+
+                        // The new island now exists with a fresh grid position.
+                        Island fresh = getIsland(owner, dimension);
+                        if (fresh != null) {
+                            // Make sure the (already saved) prestige under the stable key is in the PrestigeManager cache
+                            if (plugin.getPrestigeManager() != null) {
+                                String ik = fresh.getId();
+                                plugin.getDatabaseManager().loadIslandPrestige(ik).thenAccept(lvl -> {
+                                    plugin.getPrestigeManager().loadPrestigeForIsland(ik, lvl);
+                                    // Snapshot the prestige onto the *new* grid position for tops/aggregates
+                                    if (fresh.getGridPosition() != null && plugin.getDatabaseManager().getIslandDAO() != null) {
+                                        plugin.getDatabaseManager().getIslandDAO().saveIslandPrestigeLevel(fresh.getGridPosition(), lvl);
+                                    }
+                                });
+                            }
+
+                            // Clear any stale in-memory active quests for this stable id so the create-seeded
+                            // onboarding/story quests for the new prestige run are the ones shown.
+                            if (plugin.getQuestManager() != null) {
+                                plugin.getQuestManager().clearActiveForIsland(fresh.getId());
+                            }
+                        }
+
+                        plugin.getThreadSafety().sendMessageSafely(player,
+                                "§a" + dimension.name() + " island reborn for your new Prestige run.");
+
+                        // For the player's main (overworld) after prestige, teleport them to the fresh starter
+                        if (dimension == World.Environment.NORMAL && player.isOnline()) {
+                            plugin.getThreadSafety().runOnMainThreadLater(() -> {
+                                Island newMain = getIsland(owner, dimension);
+                                if (newMain != null && player.isOnline()) {
+                                    teleportToIslandHome(player, newMain);
+                                }
+                            }, 30L);
+                        }
+                    });
         });
     }
 

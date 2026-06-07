@@ -4,11 +4,11 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
 import com.thenerdcj.island.IslandPermission;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Location;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.*;
 import org.bukkit.event.entity.*;
@@ -24,9 +24,6 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.DragonFireball;
 
-import java.util.HashSet;
-import java.util.Set;
-
 public class IslandProtectionListener implements Listener {
 
     private final FoliaSkyblock plugin;
@@ -36,7 +33,6 @@ public class IslandProtectionListener implements Listener {
 
     // Configurable values
     private int spawnRadius;
-    private Set<String> spawnProtectedWorlds;
     private boolean wildernessProtection;
     private boolean explosionProtection;
     private boolean pistonProtection;
@@ -57,7 +53,6 @@ public class IslandProtectionListener implements Listener {
 
     public void loadConfig() {
         this.spawnRadius = config.getInt("protection.spawn-radius", 50);
-        this.spawnProtectedWorlds = new HashSet<>(config.getStringList("protection.spawn-protected-worlds"));
         this.wildernessProtection = config.getBoolean("protection.wilderness-protection", true);
         this.explosionProtection = config.getBoolean("protection.explosion-protection", true);
         this.pistonProtection = config.getBoolean("protection.piston-protection", true);
@@ -101,9 +96,9 @@ public class IslandProtectionListener implements Listener {
         if (island == null || loc.getWorld() == null) return true;
         org.bukkit.Location center = island.getCenter(loc.getWorld());
         if (center == null) return true;
-        int base = plugin.getConfig().getInt("upgrades.island-size.base-radius", 256);
-        int per = plugin.getConfig().getInt("upgrades.island-size.radius-per-level", 8);
-        int maxr = plugin.getConfig().getInt("upgrades.island-size.max-radius", 512);
+        int base = plugin.getConfig().getInt("upgrades.island-size.base-radius", 8);
+        int per = plugin.getConfig().getInt("upgrades.island-size.radius-per-level", 2);
+        int maxr = plugin.getConfig().getInt("upgrades.island-size.max-radius", 128);
         int lvl = 0;
         try { lvl = upgradeManager.getUpgradeLevel(island.getId(), com.thenerdcj.island.IslandUpgrade.ISLAND_SIZE); } catch (Exception ignored) {}
         int radius = Math.min(base + lvl * per, maxr);
@@ -122,7 +117,9 @@ public class IslandProtectionListener implements Listener {
 
     private void sendProtectedMessage(Player player, String messageKey) {
         String msg = config.getString("protection.messages." + messageKey, "§cYou cannot build here!");
-        Component component = Component.text(msg);
+        // Use MessageUtil.legacy to properly parse § colors (and hex) into Adventure Component.
+        // Direct Component.text(msg) would show raw § codes instead of applying chat colors in the action bar.
+        Component component = MessageUtil.legacy(msg);
         if (plugin.isFolia()) {
             player.getScheduler().run(plugin, t -> player.sendActionBar(component), null);
         } else {
@@ -148,10 +145,6 @@ public class IslandProtectionListener implements Listener {
     }
 
     private boolean isSpawnProtected(Location loc) {
-        if (loc == null || loc.getWorld() == null) return false;
-        if (!spawnProtectedWorlds.isEmpty() && !spawnProtectedWorlds.contains(loc.getWorld().getName())) {
-            return false;
-        }
         return Math.abs(loc.getBlockX()) <= spawnRadius &&
                 Math.abs(loc.getBlockZ()) <= spawnRadius;
     }
@@ -450,10 +443,28 @@ public class IslandProtectionListener implements Listener {
         }
     }
 
+    /**
+     * Disable phantoms in the overworld (NORMAL environment) for large server balance.
+     * Phantoms can still spawn in other dimensions (Nether/End) for boss mechanics etc.
+     * This is a world-level rule, independent of per-island mob spawning settings.
+     */
+    @EventHandler
+    public void onPhantomSpawn(CreatureSpawnEvent e) {
+        if (e.getEntityType() != EntityType.PHANTOM) return;
+        World world = e.getLocation().getWorld();
+        if (world != null && world.getEnvironment() == World.Environment.NORMAL) {
+            e.setCancelled(true);
+        }
+    }
+
     @EventHandler
     public void onEnderDragonDeath(EntityDeathEvent e) {
-        if (e.getEntity() instanceof EnderDragon && plugin.getBossManager() != null) {
-            plugin.getBossManager().removeBoss(e.getEntity().getUniqueId());
+        if (e.getEntity() instanceof EnderDragon dragon && plugin.getBossManager() != null) {
+            String homeId = plugin.getBossManager().getDragonHomeIsland(dragon.getUniqueId());
+            plugin.getBossManager().removeBoss(dragon.getUniqueId());
+            if (homeId != null && plugin.getQuestManager() != null) {
+                plugin.getQuestManager().onEnderDragonKilled(homeId);
+            }
         }
         // Clear any pending crystal attribution
         pendingCrystalDragonHome = null;
@@ -493,34 +504,6 @@ public class IslandProtectionListener implements Listener {
             if (!e.getPlayer().hasPermission("foliasb.admin.bypass")) {
                 e.setCancelled(true);
             }
-        }
-    }
-
-    // ==================== ENHANCED SPAWN PROTECTION (mobs, PVP, PVE) ====================
-
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onCreatureSpawn(CreatureSpawnEvent e) {
-        // Keep spawn area free from mobs (natural, spawners, etc.)
-        if (isSpawnProtected(e.getLocation())) {
-            e.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onEntityDamage(EntityDamageEvent e) {
-        // Prevent players from taking damage in spawn (PVE safe zone)
-        if (e.getEntity() instanceof Player && isSpawnProtected(e.getEntity().getLocation())) {
-            e.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onEntityDamageByEntity(EntityDamageByEntityEvent e) {
-        // Prevent PVP and PVE combat at spawn (if damager or victim in protected spawn area)
-        Location victimLoc = e.getEntity().getLocation();
-        Location damagerLoc = e.getDamager().getLocation();
-        if (isSpawnProtected(victimLoc) || isSpawnProtected(damagerLoc)) {
-            e.setCancelled(true);
         }
     }
 

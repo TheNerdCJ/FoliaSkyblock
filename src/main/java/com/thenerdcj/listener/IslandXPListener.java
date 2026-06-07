@@ -3,6 +3,7 @@ package com.thenerdcj.listener;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandManager;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -307,7 +308,7 @@ public class IslandXPListener implements Listener {
         } else {
             // Occasional XP gain message (not spammy)
             if (Math.random() < 0.05) {
-                player.sendActionBar("§7+" + String.format("%.1f", xp) + " Island XP §8(" + source + ")");
+                MessageUtil.sendActionBar(player, "§7+" + String.format("%.1f", xp) + " Island XP §8(" + source + ")");
             }
         }
 

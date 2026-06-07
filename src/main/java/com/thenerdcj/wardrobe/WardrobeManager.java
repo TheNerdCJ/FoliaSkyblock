@@ -1,6 +1,7 @@
 package com.thenerdcj.wardrobe;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.util.MessageUtil;
 import com.thenerdcj.util.ThreadSafety;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -341,7 +342,7 @@ public class WardrobeManager {
                 player.sendMessage("§a§lWardrobe Collection §7» Unlocked a new equipment material! §e+" + String.format("%.0f", totalXp) + " Island XP");
 
                 if (plugin.getConfig().getBoolean("xp.show-gain-messages", true)) {
-                    player.sendActionBar("§a+" + String.format("%.0f", totalXp) + " XP §7(Wardrobe Collection)");
+                    MessageUtil.sendActionBar(player, "§a+" + String.format("%.0f", totalXp) + " XP §7(Wardrobe Collection)");
                 }
 
                 // Check and announce milestones

@@ -6,6 +6,7 @@ import com.thenerdcj.island.Island;
 import com.thenerdcj.util.MessageUtil;
 import com.thenerdcj.util.SoundUtil;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -79,6 +80,23 @@ public class PrestigeManager {
 
     public int getPrestigeLevel(String islandKey) {
         return prestigeLevels.getOrDefault(islandKey, 0);
+    }
+
+    /**
+     * Returns an effective "height" for the island that incorporates the prestige number.
+     * This allows prestige to directly contribute to "how high level / powerful" the island
+     * is considered for leaderboards, displays, borders, and top-island competition,
+     * while the raw Island level remains the progress within the current prestige run.
+     *
+     * Formula: baseLevel + (prestige * scale). Scale is configurable (default 100).
+     */
+    public int getEffectiveLevel(Island island) {
+        if (island == null) return 0;
+        int base = island.getLevel();
+        int p = getPrestigeLevel(island);
+        int scale = plugin.getConfig().getInt("island.prestige.level-incorporation-scale", 100);
+        if (scale < 0) scale = 0;
+        return base + (p * scale);
     }
 
     /**
@@ -157,196 +175,173 @@ public class PrestigeManager {
     }
 
     /**
-     * Performs the prestige action.
-     * - Increments prestige level
-     * - Resets island level + XP (core power reset)
-     * - Resets worth cache (will recalc from current blocks)
-     * - Grants configured rewards
-     * - Persists everything
+     * Performs the prestige action (default path).
+     * Resets the target island back to a fresh starter using its *current* biome (no new biome choice).
+     * Does NOT cascade/reset other dimension islands.
+     * Use performPrestigeRebirth(...) when the player chose a new biome (for cascade support).
      */
     public boolean performPrestige(Island island, Player performer) {
-        if (!canPrestige(island)) {
-            MessageUtil.sendMessage(performer, getPrestigeBlockerMessage(island));
+        if (island == null || performer == null) return false;
+        String currentBiome = island.getBiomeName();
+        // Default: no cascade of other dims, no personality reroll
+        return performPrestigeRebirth(island, performer, currentBiome, false, false);
+    }
+
+    /**
+     * Full prestige + island rebirth.
+     * - Increments prestige (permanent power + multipliers).
+     * - Uses the chosenBiome for the main island (may be the current one = "default").
+     * - If cascadeOtherDimensions && the player chose a *new* biome (different from current), the player's existing
+     *   Nether and End islands are also reset to fresh starters (using their previous biomes).
+     * - The physical plots are re-allocated and small starter islands are generated (PMC-style compact).
+     * - Prestige number is applied to all affected dimension islands for this owner.
+     * - Player cosmetics for the new prestige level are granted once.
+     */
+    public boolean performPrestigeRebirth(Island mainIsland, Player performer, String chosenBiomeName,
+                                          boolean cascadeOtherDimensions) {
+        return performPrestigeRebirth(mainIsland, performer, chosenBiomeName, cascadeOtherDimensions, false);
+    }
+
+    public boolean performPrestigeRebirth(Island mainIsland, Player performer, String chosenBiomeName,
+                                          boolean cascadeOtherDimensions, boolean donorRerollPersonality) {
+        if (mainIsland == null || performer == null) return false;
+        if (!canPrestige(mainIsland)) {
+            MessageUtil.sendMessage(performer, getPrestigeBlockerMessage(mainIsland));
             SoundUtil.error(performer);
             return false;
         }
 
-        String key = getIslandKey(island);
-        int oldLevel = getPrestigeLevel(island);
-        int newLevel = oldLevel + 1;
+        String mainStableKey = getIslandKey(mainIsland);
+        int oldP = getPrestigeLevel(mainIsland);
+        int newP = oldP + 1;
 
-        prestigeLevels.put(key, newLevel);
+        // Update in-memory for main immediately
+        prestigeLevels.put(mainStableKey, newP);
 
-        // Prestige change affects worth display (multipliers in tops/leaderboards), so dirty the tops caches for event-driven refresh.
+        // Figure out which dimensions will be reborn
+        java.util.List<World.Environment> dimsToRebirth = new java.util.ArrayList<>();
+        dimsToRebirth.add(World.Environment.NORMAL);
+
+        boolean isChoosingNewBiome = (chosenBiomeName != null)
+                && !chosenBiomeName.equalsIgnoreCase(mainIsland.getBiomeName());
+
+        if (cascadeOtherDimensions && isChoosingNewBiome) {
+            Island nether = plugin.getIslandManager().getIsland(performer.getUniqueId(), World.Environment.NETHER);
+            if (nether != null) dimsToRebirth.add(World.Environment.NETHER);
+            Island end = plugin.getIslandManager().getIsland(performer.getUniqueId(), World.Environment.THE_END);
+            if (end != null) dimsToRebirth.add(World.Environment.THE_END);
+        }
+
+        // Persist the new prestige for every affected dimension using the *stable* owner_dim key.
+        // This way prestige travels with the player's "skyblock identity" across rebirths.
+        for (World.Environment d : dimsToRebirth) {
+            Island target = (d == World.Environment.NORMAL ? mainIsland
+                    : plugin.getIslandManager().getIsland(performer.getUniqueId(), d));
+            String k = (target != null) ? getIslandKey(target)
+                    : (performer.getUniqueId().toString() + "_" + d.name().toLowerCase());
+            prestigeLevels.put(k, newP);
+            plugin.getDatabaseManager().saveIslandPrestige(k, newP);
+        }
+
+        // Dirty tops (prestige affects multipliers + ranking feel)
         if (plugin.getIslandWorthManager() != null) {
             plugin.getIslandWorthManager().markWorthTopsDirty();
             plugin.getIslandWorthManager().markLevelTopsDirty();
             plugin.getIslandWorthManager().markMembersTopsDirty();
         }
 
-        // Also refresh the persisted rank snapshot for this island (ranks change with prestige).
-        if (plugin.getDatabaseManager() != null && plugin.getDatabaseManager().getIslandDAO() != null && island != null) {
-            GridPosition gpos = island.getGridPosition();
-            plugin.getDatabaseManager().getIslandDAO().getMyWorthRank(gpos); // fire-and-forget; updates snapshot
-        }
+        // Grant the (player-global) prestige cosmetics / rewards once
+        grantPrestigeRewards(mainIsland, performer, newP);
 
-        // === THE RESET (high-endgame feel) ===
-        int oldIslandLevel = island.getLevel();
-        island.setLevel(1);
-        island.setXp(0);
-
-        // Invalidate and force worth recalc (prestige doesn't delete blocks, just the "level" progress)
-        plugin.getIslandWorthManager().invalidateCache(island);
-        plugin.getIslandWorthManager().recalculateAndUpdate(island);
-
-        // Persist prestige + level reset
-        plugin.getDatabaseManager().saveIslandPrestige(key, newLevel);
-        plugin.getDatabaseManager().saveIslandLevel(key, 1, 0.0); // reuse existing island_levels table
-        // Update persisted aggregate snapshot for O(1) (prestige_level in island_worth)
-        if (island.getGridPosition() != null) {
-            plugin.getDatabaseManager().getIslandDAO().saveIslandPrestigeLevel(island.getGridPosition(), newLevel);
-        }
-
-        // Grant rewards
-        grantPrestigeRewards(island, performer, newLevel);
-
-        SoundUtil.prestige(performer);
-
-        // Notify
-        MessageUtil.sendMessage(performer, "§6§lPRESTIGE! §eYou have reached Prestige §b" + newLevel + "§e!");
-        MessageUtil.sendMessage(performer, "§7Your island level has been reset, but you now have permanent power multipliers.");
-        MessageUtil.sendMessage(performer, "§aNew multipliers active: §b+" + String.format("%.0f", (getPrestigeMultiplier(island, PrestigeMultiplierType.XP) - 1) * 100) + "% XP, "
-                + String.format("%.0f", (getPrestigeMultiplier(island, PrestigeMultiplierType.WORTH) - 1) * 100) + "% Worth, etc.");
-
-        // Optional: update tab for the player
-        plugin.getIslandWorthManager().updatePlayerTabList(performer);
-
-        // Personal cosmetics: grant any newly unlocked particle trails (prestige rewards + gated ones)
+        // Also the big list of unlocks that used to live in the old performPrestige body
+        // (kept here so all the cosmetic grants still fire on rebirth)
+        int newLevel = newP;
         if (plugin.getParticleTrailManager() != null) {
             plugin.getParticleTrailManager().grantPrestigeUnlocks(performer, newLevel);
         }
-
-        // Pet prestige rewards (Play-to-Win vanity via collection/rarity)
         if (plugin.getPetManager() != null) {
             plugin.getPetManager().grantPrestigePetUnlocks(performer, newLevel);
         }
-
-        // Cosmetic Player Tags (chat + tab display)
         if (plugin.getPlayerTagManager() != null) {
             plugin.getPlayerTagManager().grantPrestigeTagUnlocks(performer, newLevel);
         }
-
-        // Elytra Wing Cosmetics (gliding visual effects)
         if (plugin.getElytraWingManager() != null) {
             plugin.getElytraWingManager().grantPrestigeWingUnlocks(performer, newLevel);
         }
-
-        // Cosmetic Runes
-        if (plugin.getRuneManager() != null) {
-            // Grant some runes on prestige (example implementation)
-            // You can expand this with specific rune rewards per level
-        }
-
-        // Helmet Skins (new cosmetic system)
         if (plugin.getHelmetSkinManager() != null && newLevel >= 5) {
-            // Example high-prestige reward
             plugin.getHelmetSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.HelmetSkin.BLAZING_CRIMSON);
         }
-
-        // Death Effects (new cosmetic system)
         if (plugin.getDeathEffectManager() != null && newLevel >= 4) {
             plugin.getDeathEffectManager().unlockEffect(performer.getUniqueId(), com.thenerdcj.cosmetic.DeathEffect.LIGHTNING);
         }
-
-        // Death Messages cosmetic (new)
         if (plugin.getDeathMessageManager() != null && newLevel >= 3) {
             plugin.getDeathMessageManager().unlockMessage(performer.getUniqueId(), com.thenerdcj.cosmetic.DeathMessageCosmetic.CLASSIC);
         }
-
-        // Backpack Skins (exploration)
         if (plugin.getBackpackSkinManager() != null && newLevel >= 3) {
             plugin.getBackpackSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.BackpackSkin.GARDEN_BUNNY);
         }
-
-        // Power Orb Skins (new system) + sample orb item
         if (plugin.getPowerOrbSkinManager() != null && newLevel >= 4) {
             plugin.getPowerOrbSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.PowerOrbSkin.DISCO_BALL);
             plugin.getPowerOrbSkinManager().giveOrb(performer, com.thenerdcj.cosmetic.PowerOrbSkin.DISCO_BALL);
         }
-
-        // Minion Skins (new system)
         if (plugin.getMinionSkinManager() != null && newLevel >= 3) {
             plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.BUNNY);
         }
         if (plugin.getMinionSkinManager() != null && newLevel >= 5) {
             plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.DRAGON);
         }
-        // Refinements - more minion prestige
         if (plugin.getMinionSkinManager() != null && newLevel >= 4) {
             plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.PUMPKIN);
         }
         if (plugin.getMinionSkinManager() != null && newLevel >= 6) {
             plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.ROBOT);
         }
-        // Continued minion variety prestige grants
         if (plugin.getMinionSkinManager() != null && newLevel >= 3) {
             plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.GHOST);
         }
         if (plugin.getMinionSkinManager() != null && newLevel >= 5) {
             plugin.getMinionSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.MinionSkin.ANCIENT_GOLEM);
         }
-
-        // Extra high-prestige orb + skin
         if (plugin.getPowerOrbSkinManager() != null && newLevel >= 6) {
             plugin.getPowerOrbSkinManager().unlockSkin(performer.getUniqueId(), com.thenerdcj.cosmetic.PowerOrbSkin.SUPREME);
             plugin.getPowerOrbSkinManager().giveOrb(performer, com.thenerdcj.cosmetic.PowerOrbSkin.SUPREME);
         }
-
-        // Island Furniture (foundation)
         if (plugin.getIslandFurnitureManager() != null && newLevel >= 3) {
             plugin.getIslandFurnitureManager().unlockFurniture(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandFurnitureType.WOODEN_CHAIR);
         }
         if (plugin.getIslandFurnitureManager() != null && newLevel >= 5) {
             plugin.getIslandFurnitureManager().unlockFurniture(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandFurnitureType.FOUNTAIN);
         }
-        // Housing variety polish prestige grants
         if (plugin.getIslandFurnitureManager() != null && newLevel >= 4) {
             plugin.getIslandFurnitureManager().unlockFurniture(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandFurnitureType.CELESTIAL_LAMP);
         }
         if (plugin.getIslandFurnitureManager() != null && newLevel >= 3) {
             plugin.getIslandFurnitureManager().unlockFurniture(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandFurnitureType.DECORATIVE_GLOBE);
         }
-
-        // Island Music (new)
         if (plugin.getIslandMusicManager() != null && newLevel >= 2) {
             plugin.getIslandMusicManager().unlockMusic(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandMusicType.CALM_OCEAN);
         }
         if (plugin.getIslandMusicManager() != null && newLevel >= 4) {
             plugin.getIslandMusicManager().unlockMusic(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandMusicType.CELESTIAL_CHIMES);
         }
-        // Island ambience extensions prestige grants
         if (plugin.getIslandMusicManager() != null && newLevel >= 3) {
             plugin.getIslandMusicManager().unlockMusic(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandMusicType.JUNGLE_RHYTHM);
         }
         if (plugin.getIslandMusicManager() != null && newLevel >= 5) {
             plugin.getIslandMusicManager().unlockMusic(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandMusicType.ANCIENT_RUINS);
         }
-
-        // Overhead Cosmetics (new system)
         if (plugin.getOverheadCosmeticManager() != null && newLevel >= 3) {
             plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.STAR_HALO);
         }
         if (plugin.getOverheadCosmeticManager() != null && newLevel >= 5) {
             plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.CELESTIAL_AURA);
         }
-        // Deeper titles prestige grants (autonomous)
         if (plugin.getOverheadCosmeticManager() != null && newLevel >= 5) {
             plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.RUNIC_TITLE);
         }
         if (plugin.getOverheadCosmeticManager() != null && newLevel >= 6) {
             plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.VOID_CROWN);
         }
-        // Continued deeper titles prestige grants
         if (plugin.getOverheadCosmeticManager() != null && newLevel >= 5) {
             plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.CELESTIAL_TITLE);
         }
@@ -354,10 +349,9 @@ public class PrestigeManager {
             plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.SLAYER_SIGIL);
             plugin.getOverheadCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.OverheadCosmetic.ETHEREAL_CROWN);
         }
-
-        // Collections synergy: high island collection count grants extra cosmetic at prestige
-        if (plugin.getCollectionManager() != null && island != null) {
-            int collCount = plugin.getCollectionManager().getCollectionCount(island.getId());
+        // Collections bonus (uses main island collections before rebirth)
+        if (plugin.getCollectionManager() != null && mainIsland != null) {
+            int collCount = plugin.getCollectionManager().getCollectionCount(mainIsland.getId());
             if (collCount >= 50 && plugin.getAccessoryCosmeticManager() != null) {
                 try {
                     plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_CRYSTAL);
@@ -365,32 +359,25 @@ public class PrestigeManager {
                 } catch (Exception ignored) {}
             }
         }
-
-        // Emote Cosmetics (new)
         if (plugin.getEmoteCosmeticManager() != null && newLevel >= 2) {
             plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.WAVE);
         }
         if (plugin.getEmoteCosmeticManager() != null && newLevel >= 4) {
             plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.CHEER);
         }
-        // Emote expansion grants
         if (plugin.getEmoteCosmeticManager() != null && newLevel >= 3) {
             plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.CLAP);
         }
         if (plugin.getEmoteCosmeticManager() != null && newLevel >= 5) {
             plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.VICTORY);
         }
-        // Emote polish prestige grants
         if (plugin.getEmoteCosmeticManager() != null && newLevel >= 1) {
             plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.NOD);
         }
         if (plugin.getEmoteCosmeticManager() != null && newLevel >= 2) {
             plugin.getEmoteCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.EmoteCosmetic.HIGH_FIVE);
         }
-
-        // Custom Enchants expansion (prestige rewards for high level books)
         if (plugin.getEnchantmentManager() != null && newLevel >= 4) {
-            // Give a high level custom enchant book as reward
             org.bukkit.inventory.ItemStack book = plugin.getEnchantmentManager().createEnchantmentBook(com.thenerdcj.enchant.CustomEnchantment.OVERLOAD, 3);
             performer.getInventory().addItem(book);
             performer.sendMessage("§6§lPrestige Reward §7» Received Overload III enchantment book!");
@@ -400,74 +387,60 @@ public class PrestigeManager {
             performer.getInventory().addItem(book);
             performer.sendMessage("§6§lPrestige Reward §7» Received Dragon Hunter V enchantment book!");
         }
-
-        // Island Structures (new)
         if (plugin.getIslandStructureManager() != null && newLevel >= 3) {
             plugin.getIslandStructureManager().unlockStructure(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandStructureCosmetic.STONE_PILLAR);
         }
         if (plugin.getIslandStructureManager() != null && newLevel >= 5) {
             plugin.getIslandStructureManager().unlockStructure(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandStructureCosmetic.CRYSTAL_CLUSTER);
         }
-
-        // Chat Bubbles (new)
         if (plugin.getChatBubbleCosmeticManager() != null && newLevel >= 2) {
             plugin.getChatBubbleCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.ChatBubbleCosmetic.HEART_BUBBLE);
         }
         if (plugin.getChatBubbleCosmeticManager() != null && newLevel >= 4) {
             plugin.getChatBubbleCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.ChatBubbleCosmetic.MAGIC_BUBBLE);
         }
-        // Chat cosmetics depth prestige grants
         if (plugin.getChatBubbleCosmeticManager() != null && newLevel >= 3) {
             plugin.getChatBubbleCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.ChatBubbleCosmetic.SPARK_BUBBLE);
         }
         if (plugin.getChatBubbleCosmeticManager() != null && newLevel >= 5) {
             plugin.getChatBubbleCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.ChatBubbleCosmetic.SKULL_BUBBLE);
         }
-
-        // Island Weather (new)
         if (plugin.getIslandWeatherCosmeticManager() != null && newLevel >= 3) {
             plugin.getIslandWeatherCosmeticManager().unlockWeather(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandWeatherCosmetic.GENTLE_RAIN);
         }
         if (plugin.getIslandWeatherCosmeticManager() != null && newLevel >= 5) {
             plugin.getIslandWeatherCosmeticManager().unlockWeather(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandWeatherCosmetic.AURORA);
         }
-        // Refinements - more weather prestige grants
         if (plugin.getIslandWeatherCosmeticManager() != null && newLevel >= 4) {
             plugin.getIslandWeatherCosmeticManager().unlockWeather(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandWeatherCosmetic.SANDSTORM);
         }
         if (plugin.getIslandWeatherCosmeticManager() != null && newLevel >= 6) {
             plugin.getIslandWeatherCosmeticManager().unlockWeather(performer.getUniqueId(), com.thenerdcj.cosmetic.IslandWeatherCosmetic.FIREFLY_GLOW);
         }
-
-        // Accessories (new)
         if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 2) {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_STAR);
         }
         if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 4) {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_ORB);
         }
-        // More accessory variety prestige grants
         if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 3) {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_COMPASS);
         }
         if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 5) {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_CRYSTAL);
         }
-        // Refinements - more accessory prestige
         if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 4) {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_KEY);
         }
         if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 6) {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_GEM);
         }
-        // Accessory expansions prestige
         if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 4) {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_SWORD);
         }
         if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 3) {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.GLOWING_LANTERN);
         }
-        // Accessory variety continuation prestige grants
         if (plugin.getAccessoryCosmeticManager() != null && newLevel >= 4) {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.FLOATING_BOOK);
         }
@@ -475,7 +448,42 @@ public class PrestigeManager {
             plugin.getAccessoryCosmeticManager().unlock(performer.getUniqueId(), com.thenerdcj.cosmetic.AccessoryCosmetic.ORBITING_RUNE);
         }
 
+        SoundUtil.prestige(performer);
+
+        // Now actually rebirth the physical islands (fresh plots + small starter gens)
+        for (World.Environment d : dimsToRebirth) {
+            String biomeForDim;
+            if (d == World.Environment.NORMAL) {
+                biomeForDim = (chosenBiomeName != null && !chosenBiomeName.isEmpty())
+                        ? chosenBiomeName : mainIsland.getBiomeName();
+            } else {
+                Island dimI = plugin.getIslandManager().getIsland(performer.getUniqueId(), d);
+                biomeForDim = (dimI != null && dimI.getBiomeName() != null)
+                        ? dimI.getBiomeName() : getDefaultBiomeForDim(d);
+            }
+            boolean wantsRerollForThis = donorRerollPersonality && (d == World.Environment.NORMAL);
+            plugin.getIslandManager().performPrestigeIslandRebirth(performer, biomeForDim, d, wantsRerollForThis);
+        }
+
+        // Notify (use effective level to emphasize the "how high" incorporation)
+        int effective = getEffectiveLevel(mainIsland);
+        MessageUtil.sendMessage(performer, "§6§lPRESTIGE " + newP + "! §eYour island has been reborn as a fresh starter.");
+        if (cascadeOtherDimensions && isChoosingNewBiome) {
+            MessageUtil.sendMessage(performer, "§7Your Nether and End islands were also reset as part of this prestige.");
+        }
+        MessageUtil.sendMessage(performer, "§7Permanent Prestige §b" + newP + " §7active. Effective height: §b" + effective + "§7.");
+        MessageUtil.sendMessage(performer, "§aMultipliers: §b+" + String.format("%.0f", (getPrestigeMultiplier(mainIsland, PrestigeMultiplierType.XP) - 1) * 100)
+                + "% XP, " + String.format("%.0f", (getPrestigeMultiplier(mainIsland, PrestigeMultiplierType.WORTH) - 1) * 100) + "% Worth, etc.");
+
+        plugin.getIslandWorthManager().updatePlayerTabList(performer);
+
         return true;
+    }
+
+    private String getDefaultBiomeForDim(World.Environment dim) {
+        if (dim == World.Environment.NETHER) return "NETHER_WASTES";
+        if (dim == World.Environment.THE_END) return "THE_END";
+        return "PLAINS";
     }
 
     private void grantPrestigeRewards(Island island, Player player, int newPrestigeLevel) {
@@ -522,9 +530,61 @@ public class PrestigeManager {
         }
     }
 
+    // ==================== PRESTIGE REBIRTH + BIOME CHOICE CONTEXT (for picker flow) ====================
+
+    /** Transient per-player context when they chose "Prestige + Choose New Biome" and we opened the picker. */
+    private static class PrestigeRebirthContext {
+        final Island island;
+        final boolean cascadeOtherDimensions;
+        PrestigeRebirthContext(Island island, boolean cascade) {
+            this.island = island;
+            this.cascadeOtherDimensions = cascade;
+        }
+    }
+
+    private final Map<UUID, PrestigeRebirthContext> pendingRebirthChoices = new ConcurrentHashMap<>();
+
+    /** Called from PrestigeMainGUI when player clicks the "choose new biome" option. */
+    public void startPrestigeBiomeChoice(Player player, Island island, boolean cascadeOtherDimensions) {
+        if (player == null || island == null) return;
+        pendingRebirthChoices.put(player.getUniqueId(), new PrestigeRebirthContext(island, cascadeOtherDimensions));
+    }
+
+    public boolean hasPendingPrestigeBiomeChoice(UUID playerUuid) {
+        return pendingRebirthChoices.containsKey(playerUuid);
+    }
+
+    /** Returns the context (or null) and removes it. */
+    public PrestigeRebirthContext consumePrestigeBiomeChoice(UUID playerUuid) {
+        return pendingRebirthChoices.remove(playerUuid);
+    }
+
+    /**
+     * Called by BiomeSelectionGUI when a prestige biome choice is made.
+     * Consumes the pending context and executes the rebirth (with cascade if the context asked for it).
+     */
+    public void finishPrestigeBiomeChoice(Player player, String chosenBiome, boolean wantsPersonalityReroll) {
+        if (player == null) return;
+        PrestigeRebirthContext ctx = consumePrestigeBiomeChoice(player.getUniqueId());
+        if (ctx == null || ctx.island == null) {
+            // Fallback: treat as normal prestige with the chosen biome (no cascade)
+            Island fallback = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+            if (fallback == null) {
+                fallback = plugin.getIslandManager().getIsland(player.getUniqueId(), World.Environment.NORMAL);
+            }
+            if (fallback != null) {
+                performPrestigeRebirth(fallback, player, chosenBiome, false, wantsPersonalityReroll);
+            }
+            return;
+        }
+        performPrestigeRebirth(ctx.island, player, chosenBiome, ctx.cascadeOtherDimensions, wantsPersonalityReroll);
+    }
+
     private String getIslandKey(Island island) {
-        GridPosition pos = island.getGridPosition();
-        return pos.x() + ":" + pos.z() + ":" + island.getDimension().name();
+        // Use stable owner+dimension key (matches Island.getId() and quest keys).
+        // This ensures prestige survives plot reallocations on reset/prestige rebirth
+        // and is consistent with the owner_dim fallback used in tops queries.
+        return island.getId();
     }
 
     public enum PrestigeMultiplierType {

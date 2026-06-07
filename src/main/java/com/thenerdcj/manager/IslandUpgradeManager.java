@@ -221,25 +221,25 @@ public class IslandUpgradeManager {
      */
     public int getExtraBuildRadius(Island island) {
         int level = island.getUpgradeLevel(IslandUpgrade.ISLAND_SIZE);
-        int perLevel = plugin.getConfig().getInt("upgrades.island-size.radius-per-level", 8);
+        int perLevel = plugin.getConfig().getInt("upgrades.island-size.radius-per-level", 2);
         return level * perLevel;
     }
 
     /**
-     * Returns the effective island radius (base 256 + upgrade bonus).
+     * Returns the effective island radius (base 8 + upgrade bonus for small compact starting islands).
      */
     public int getEffectiveIslandRadius(Island island) {
-        int base = plugin.getConfig().getInt("upgrades.island-size.base-radius", 256);
+        int base = plugin.getConfig().getInt("upgrades.island-size.base-radius", 8);
         int fromSize = getExtraBuildRadius(island);
 
         int prestigeBonus = 0;
         if (plugin.getPrestigeManager() != null && plugin.getConfig().getBoolean("upgrades.island-size.prestige-bonus.enabled", true)) {
             int prestige = plugin.getPrestigeManager().getPrestigeLevel(island);
-            int perPrestige = plugin.getConfig().getInt("upgrades.island-size.prestige-bonus.extra-per-prestige", 16);
+            int perPrestige = plugin.getConfig().getInt("upgrades.island-size.prestige-bonus.extra-per-prestige", 2);
             prestigeBonus = prestige * perPrestige;
         }
 
-        int max = plugin.getConfig().getInt("upgrades.island-size.max-radius", 512);
+        int max = plugin.getConfig().getInt("upgrades.island-size.max-radius", 128);
         return Math.min(base + fromSize + prestigeBonus, max);
     }
 

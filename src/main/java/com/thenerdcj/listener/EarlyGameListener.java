@@ -57,8 +57,7 @@ public class EarlyGameListener implements Listener {
         long start = 0;
         if (plugin.getIslandWorthManager() != null && plugin.getIslandWorthManager().isProfileHotPaths()) start = System.nanoTime();
         if (plugin.getQuestManager() != null) {
-            // Per-player quest key (onboarding progress is individual, parallel)
-            plugin.getQuestManager().addProgressToIsland(player.getUniqueId().toString(), category, 1);
+            plugin.getQuestManager().addProgressToIsland(island.getId(), category, 1);
         }
         if (plugin.getAntiCheatManager() != null) {
             plugin.getAntiCheatManager().reportHighQuestProgress(player, "early_" + category.name().toLowerCase());
@@ -85,7 +84,7 @@ public class EarlyGameListener implements Listener {
         }
 
         if (plugin.getQuestManager() != null) {
-            plugin.getQuestManager().addProgressToIsland(player.getUniqueId().toString(), Quest.QuestCategory.BUILDING, 1);
+            plugin.getQuestManager().addProgressToIsland(island.getId(), Quest.QuestCategory.BUILDING, 1);
         }
         if (plugin.getAntiCheatManager() != null) {
             plugin.getAntiCheatManager().reportHighQuestProgress(player, "early_build");
@@ -108,7 +107,8 @@ public class EarlyGameListener implements Listener {
         }
 
         if (plugin.getQuestManager() != null) {
-            plugin.getQuestManager().addProgressToIsland(player.getUniqueId().toString(), Quest.QuestCategory.COMBAT, 1);
+            String mobType = event.getEntityType().name();
+            plugin.getQuestManager().addProgressToIsland(island.getId(), Quest.QuestCategory.COMBAT, mobType, 1);
         }
         if (plugin.getAntiCheatManager() != null) {
             plugin.getAntiCheatManager().reportHighQuestProgress(player, "early_combat");
@@ -139,5 +139,38 @@ public class EarlyGameListener implements Listener {
         return m == Material.STONE || m == Material.COBBLESTONE || m == Material.DEEPSLATE
             || m.name().endsWith("_ORE") || m == Material.GRAVEL || m == Material.DIRT
             || m == Material.SAND || m == Material.NETHERRACK;
+    }
+
+    // === STORY DIMENSION GATES ===
+    // Players must complete the relevant story chapters (all overworld hostiles/bosses before nether, all nether before end).
+    // The gate chapters (16 for nether, 19+ for end) set the milestones, but we also hard-enforce on portal travel.
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerPortal(org.bukkit.event.player.PlayerPortalEvent event) {
+        Player player = event.getPlayer();
+        if (player == null || !player.isOnline()) return;
+
+        org.bukkit.Location toLoc = event.getTo();
+        if (toLoc == null || toLoc.getWorld() == null) return;
+
+        org.bukkit.World.Environment toEnv = toLoc.getWorld().getEnvironment();
+        if (toEnv != org.bukkit.World.Environment.NETHER && toEnv != org.bukkit.World.Environment.THE_END) {
+            return;
+        }
+
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) return;
+
+        if (toEnv == org.bukkit.World.Environment.NETHER && !island.hasUnlockedNether()) {
+            event.setCancelled(true);
+            player.sendMessage("§c§lStory Gate: §r§cYou must defeat every major overworld hostile mob and boss (complete the relevant story chapters) before you can enter the Nether.");
+            player.sendMessage("§7Open §e/quest §7and check the current chapter (Story tab).");
+            return;
+        }
+
+        if (toEnv == org.bukkit.World.Environment.THE_END && !island.hasUnlockedEnd()) {
+            event.setCancelled(true);
+            player.sendMessage("§c§lStory Gate: §r§cYou must defeat every major nether mob and boss (complete the relevant story chapters) before you can enter the End.");
+            player.sendMessage("§7Open §e/quest §7and finish the nether phase first.");
+        }
     }
 }

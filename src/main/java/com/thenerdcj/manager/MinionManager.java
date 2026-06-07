@@ -233,7 +233,7 @@ public class MinionManager {
                 islandFuels.put(islandId, currentFuel - fuelCost);
             } else {
                 if (owner != null && owner.isOnline()) {
-                    owner.sendActionBar("§cMinion out of fuel! Feed it real items (Coal, Blaze Rods, etc.)");
+                    MessageUtil.sendActionBar(owner, "§cMinion out of fuel! Feed it real items (Coal, Blaze Rods, etc.)");
                 }
                 return;
             }
@@ -248,7 +248,7 @@ public class MinionManager {
 
             if (owner != null && owner.isOnline()) {
                 String niceName = resource.name().toLowerCase().replace('_', ' ');
-                owner.sendActionBar("§7" + type.getDisplayName() + " Minion produced §a+" + amount + " " + niceName + " (fuel: " + islandFuels.getOrDefault(islandId, 0) + ")");
+                MessageUtil.sendActionBar(owner, "§7" + type.getDisplayName() + " Minion produced §a+" + amount + " " + niceName + " (fuel: " + islandFuels.getOrDefault(islandId, 0) + ")");
             }
             if (start != 0) {
                 long ns = System.nanoTime() - start;

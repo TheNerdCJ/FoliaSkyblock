@@ -1,11 +1,15 @@
 package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.cosmetic.JoinLeaveMessageCosmetic;
+import com.thenerdcj.util.MessageUtil;
+import org.bukkit.Bukkit;
+import org.bukkit.advancement.Advancement;
+import org.bukkit.advancement.AdvancementProgress;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
@@ -24,18 +28,8 @@ public class PlayerQuitListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
-        // Personalized leave message as cosmetic (always override with rich name for personalization;
-        // falls back to default format with rank/tag if no custom selected)
-        if (plugin.getJoinLeaveMessageManager() != null) {
-            JoinLeaveMessageCosmetic msg = plugin.getJoinLeaveMessageManager().getActiveJoinLeaveMessage(player.getUniqueId());
-            String format = (msg != null && msg.getLeaveFormat() != null && !msg.getLeaveFormat().isEmpty())
-                    ? msg.getLeaveFormat()
-                    : "§e%player% left the game";
-            String formatted = plugin.getJoinLeaveMessageManager().formatMessage(format, player);
-            if (formatted != null) {
-                event.setQuitMessage(formatted);
-            }
-        }
+        // Restore working colored join/quit messages (rich § format, default for all)
+        event.setQuitMessage("§8[§c-§8] §7" + player.getName());
 
         if (plugin.getChatManager() != null) {
             plugin.getChatManager().onPlayerQuit(player);
@@ -90,11 +84,6 @@ public class PlayerQuitListener implements Listener {
         if (plugin.getDeathMessageManager() != null) {
             plugin.getDeathMessageManager().savePlayer(player.getUniqueId());
             plugin.getDeathMessageManager().onPlayerQuit(player);
-        }
-
-        if (plugin.getJoinLeaveMessageManager() != null) {
-            plugin.getJoinLeaveMessageManager().savePlayer(player.getUniqueId());
-            plugin.getJoinLeaveMessageManager().onPlayerQuit(player);
         }
 
         if (plugin.getBackpackSkinManager() != null) {
@@ -154,24 +143,20 @@ public class PlayerQuitListener implements Listener {
             plugin.setServerTabHeaderFooter(player);
         }
 
-        // Load Join/Leave manager early (synchronously) so the personalized join message can use the persisted active choice.
-        // (Other cosmetic loads stay async to avoid blocking the join event.)
-        if (plugin.getJoinLeaveMessageManager() != null) {
-            plugin.getJoinLeaveMessageManager().loadPlayer(player.getUniqueId());
-        }
+        // Restore working colored join/quit messages (rich § format, default for all)
+        event.setJoinMessage("§8[§a+§8] §7" + player.getName());
 
-        // Personalized join message as cosmetic (always override with rich name for personalization;
-        // falls back to default yellow format with rank/tag if no custom selected)
-        if (plugin.getJoinLeaveMessageManager() != null) {
-            JoinLeaveMessageCosmetic msg = plugin.getJoinLeaveMessageManager().getActiveJoinLeaveMessage(player.getUniqueId());
-            String format = (msg != null && msg.getJoinFormat() != null && !msg.getJoinFormat().isEmpty())
-                    ? msg.getJoinFormat()
-                    : "§e%player% joined the game";
-            String formatted = plugin.getJoinLeaveMessageManager().formatMessage(format, player);
-            if (formatted != null) {
-                event.setJoinMessage(formatted);
+        // Disable all vanilla Minecraft advancements/achievements (irrelevant for skyblock, prevents spam toasts and chat messages)
+        // Revoke all existing ones on join for clean slate
+        java.util.Iterator<Advancement> advIt = Bukkit.advancementIterator();
+        while (advIt.hasNext()) {
+            Advancement advancement = advIt.next();
+            AdvancementProgress progress = player.getAdvancementProgress(advancement);
+            for (String criteria : progress.getAwardedCriteria()) {
+                progress.revokeCriteria(criteria);
             }
         }
+
         if (plugin.getIslandWorthManager() != null) {
             plugin.getIslandWorthManager().updatePlayerTabList(player);
         }
@@ -309,5 +294,16 @@ public class PlayerQuitListener implements Listener {
                 plugin.getPlayerSkillManager().loadPlayer(player.getUniqueId());
             });
         }
+    }
+
+    /**
+     * Completely disable vanilla Minecraft advancements/achievements.
+     * They are irrelevant in a skyblock environment and cause unwanted toasts/chat spam.
+     * We also revoke on join (above) to clean any pre-existing ones.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerAdvancementDone(PlayerAdvancementDoneEvent event) {
+        // Suppress the advancement popup and chat message
+        event.message(null);
     }
 }

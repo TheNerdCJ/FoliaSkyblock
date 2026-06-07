@@ -66,7 +66,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private ChallengeManager challengeManager;
     private QuestManager questManager;
     private QuestLogGUI questLogGUI;
-    private com.thenerdcj.gui.QuestDetailGUI questDetailGUI;
+    private QuestDetailGUI questDetailGUI;
     private BossManager bossManager;
     private AntiCheatManager antiCheatManager;
     private IslandUpgradeManager islandUpgradeManager;
@@ -134,6 +134,10 @@ public class FoliaSkyblock extends JavaPlugin {
     private PlayerTagManager playerTagManager;
     private TagGUI tagGUI;
 
+    // Join/Leave Message cosmetic system (personalized rich messages on join/quit)
+    private com.thenerdcj.cosmetic.JoinLeaveMessageManager joinLeaveMessageManager;
+    private com.thenerdcj.cosmetic.JoinLeaveMessageMainGUI joinLeaveMessageMainGUI;
+
     // Overhead Nametags (cosmetic tags above player heads via scoreboard teams)
     private PlayerNametagManager playerNametagManager;
 
@@ -156,10 +160,6 @@ public class FoliaSkyblock extends JavaPlugin {
     // Cosmetic Death Messages (new system - text on kill/death, parallels DeathEffect)
     private DeathMessageManager deathMessageManager;
     private DeathMessageGUI deathMessageGUI;
-
-    // Cosmetic Join/Leave Messages (player-customizable join and leave announcements as cosmetic)
-    private JoinLeaveMessageManager joinLeaveMessageManager;
-    private JoinLeaveMessageGUI joinLeaveMessageGUI;
 
     // Backpack Skins (cosmetic overrides for backpacks - exploration/full impl started)
     private BackpackSkinManager backpackSkinManager;
@@ -243,6 +243,9 @@ public class FoliaSkyblock extends JavaPlugin {
         saveDefaultConfig();
         validateConfiguration();
 
+        // No auto-download of any soft dependencies. The plugin is designed to be as independent
+        // as possible (no ProtocolLib, no WorldEdit, no PlaceholderAPI, etc.).
+
         // Schedulers must exist before managers that register repeating tasks in constructors
         this.threadSafety = new ThreadSafety(this);
         this.nameCache = new NameCache(this);
@@ -258,8 +261,9 @@ public class FoliaSkyblock extends JavaPlugin {
         this.rankManager = new RankManager(this);
         this.challengeManager = new ChallengeManager(this);
         this.questManager = new QuestManager(this);
+        Bukkit.getPluginManager().registerEvents(questManager, this);
         this.questLogGUI = new QuestLogGUI(this);
-        this.questDetailGUI = new com.thenerdcj.gui.QuestDetailGUI(this);
+        this.questDetailGUI = new QuestDetailGUI(this);
         this.bossManager = new BossManager(this);
         this.antiCheatManager = new AntiCheatManager(this);
 
@@ -508,6 +512,10 @@ public class FoliaSkyblock extends JavaPlugin {
         this.playerTagManager = new PlayerTagManager(this);
         this.tagGUI = new TagGUI(this);
 
+        // Join/Leave Message System (personalized cosmetics for join/quit)
+        this.joinLeaveMessageManager = new com.thenerdcj.cosmetic.JoinLeaveMessageManager(this);
+        this.joinLeaveMessageMainGUI = new com.thenerdcj.cosmetic.JoinLeaveMessageMainGUI(this);
+
         // Overhead Nametag System (scoreboard teams)
         this.playerNametagManager = new PlayerNametagManager(this);
 
@@ -530,10 +538,6 @@ public class FoliaSkyblock extends JavaPlugin {
         // Death Messages cosmetic
         this.deathMessageManager = new DeathMessageManager(this);
         this.deathMessageGUI = new DeathMessageGUI(this);
-
-        // Join/Leave Messages cosmetic
-        this.joinLeaveMessageManager = new JoinLeaveMessageManager(this);
-        this.joinLeaveMessageGUI = new JoinLeaveMessageGUI(this);
 
         // Backpack Skins System (exploration)
         this.backpackSkinManager = new BackpackSkinManager(this);
@@ -697,6 +701,9 @@ public class FoliaSkyblock extends JavaPlugin {
         // Tags command (new cosmetic tag system)
         safeRegisterCommand("tags", new TagCommand(this));
 
+        // Join/Leave Message command (personalized cosmetics)
+        safeRegisterCommand("joinleave", new com.thenerdcj.command.JoinLeaveMessageCommand(this));
+
         // Elytra Wings command (new dedicated GUI)
         safeRegisterCommand("wings", new WingsCommand(this));
 
@@ -711,11 +718,6 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("deathmessages", new DeathMessageCommand(this));
         safeRegisterCommand("deathmessage", new DeathMessageCommand(this));
         safeRegisterCommand("killmessages", new DeathMessageCommand(this));
-
-        // Join/Leave Messages cosmetic command
-        safeRegisterCommand("joinmessages", new JoinLeaveMessageCommand(this));
-        safeRegisterCommand("leavemessages", new JoinLeaveMessageCommand(this));
-        safeRegisterCommand("joinleave", new JoinLeaveMessageCommand(this));
 
         // Backpack Skins command (exploration)
         safeRegisterCommand("backpackskins", new BackpackSkinCommand(this));
@@ -772,22 +774,17 @@ public class FoliaSkyblock extends JavaPlugin {
         // Early game / onboarding quests (daily + FIRST island quests)
         var questsExecutor = (org.bukkit.command.CommandExecutor) (sender, cmd, label, args) -> {
             if (sender instanceof Player player) {
-                // Quests: onboarding per-player, daily/weekly per-island (unique per island for continuous progression)
-                com.thenerdcj.island.Island island = getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-                String playerKey = player.getUniqueId().toString();
-                String islandKey = (island != null) ? island.getId() : playerKey;
+                // Use getIslandForPlayer for reliable resolution (current dim with NORMAL fallback)
+                // This ensures /quest from spawn/other dims still opens the player's island quest log ("new gui")
+                com.thenerdcj.island.Island island = getIslandManager().getIslandForPlayer(player);
+                String islandId = (island != null) ? island.getId() : player.getUniqueId().toString();
                 if (questLogGUI != null) {
-                    questLogGUI.open(player, islandKey);  // pass islandKey, but logic inside uses player for onboarding
-                    // Step 4: Give/refresh Quest Journal item (right-click opens log)
-                    if (!player.getInventory().containsAtLeast(com.thenerdcj.gui.QuestLogGUI.createQuestJournal(this), 1)) {
-                        player.getInventory().addItem(com.thenerdcj.gui.QuestLogGUI.createQuestJournal(this));
-                        player.sendMessage("§6You received a Quest Journal! Right-click it to open your quest progress.");
-                    }
+                    questLogGUI.open(player, islandId);
                 }
                 if (questManager != null) {
-                    questManager.generateOnboardingQuests(playerKey);
-                    questManager.generateDailyQuests(islandKey);
-                    questManager.generateWeeklyQuests(islandKey);
+                    questManager.generateOnboardingQuests(islandId);
+                    questManager.generateDailyQuests(islandId);
+                    questManager.generateWeeklyQuests(islandId);
                 }
                 return true;
             }
@@ -896,6 +893,9 @@ public class FoliaSkyblock extends JavaPlugin {
         }
         if (prestigeGUI != null) {
             pm.registerEvents(prestigeGUI, this);
+        }
+        if (joinLeaveMessageMainGUI != null) {
+            pm.registerEvents(joinLeaveMessageMainGUI, this);
         }
         pm.registerEvents(new com.thenerdcj.listener.WardrobeListener(this), this);
         pm.registerEvents(new com.thenerdcj.listener.ShopTokenListener(this), this);
@@ -1009,6 +1009,10 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.tags.PlayerTagManager getPlayerTagManager() { return playerTagManager; }
     public com.thenerdcj.tags.TagGUI getTagGUI() { return tagGUI; }
 
+    public com.thenerdcj.cosmetic.JoinLeaveMessageManager getJoinLeaveMessageManager() { return joinLeaveMessageManager; }
+    public com.thenerdcj.cosmetic.JoinLeaveMessageMainGUI getJoinLeaveMessageMainGUI() { return joinLeaveMessageMainGUI; }
+    public com.thenerdcj.cosmetic.JoinLeaveMessageMainGUI getJoinLeaveMessageGUI() { return joinLeaveMessageMainGUI; } // alias for command compatibility
+
     public com.thenerdcj.tags.PlayerNametagManager getPlayerNametagManager() { return playerNametagManager; }
 
     public com.thenerdcj.wings.ElytraWingManager getElytraWingManager() { return elytraWingManager; }
@@ -1027,10 +1031,6 @@ public class FoliaSkyblock extends JavaPlugin {
     // Death Messages
     public com.thenerdcj.cosmetic.DeathMessageManager getDeathMessageManager() { return deathMessageManager; }
     public com.thenerdcj.cosmetic.DeathMessageGUI getDeathMessageGUI() { return deathMessageGUI; }
-
-    // Join/Leave Messages
-    public com.thenerdcj.cosmetic.JoinLeaveMessageManager getJoinLeaveMessageManager() { return joinLeaveMessageManager; }
-    public com.thenerdcj.cosmetic.JoinLeaveMessageGUI getJoinLeaveMessageGUI() { return joinLeaveMessageGUI; }
 
     public com.thenerdcj.cosmetic.BackpackSkinManager getBackpackSkinManager() { return backpackSkinManager; }
     public com.thenerdcj.cosmetic.BackpackSkinGUI getBackpackSkinGUI() { return backpackSkinGUI; }

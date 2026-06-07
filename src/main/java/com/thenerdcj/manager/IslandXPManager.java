@@ -2,6 +2,7 @@ package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.island.Island;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Material;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
@@ -151,7 +152,7 @@ public class IslandXPManager {
         island.addXp(baseXp, partySize);
 
         if (plugin.getConfig().getBoolean("xp.show-gain-messages", true)) {
-            player.sendActionBar("§a+" + String.format("%.1f", baseXp) + " XP §7(" + source + ")");
+            MessageUtil.sendActionBar(player, "§a+" + String.format("%.1f", baseXp) + " XP §7(" + source + ")");
         }
     }
 

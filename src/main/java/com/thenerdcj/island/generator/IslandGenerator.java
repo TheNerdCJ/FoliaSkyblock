@@ -16,17 +16,15 @@ import java.util.*;
  * IslandGenerator - Deeply procedural, per-island unique generation that stays 100% faithful to the chosen biome.
  * <p>
  * Design goals (no schematics):
- * - Every island of the same biome still feels distinct ("unique generation").
+ * - Compact starting islands matching typical small PlanetMinecraft skyblock starter references
+ *   (tiny platforms with 1-3 trees, minimal pond/rock features, chest — now ~6-16 block diameter land).
+ * - Every island of the same biome still feels distinct ("unique generation") via archetypes.
  * - Strong use of seeded deterministic randomness so the same island always regenerates identically (important for resets).
- * - Multiple "Archetypes" per biome group that dramatically change terrain shape, feature composition, and vibe
- *   while respecting biome block palettes and overall resource density (Play-to-Win safe).
- * - Richer procedural features: varied terrain profiles (plateaus, valleys, crags, scattered islets), better tree
- *   variety (multiple canopy shapes + fallen logs), coherent micro-landmarks (ruins, arches, sinkholes, meadows),
- *   more interesting water/lava bodies.
+ * - Multiple "Archetypes" per biome group that dramatically change terrain shape... (see below)
  * - All block work done via Folia RegionScheduler.
- * - Existing BiomeTemplate densities + allowed blocks remain the "budget" — archetypes only rearrange how the budget is spent.
+ * - BiomeTemplate min/maxRadius now control the smaller per-biome footprints (shrunk for all templates).
  * <p>
- * This version significantly deepens variety compared to previous iterations without introducing external files or schematics.
+ * Features and densities automatically scale down with the smaller base radii.
  */
 public class IslandGenerator {
 
@@ -232,8 +230,9 @@ public class IslandGenerator {
 
         int radius = getRandomizedRadius(template, seed);
         // Task batch: size upgrade also affects gen radius (expands terrain for upgraded islands on reset/gen)
+        // Reduced multiplier for compact bases (PMC-style); high levels still grow but not explode.
         if (sizeLevel > 0) {
-            radius = (int) Math.min(radius * (1.0 + sizeLevel * 0.10), 400);
+            radius = (int) Math.min(radius * (1.0 + sizeLevel * 0.05), 128);
         }
         int cx = center.getBlockX();
         int cy = center.getBlockY();
@@ -449,10 +448,30 @@ public class IslandGenerator {
         return switch (biomeName) {
             case "DESERT" -> rand.nextDouble() < 0.4 ? Material.DEAD_BUSH : null;
             case "JUNGLE" -> rand.nextDouble() < 0.5 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.6 ? Material.FERN : Material.LARGE_FERN);
-            case "FOREST", "PLAINS", "SAVANNA" -> rand.nextDouble() < 0.65 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.5 ? Material.DANDELION : Material.POPPY);
+            case "FOREST", "PLAINS", "SAVANNA", "MEADOW" -> rand.nextDouble() < 0.65 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.5 ? Material.DANDELION : Material.POPPY);
             case "TAIGA" -> rand.nextDouble() < 0.7 ? Material.SHORT_GRASS : Material.FERN;
-            case "BIRCH_FOREST", "CHERRY_GROVE" -> rand.nextDouble() < 0.6 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.4 ? Material.DANDELION : Material.POPPY);
+            case "BIRCH_FOREST", "FLOWER_FOREST" -> rand.nextDouble() < 0.6 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.4 ? Material.DANDELION : Material.POPPY);
+            case "CHERRY_GROVE" -> rand.nextDouble() < 0.5 ? Material.SHORT_GRASS : Material.PINK_PETALS;
+            case "DARK_FOREST" -> rand.nextDouble() < 0.4 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.3 ? Material.BROWN_MUSHROOM : Material.RED_MUSHROOM);
+            case "SWAMP", "MANGROVE_SWAMP" -> rand.nextDouble() < 0.5 ? Material.SHORT_GRASS : Material.FERN;
+            case "BADLANDS" -> rand.nextDouble() < 0.4 ? Material.DEAD_BUSH : null;
+            case "GROVE", "SNOWY_TAIGA" -> rand.nextDouble() < 0.6 ? Material.SHORT_GRASS : Material.FERN;
+            case "SNOWY_PLAINS" -> rand.nextDouble() < 0.4 ? Material.SHORT_GRASS : null;
             case "MUSHROOM_FIELDS" -> rand.nextDouble() < 0.5 ? Material.BROWN_MUSHROOM : Material.RED_MUSHROOM;
+            case "OLD_GROWTH_PINE_TAIGA", "OLD_GROWTH_SPRUCE_TAIGA" -> rand.nextDouble() < 0.5 ? Material.SHORT_GRASS : Material.FERN;
+            case "WINDSWEPT_FOREST" -> rand.nextDouble() < 0.4 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.3 ? Material.DANDELION : Material.POPPY);
+            case "BAMBOO_JUNGLE" -> rand.nextDouble() < 0.4 ? Material.SHORT_GRASS : Material.FERN;
+            case "WINDSWEPT_HILLS" -> rand.nextDouble() < 0.3 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.2 ? Material.DANDELION : null);
+            case "STONY_SHORE" -> null;
+            case "BEACH" -> rand.nextDouble() < 0.2 ? Material.DEAD_BUSH : null;
+            case "SNOWY_BEACH" -> rand.nextDouble() < 0.1 ? Material.SHORT_GRASS : null;
+            case "STONY_PEAKS", "JAGGED_PEAKS" -> null;
+            case "FROZEN_PEAKS", "SNOWY_SLOPES" -> rand.nextDouble() < 0.2 ? Material.SHORT_GRASS : null;
+            case "OLD_GROWTH_BIRCH_FOREST" -> rand.nextDouble() < 0.6 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.4 ? Material.DANDELION : Material.POPPY);
+            case "SPARSE_JUNGLE" -> rand.nextDouble() < 0.4 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.5 ? Material.FERN : Material.LARGE_FERN);
+            case "ICE_SPIKES" -> rand.nextDouble() < 0.1 ? Material.SHORT_GRASS : null;
+            case "SUNFLOWER_PLAINS" -> rand.nextDouble() < 0.5 ? Material.SHORT_GRASS : (rand.nextDouble() < 0.3 ? Material.DANDELION : Material.SUNFLOWER);
+            case "WOODED_BADLANDS" -> rand.nextDouble() < 0.3 ? Material.SHORT_GRASS : Material.DEAD_BUSH;
             default -> Material.SHORT_GRASS;
         };
     }
@@ -656,8 +675,8 @@ public class IslandGenerator {
                 }
             }
             case "SAVANNA" -> {
-                // Tall grass patches, acacia flavor
-                int count = 2 + rand.nextInt(3);
+                // Tall grass and acacia bushes
+                int count = 3 + rand.nextInt(3);
                 for (int i = 0; i < count; i++) {
                     int x = cx + rand.nextInt(radius) - radius/2;
                     int z = cz + rand.nextInt(radius) - radius/2;
@@ -668,34 +687,271 @@ public class IslandGenerator {
                     }
                 }
             }
-            case "BIRCH_FOREST" -> {
+            case "BIRCH_FOREST", "FLOWER_FOREST" -> {
                 // Extra flowers
-                int flowers = 3 + rand.nextInt(3);
+                int flowers = 4 + rand.nextInt(3);
                 for (int i = 0; i < flowers; i++) {
                     int x = cx + rand.nextInt(radius) - radius/2;
                     int z = cz + rand.nextInt(radius) - radius/2;
-                    world.getBlockAt(x, cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1, z)
-                         .setType(Material.LILY_OF_THE_VALLEY);
+                    Material flower = rand.nextBoolean() ? Material.DANDELION : Material.POPPY;
+                    world.getBlockAt(x, cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1, z).setType(flower);
                 }
             }
             case "CHERRY_GROVE" -> {
-                // Pink petals on ground
-                int petals = 4 + rand.nextInt(4);
+                // Pink petals
+                int petals = 5 + rand.nextInt(4);
                 for (int i = 0; i < petals; i++) {
                     int x = cx + rand.nextInt(radius) - radius/2;
                     int z = cz + rand.nextInt(radius) - radius/2;
                     int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
-                    world.getBlockAt(x, y, z).setType(Material.PINK_PETALS);
+                    if (world.getBlockAt(x, y, z).getType().isAir()) {
+                        world.getBlockAt(x, y, z).setType(Material.PINK_PETALS);
+                    }
+                }
+            }
+            case "MEADOW" -> {
+                // Flower heavy meadow
+                int flowers = 5 + rand.nextInt(4);
+                for (int i = 0; i < flowers; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    Material flower = rand.nextBoolean() ? Material.DANDELION : (rand.nextBoolean() ? Material.POPPY : Material.CORNFLOWER);
+                    world.getBlockAt(x, cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1, z).setType(flower);
+                }
+            }
+            case "DARK_FOREST" -> {
+                // Mushrooms and dense undergrowth
+                int count = 4 + rand.nextInt(4);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    Material m = rand.nextBoolean() ? Material.BROWN_MUSHROOM : Material.RED_MUSHROOM;
+                    world.getBlockAt(x, y, z).setType(m);
+                }
+            }
+            case "SWAMP" -> {
+                // Vines and lily pads
+                int count = 3 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    if (rand.nextBoolean()) {
+                        world.getBlockAt(x, y, z).setType(Material.LILY_PAD);
+                    } else {
+                        for (int v = 0; v < 2 + rand.nextInt(3); v++) {
+                            Block b = world.getBlockAt(x, y - v, z);
+                            if (b.getType().isAir()) b.setType(Material.VINE);
+                        }
+                    }
+                }
+            }
+            case "MANGROVE_SWAMP" -> {
+                // Mangrove propagules or roots flavor (simple)
+                int count = 2 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    world.getBlockAt(x, y, z).setType(Material.MANGROVE_PROPAGULE);
+                }
+            }
+            case "BADLANDS" -> {
+                // Terracotta outcrops or dead bushes
+                if (rand.nextDouble() < 0.7) {
+                    int x = cx + rand.nextInt(radius / 2);
+                    int z = cz + rand.nextInt(radius / 2);
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z);
+                    world.getBlockAt(x, y, z).setType(Material.TERRACOTTA);
+                    if (rand.nextBoolean()) world.getBlockAt(x, y + 1, z).setType(Material.TERRACOTTA);
+                }
+            }
+            case "GROVE" -> {
+                // Snowy flavor with some berries or flowers
+                int count = 2 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    if (rand.nextBoolean()) {
+                        world.getBlockAt(x, y, z).setType(Material.SWEET_BERRY_BUSH);
+                    } else {
+                        world.getBlockAt(x, y, z).setType(Material.FERN);
+                    }
+                }
+            }
+            case "SNOWY_PLAINS", "SNOWY_TAIGA" -> {
+                // Snow layers or ice features (simple)
+                int count = 3 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    world.getBlockAt(x, y, z).setType(Material.SNOW);
+                    if (rand.nextBoolean() && y + 1 < world.getMaxHeight()) {
+                        world.getBlockAt(x, y + 1, z).setType(Material.SNOW);
+                    }
                 }
             }
             case "MUSHROOM_FIELDS" -> {
-                // Lots of mushrooms (small island flavor)
-                int shrooms = 6 + rand.nextInt(6);
+                // Lots of mushrooms
+                int shrooms = 8 + rand.nextInt(6);
                 for (int i = 0; i < shrooms; i++) {
                     int x = cx + rand.nextInt(radius) - radius/2;
                     int z = cz + rand.nextInt(radius) - radius/2;
                     int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
                     world.getBlockAt(x, y, z).setType(rand.nextBoolean() ? Material.RED_MUSHROOM : Material.BROWN_MUSHROOM);
+                }
+            }
+            case "OLD_GROWTH_PINE_TAIGA", "OLD_GROWTH_SPRUCE_TAIGA" -> {
+                // More ferns and podzol flavor (already surface)
+                int count = 4 + rand.nextInt(4);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    world.getBlockAt(x, y, z).setType(Material.FERN);
+                }
+            }
+            case "WINDSWEPT_FOREST" -> {
+                // Scattered rocks or less veg
+                if (rand.nextDouble() < 0.4) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z);
+                    world.getBlockAt(x, y, z).setType(Material.COBBLESTONE);
+                }
+            }
+            case "BAMBOO_JUNGLE" -> {
+                // Bamboo stalks (simple vertical)
+                int count = 3 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    for (int h = 0; h < 4 + rand.nextInt(4); h++) {
+                        Block b = world.getBlockAt(x, y + h, z);
+                        if (b.getType().isAir()) {
+                            b.setType(Material.BAMBOO);
+                        }
+                    }
+                }
+            }
+            case "WINDSWEPT_HILLS" -> {
+                // More stone outcrops
+                int count = 2 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z);
+                    world.getBlockAt(x, y, z).setType(Material.STONE);
+                    if (rand.nextBoolean()) world.getBlockAt(x, y + 1, z).setType(Material.COBBLESTONE);
+                }
+            }
+            case "STONY_SHORE" -> {
+                // Stone and cobble features
+                int count = 4 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z);
+                    world.getBlockAt(x, y, z).setType(Material.STONE);
+                }
+            }
+            case "BEACH" -> {
+                // Occasional dead bush or nothing much
+            }
+            case "SNOWY_BEACH" -> {
+                // Snow on sand
+                int count = 2 + rand.nextInt(2);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    world.getBlockAt(x, y, z).setType(Material.SNOW);
+                }
+            }
+            case "STONY_PEAKS", "JAGGED_PEAKS" -> {
+                // Stone and andesite outcrops
+                int count = 5 + rand.nextInt(4);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z);
+                    Material mat = rand.nextBoolean() ? Material.STONE : Material.ANDESITE;
+                    world.getBlockAt(x, y, z).setType(mat);
+                    if (rand.nextBoolean() && y + 1 < world.getMaxHeight()) {
+                        world.getBlockAt(x, y + 1, z).setType(mat);
+                    }
+                }
+            }
+            case "FROZEN_PEAKS", "SNOWY_SLOPES" -> {
+                // Snow and ice features
+                int count = 4 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    world.getBlockAt(x, y, z).setType(Material.SNOW);
+                    if (rand.nextBoolean() && y + 1 < world.getMaxHeight()) {
+                        world.getBlockAt(x, y + 1, z).setType(Material.SNOW);
+                    }
+                }
+            }
+            case "OLD_GROWTH_BIRCH_FOREST" -> {
+                // Extra tall birch flavor, more grass
+                int count = 3 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    world.getBlockAt(x, y, z).setType(Material.SHORT_GRASS);
+                }
+            }
+            case "SPARSE_JUNGLE" -> {
+                // Less vines, occasional melon
+                int count = 2 + rand.nextInt(2);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    if (rand.nextDouble() < 0.4) {
+                        world.getBlockAt(x, y, z).setType(Material.MELON);
+                    }
+                }
+            }
+            case "ICE_SPIKES" -> {
+                // Ice spikes (small pillars)
+                int count = 2 + rand.nextInt(2);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    for (int h = 0; h < 3 + rand.nextInt(3); h++) {
+                        Block b = world.getBlockAt(x, y + h, z);
+                        if (b.getType().isAir()) b.setType(Material.PACKED_ICE);
+                    }
+                }
+            }
+            case "SUNFLOWER_PLAINS" -> {
+                // Sunflowers
+                int count = 4 + rand.nextInt(3);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    world.getBlockAt(x, y, z).setType(Material.SUNFLOWER);
+                }
+            }
+            case "WOODED_BADLANDS" -> {
+                // Oak trees in badlands, some grass
+                int count = 2 + rand.nextInt(2);
+                for (int i = 0; i < count; i++) {
+                    int x = cx + rand.nextInt(radius) - radius/2;
+                    int z = cz + rand.nextInt(radius) - radius/2;
+                    int y = cy + getApproxSurfaceY(world, cx, cy, cz, x, z) + 1;
+                    world.getBlockAt(x, y, z).setType(Material.SHORT_GRASS);
                 }
             }
             case "DESERT" -> {
@@ -770,8 +1026,9 @@ public class IslandGenerator {
         int cy = center.getBlockY();
         int cz = center.getBlockZ();
 
-        // Fixed relative position (e.g. 3 blocks east of center on surface)
-        int chestX = cx + 3;
+        // Fixed relative position (now +2 for compact small islands; was +3)
+        // Keeps chest safely on the smaller generated platform (PMC-style compact starters)
+        int chestX = cx + 2;
         int chestZ = cz;
         int surfaceY = cy + 2; // approximate, adjust if needed in real
 
@@ -817,7 +1074,7 @@ public class IslandGenerator {
                 bookMeta.setAuthor("Island Elder");
                 bookMeta.addPage("Welcome to your new island!\n\n§6Key Commands:\n§f/is or /island - Main menu\n/quests or /daily - First tasks\n/skills - Personal MCMMO skills\n/collections - Discover & unlock\n/wardrobe - Earned cosmetics");
                 bookMeta.addPage("§aEarly Game Tips:\n\nStart by breaking blocks and planting seeds.\nComplete 'First' quests for a free cosmetic trail!\nLevel skills for abilities.\nMinions automate farming/mining.\nEverything is Play-to-Win - no pay advantages.");
-                bookMeta.addPage("§eProgression:\n\nIsland XP from actions/quests.\nUnlock dimensions at levels.\nPrestige & Slayers for top cosmetics.\nTrade at /bazaar /ah for missing items.\n\nHave fun and play fair!");
+                bookMeta.addPage("§eProgression:\n\nIsland XP from actions/quests.\nFollow the Story chapters (linear) to the End.\nUnlock dimensions at levels.\nComplete the story by slaying the Dragon - then Prestige for multipliers and top island competition.\nTrade at /bazaar /ah for missing items.\n\nHave fun and play fair!");
                 bookMeta.setGeneration(org.bukkit.inventory.meta.BookMeta.Generation.ORIGINAL);
                 guide.setItemMeta(bookMeta);
             }
@@ -854,8 +1111,8 @@ public class IslandGenerator {
 
         // Modern non-deprecated replacement (Block#setBiome).
         // We sample every 4 blocks vertically because biomes are stored in 4x4x4 sections.
-        // This covers the island + generous padding so the visual (grass color, foliage, etc.) applies correctly.
-        int radius = 24; // Safe for typical island sizes. Increase if you have very large templates.
+        // This covers the (now smaller) island + modest padding for visual biome colors.
+        int radius = 12; // Reduced for compact PMC-style small starting islands (see BiomeTemplate radii)
 
         for (int x = cx - radius; x <= cx + radius; x++) {
             for (int z = cz - radius; z <= cz + radius; z++) {

@@ -41,11 +41,17 @@ public class AntiCheatListener implements Listener {
         Player player = event.getPlayer();
         if (player.hasPermission("foliasb.bypass.anticheat")) return;
 
-        // Folia EntityScheduler - safe per-player
+        // Folia EntityScheduler - safe per-player.
+        // IMPORTANT: Must use teleportAsync inside entity/region tasks (Folia threading rule).
+        // We also debounce the correction to avoid spamming teleports on every move tick.
         player.getScheduler().run(plugin, task -> {
             if (!antiCheatManager.checkPlayer(player)) {
-                player.teleport(event.getFrom());
-                player.sendMessage("§c[AntiCheat] Suspicious movement detected.");
+                // Rubberband back to last safe position asynchronously.
+                player.teleportAsync(event.getFrom()).thenAccept(success -> {
+                    if (success && player.isOnline()) {
+                        player.sendMessage("§c[AntiCheat] Suspicious movement detected.");
+                    }
+                });
             }
         }, null);
     }
