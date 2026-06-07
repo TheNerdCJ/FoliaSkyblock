@@ -57,7 +57,9 @@ public class HologramData {
     public void setZ(double z) { this.z = z; }
 
     public String getBillboard() { return billboard; }
-    public void setBillboard(String billboard) { this.billboard = billboard; }
+    public void setBillboard(String billboard) { 
+        this.billboard = (billboard == null || billboard.isEmpty()) ? "CENTER" : billboard; 
+    }
 
     public String getBackgroundColor() { return backgroundColor; }
     public void setBackgroundColor(String backgroundColor) { this.backgroundColor = backgroundColor; }
@@ -77,8 +79,9 @@ public class HologramData {
     public List<String> getLines() { return lines; }
 
     public void setLines(List<String> lines) {
+        List<String> copy = (lines == null) ? null : new ArrayList<>(lines);
         this.lines.clear();
-        if (lines != null) this.lines.addAll(lines);
+        if (copy != null) this.lines.addAll(copy);
     }
 
     public void addLine(String line) {

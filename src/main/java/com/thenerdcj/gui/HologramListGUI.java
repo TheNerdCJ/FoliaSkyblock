@@ -6,8 +6,10 @@ import com.thenerdcj.hologram.HologramData;
 import com.thenerdcj.hologram.HologramManager;
 import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -70,8 +72,12 @@ public class HologramListGUI implements InventoryHolder, Listener {
                 lore.add("§7Refresh: §f" + data.getUpdateInterval() + "s");
             }
             lore.add("");
-            lore.add("§eLeft Click §7→ Force Refresh");
+            lore.add("§eLeft Click §7→ Teleport to hologram");
+            lore.add("§6Shift+Left §7→ Move hologram here");
             lore.add("§cRight Click §7→ Delete");
+            if (data.isDynamic()) {
+                lore.add("§bShift+Right §7→ Force refresh (dynamic)");
+            }
             lore.add("§7Use /holo commands for editing lines");
 
             ItemStack item = GUIUtils.createItem(Material.NAME_TAG, "§e" + data.getName(), lore);
@@ -153,23 +159,51 @@ public class HologramListGUI implements InventoryHolder, Listener {
             return;
         }
 
+        HologramData data = holo.getData();
+
         if (event.isLeftClick()) {
-            if (holo.getData().isDynamic()) {
-                hologramManager.refreshDynamicContent(holo);
-                player.sendMessage("§aForced refresh for " + holoName);
+            if (event.isShiftClick()) {
+                // Move hologram to player's current location (movehere feature)
+                final String nameForMsg = holoName;
+                hologramManager.moveHologram(data.getId(), player.getLocation())
+                        .thenAccept(success -> {
+                            if (success) {
+                                player.sendMessage("§aHologram '" + nameForMsg + "' moved to your location.");
+                                // Refresh the list GUI
+                                plugin.getThreadSafety().runOnMainThread(() -> new HologramListGUI(plugin).open(player));
+                            } else {
+                                player.sendMessage("§cFailed to move hologram.");
+                            }
+                        });
             } else {
-                player.sendMessage("§7This is a static hologram.");
+                // Teleport player to the hologram
+                World w = Bukkit.getWorld(data.getWorldName());
+                if (w != null) {
+                    Location tpLoc = new Location(w, data.getX(), data.getY() + 0.5, data.getZ());
+                    player.teleport(tpLoc);
+                    player.sendMessage("§aTeleported to hologram §e" + holoName);
+                    // Keep GUI open so admin can perform more actions or close manually
+                } else {
+                    player.sendMessage("§cHologram world '" + data.getWorldName() + "' is not loaded.");
+                }
             }
         } else if (event.isRightClick()) {
-            final String nameToDelete = holoName; // effectively final for lambda
-            hologramManager.deleteHologram(holo.getData().getId())
-                    .thenAccept(success -> {
-                        if (success) {
-                            player.sendMessage("§cDeleted hologram: " + nameToDelete);
-                            // Re-open GUI after delete
-                            plugin.getThreadSafety().runOnMainThread(() -> new HologramListGUI(plugin).open(player));
-                        }
-                    });
+            if (event.isShiftClick() && data.isDynamic()) {
+                // Shift-right on dynamic = force refresh (non-destructive)
+                hologramManager.refreshDynamicContent(holo);
+                player.sendMessage("§aForced refresh for dynamic hologram " + holoName);
+            } else {
+                // Normal right click = delete
+                final String nameToDelete = holoName;
+                hologramManager.deleteHologram(data.getId())
+                        .thenAccept(success -> {
+                            if (success) {
+                                player.sendMessage("§cDeleted hologram: " + nameToDelete);
+                                // Re-open GUI after delete
+                                plugin.getThreadSafety().runOnMainThread(() -> new HologramListGUI(plugin).open(player));
+                            }
+                        });
+            }
         }
     }
 }

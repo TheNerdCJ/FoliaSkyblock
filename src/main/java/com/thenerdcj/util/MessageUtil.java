@@ -22,7 +22,7 @@ public final class MessageUtil {
             LegacyComponentSerializer.builder().character('§').hexColors().useUnusualXRepeatedCharacterHexFormat().build();
 
     private static final LegacyComponentSerializer LEGACY_AMPERSAND =
-            LegacyComponentSerializer.legacyAmpersand();
+            LegacyComponentSerializer.builder().character('&').hexColors().useUnusualXRepeatedCharacterHexFormat().build();
 
     private MessageUtil() {}
 

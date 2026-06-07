@@ -91,6 +91,11 @@ public class BiomeSelectionGUI implements Listener {
             gui.setItem(14, createBiomeItem(Material.SAND, "§eDesert", "DESERT", dimension, isReset));
             gui.setItem(16, createBiomeItem(Material.SPRUCE_LOG, "§bTaiga", "TAIGA", dimension, isReset));
             gui.setItem(20, createBiomeItem(Material.JUNGLE_LOG, "§2Jungle", "JUNGLE", dimension, isReset));
+            // Expanded overworld biome selection (donor perk)
+            gui.setItem(22, createBiomeItem(Material.ACACIA_LOG, "§6Savanna", "SAVANNA", dimension, isReset));
+            gui.setItem(24, createBiomeItem(Material.BIRCH_LOG, "§fBirch Forest", "BIRCH_FOREST", dimension, isReset));
+            gui.setItem(26, createBiomeItem(Material.CHERRY_LEAVES, "§dCherry Grove", "CHERRY_GROVE", dimension, isReset));
+            gui.setItem(32, createBiomeItem(Material.MYCELIUM, "§5Mushroom Fields", "MUSHROOM_FIELDS", dimension, isReset));
 
             // Nether & End unlock information (based on main island level from config)
             if (playerMainLevel < netherReq) {

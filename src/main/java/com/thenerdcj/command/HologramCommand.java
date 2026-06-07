@@ -178,9 +178,9 @@ public class HologramCommand implements CommandExecutor {
     private void createHologram(Player player, String name) {
         Location loc = player.getLocation();
         HologramData data = new HologramData(name, loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
-        // Default welcome line
-        data.addLine("&6Welcome to FoliaSkyblock!");
-        data.addLine("&7Play to Win • No Pay-to-Win");
+        // Use the hologram name as the initial title line.
+        // The player can edit the displayed text (via setline/addline/etc) without affecting the internal name/identifier.
+        data.addLine(name);
 
         plugin.getDatabaseManager().saveHologram(data).thenAccept(success -> {
             if (success) {
@@ -251,18 +251,14 @@ public class HologramCommand implements CommandExecutor {
             return;
         }
         Location newLoc = player.getLocation();
-        HologramData data = holo.getData();
-        data.setWorldName(newLoc.getWorld().getName());
-        data.setX(newLoc.getX());
-        data.setY(newLoc.getY());
-        data.setZ(newLoc.getZ());
-
-        // Remove old, save new location, respawn
-        holo.removeAll();
-        plugin.getDatabaseManager().saveHologram(data).thenAccept(s -> {
-            if (s) hologramManager.spawnHologram(data);
-            player.sendMessage("§aHologram moved to your location.");
-        });
+        hologramManager.moveHologram(holo.getData().getId(), newLoc)
+                .thenAccept(success -> {
+                    if (success) {
+                        player.sendMessage("§aHologram moved to your location.");
+                    } else {
+                        player.sendMessage("§cFailed to move hologram (DB update failed?).");
+                    }
+                });
     }
 
     private void createLeaderboard(Player player, String name, String type) {

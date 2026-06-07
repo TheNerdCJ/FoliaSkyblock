@@ -29,18 +29,17 @@ public class Hologram {
     }
 
     /**
-     * Removes all TextDisplay entities for this hologram.
-     * On Folia, this should ideally be scheduled via EntityScheduler or RegionScheduler.
+     * Removes all TextDisplay entities for this hologram and clears the internal list.
+     *
+     * IMPORTANT: On Folia this method must be invoked while on the correct region thread for the
+     * entities (typically by scheduling the call via RegionScheduler.execute(loc, holo::removeAll)
+     * or from within an EntityScheduler task for one of the displays). Direct entity.remove() is
+     * only safe on the owning region thread.
      */
     public void removeAll() {
         for (TextDisplay display : displays) {
             if (display != null && display.isValid()) {
-                if (display.getScheduler() != null) {
-                    // Best effort: try to remove on the entity's own scheduler
-                    display.getScheduler().run(null, t -> display.remove(), null);
-                } else {
-                    display.remove();
-                }
+                display.remove();
             }
         }
         displays.clear();

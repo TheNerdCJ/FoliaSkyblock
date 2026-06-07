@@ -66,6 +66,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private ChallengeManager challengeManager;
     private QuestManager questManager;
     private QuestLogGUI questLogGUI;
+    private com.thenerdcj.gui.QuestDetailGUI questDetailGUI;
     private BossManager bossManager;
     private AntiCheatManager antiCheatManager;
     private IslandUpgradeManager islandUpgradeManager;
@@ -156,6 +157,10 @@ public class FoliaSkyblock extends JavaPlugin {
     private DeathMessageManager deathMessageManager;
     private DeathMessageGUI deathMessageGUI;
 
+    // Cosmetic Join/Leave Messages (player-customizable join and leave announcements as cosmetic)
+    private JoinLeaveMessageManager joinLeaveMessageManager;
+    private JoinLeaveMessageGUI joinLeaveMessageGUI;
+
     // Backpack Skins (cosmetic overrides for backpacks - exploration/full impl started)
     private BackpackSkinManager backpackSkinManager;
     private BackpackSkinGUI backpackSkinGUI;
@@ -238,11 +243,6 @@ public class FoliaSkyblock extends JavaPlugin {
         saveDefaultConfig();
         validateConfiguration();
 
-        // === Auto-download missing soft dependencies (PlaceholderAPI, WorldEdit) ===
-        // Downloads latest versions to plugins/ folder if missing. Requires restart to load.
-        // This makes the plugin more self-contained for fresh servers.
-        new com.thenerdcj.util.DependencyDownloader(this).downloadMissingDependencies();
-
         // Schedulers must exist before managers that register repeating tasks in constructors
         this.threadSafety = new ThreadSafety(this);
         this.nameCache = new NameCache(this);
@@ -259,6 +259,7 @@ public class FoliaSkyblock extends JavaPlugin {
         this.challengeManager = new ChallengeManager(this);
         this.questManager = new QuestManager(this);
         this.questLogGUI = new QuestLogGUI(this);
+        this.questDetailGUI = new com.thenerdcj.gui.QuestDetailGUI(this);
         this.bossManager = new BossManager(this);
         this.antiCheatManager = new AntiCheatManager(this);
 
@@ -530,6 +531,10 @@ public class FoliaSkyblock extends JavaPlugin {
         this.deathMessageManager = new DeathMessageManager(this);
         this.deathMessageGUI = new DeathMessageGUI(this);
 
+        // Join/Leave Messages cosmetic
+        this.joinLeaveMessageManager = new JoinLeaveMessageManager(this);
+        this.joinLeaveMessageGUI = new JoinLeaveMessageGUI(this);
+
         // Backpack Skins System (exploration)
         this.backpackSkinManager = new BackpackSkinManager(this);
         this.backpackSkinGUI = new BackpackSkinGUI(this);
@@ -601,18 +606,6 @@ public class FoliaSkyblock extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.SpawnJoinListener(this), this);
         this.worldManager.initializeWorlds();
         MessageUtil.info(getLogger(), "§e[WorldManager] Creating custom void worlds for Skyblock...");
-
-        // Task 2: PAPI expansion registration (soft, after managers ready for stats access). 
-        // Placeholders cover tops, player/island balances, XP level, worth level, progression (tied), party, skills.
-        // Folia-safe (no sched in request). PtW compliant. Compare: Iridium/Superior + Hypixel YT setups rely on this for scoreboards/Discord bots.
-        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
-            try {
-                new com.thenerdcj.placeholder.FoliaSkyblockExpansion(this).register();
-                MessageUtil.info(getLogger(), "§a[PlaceholderAPI] FoliaSkyblock expansion registered successfully.");
-            } catch (Exception e) {
-                MessageUtil.warning(getLogger(), "§c[PlaceholderAPI] Failed to register expansion: " + e.getMessage());
-            }
-        }
 
         this.hologramManager = new HologramManager(this);
         hologramManager.loadAndSpawnAll();
@@ -719,6 +712,11 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("deathmessage", new DeathMessageCommand(this));
         safeRegisterCommand("killmessages", new DeathMessageCommand(this));
 
+        // Join/Leave Messages cosmetic command
+        safeRegisterCommand("joinmessages", new JoinLeaveMessageCommand(this));
+        safeRegisterCommand("leavemessages", new JoinLeaveMessageCommand(this));
+        safeRegisterCommand("joinleave", new JoinLeaveMessageCommand(this));
+
         // Backpack Skins command (exploration)
         safeRegisterCommand("backpackskins", new BackpackSkinCommand(this));
         safeRegisterCommand("backpacks", new BackpackSkinCommand(this));
@@ -774,15 +772,22 @@ public class FoliaSkyblock extends JavaPlugin {
         // Early game / onboarding quests (daily + FIRST island quests)
         var questsExecutor = (org.bukkit.command.CommandExecutor) (sender, cmd, label, args) -> {
             if (sender instanceof Player player) {
+                // Quests: onboarding per-player, daily/weekly per-island (unique per island for continuous progression)
                 com.thenerdcj.island.Island island = getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-                String islandId = (island != null) ? island.getId() : player.getUniqueId().toString();
+                String playerKey = player.getUniqueId().toString();
+                String islandKey = (island != null) ? island.getId() : playerKey;
                 if (questLogGUI != null) {
-                    questLogGUI.open(player, islandId);
+                    questLogGUI.open(player, islandKey);  // pass islandKey, but logic inside uses player for onboarding
+                    // Step 4: Give/refresh Quest Journal item (right-click opens log)
+                    if (!player.getInventory().containsAtLeast(com.thenerdcj.gui.QuestLogGUI.createQuestJournal(this), 1)) {
+                        player.getInventory().addItem(com.thenerdcj.gui.QuestLogGUI.createQuestJournal(this));
+                        player.sendMessage("§6You received a Quest Journal! Right-click it to open your quest progress.");
+                    }
                 }
                 if (questManager != null) {
-                    questManager.generateOnboardingQuests(islandId);
-                    questManager.generateDailyQuests(islandId);
-                    questManager.generateWeeklyQuests(islandId);
+                    questManager.generateOnboardingQuests(playerKey);
+                    questManager.generateDailyQuests(islandKey);
+                    questManager.generateWeeklyQuests(islandKey);
                 }
                 return true;
             }
@@ -948,6 +953,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public ChallengeManager getChallengeManager() { return challengeManager; }
     public QuestManager getQuestManager() { return questManager; }
     public com.thenerdcj.gui.QuestLogGUI getQuestLogGUI() { return questLogGUI; }
+    public com.thenerdcj.gui.QuestDetailGUI getQuestDetailGUI() { return questDetailGUI; }
     public TeleportRequestManager getTeleportRequestManager() { return teleportRequestManager; }
 
     // GUI Getters
@@ -1021,6 +1027,10 @@ public class FoliaSkyblock extends JavaPlugin {
     // Death Messages
     public com.thenerdcj.cosmetic.DeathMessageManager getDeathMessageManager() { return deathMessageManager; }
     public com.thenerdcj.cosmetic.DeathMessageGUI getDeathMessageGUI() { return deathMessageGUI; }
+
+    // Join/Leave Messages
+    public com.thenerdcj.cosmetic.JoinLeaveMessageManager getJoinLeaveMessageManager() { return joinLeaveMessageManager; }
+    public com.thenerdcj.cosmetic.JoinLeaveMessageGUI getJoinLeaveMessageGUI() { return joinLeaveMessageGUI; }
 
     public com.thenerdcj.cosmetic.BackpackSkinManager getBackpackSkinManager() { return backpackSkinManager; }
     public com.thenerdcj.cosmetic.BackpackSkinGUI getBackpackSkinGUI() { return backpackSkinGUI; }

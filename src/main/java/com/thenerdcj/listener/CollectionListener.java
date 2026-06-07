@@ -48,6 +48,16 @@ public class CollectionListener implements Listener {
             long ns = System.nanoTime() - start;
             if (ns > 500_000L) plugin.getLogger().info("[CollectionListener] PROFILE: discoverBlock took " + (ns / 1_000_000.0) + " ms");
         }
+
+        // Step 5: Hook to quests for integration (collection discovery -> relevant quest category)
+        if (plugin.getQuestManager() != null) {
+            com.thenerdcj.quest.Quest.QuestCategory qcat = mapCollectionToQuestCategory(e.getBlock().getType());
+            String playerKey = p.getUniqueId().toString();
+            plugin.getQuestManager().addProgressToIsland(playerKey, qcat, 1);
+            if (island != null) {
+                plugin.getQuestManager().addProgressToIsland(island.getId(), qcat, 1);
+            }
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -92,5 +102,19 @@ public class CollectionListener implements Listener {
             long ns = System.nanoTime() - start;
             if (ns > 500_000L) plugin.getLogger().info("[CollectionListener] PROFILE: discoverFish took " + (ns / 1_000_000.0) + " ms");
         }
+    }
+
+    // Step 5: Map collection type to quest category for progress hooks
+    private com.thenerdcj.quest.Quest.QuestCategory mapCollectionToQuestCategory(org.bukkit.Material material) {
+        if (material.name().contains("ORE") || material == org.bukkit.Material.STONE || material == org.bukkit.Material.COBBLESTONE) {
+            return com.thenerdcj.quest.Quest.QuestCategory.MINING;
+        }
+        if (material == org.bukkit.Material.WHEAT || material.name().contains("CROP") || material == org.bukkit.Material.CARROTS || material == org.bukkit.Material.POTATOES) {
+            return com.thenerdcj.quest.Quest.QuestCategory.FARMING;
+        }
+        if (material.name().contains("LOG") || material == org.bukkit.Material.DIRT) {
+            return com.thenerdcj.quest.Quest.QuestCategory.FARMING; // or BUILDING, but farming for wood
+        }
+        return com.thenerdcj.quest.Quest.QuestCategory.CHALLENGE;
     }
 }

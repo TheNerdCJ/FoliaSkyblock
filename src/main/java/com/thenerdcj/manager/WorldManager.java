@@ -1078,37 +1078,6 @@ public class WorldManager {
 
     // (addCohesiveRoadsideDecor and all complex decor removed)
 
-    // ==================== SPAWN SCHEMATIC SUPPORT ====================
-    // The actual WorldEdit-dependent code has been moved to SpawnSchematicPaster
-    // (see com.thenerdcj.util.SpawnSchematicPaster) to avoid NoClassDefFoundError / class loading
-    // failures when WorldEdit is not present on the server.
-    // We safely invoke it via reflection only after confirming the plugin is loaded.
-
-    private boolean tryUseSpawnSchematic(World world, int cx, int cy, int cz) {
-        if (!plugin.getConfig().getBoolean("spawn-schematics.enabled", false)) {
-            return false;
-        }
-
-        org.bukkit.plugin.Plugin wePlugin = Bukkit.getPluginManager().getPlugin("WorldEdit");
-        if (wePlugin == null || !wePlugin.isEnabled()) {
-            MessageUtil.warning(plugin.getLogger(), "§e[WorldManager] spawn-schematics.enabled but WorldEdit not present. Using procedural spawn generator.");
-            return false;
-        }
-
-        try {
-            Class<?> pasterClass = Class.forName("com.thenerdcj.util.SpawnSchematicPaster");
-            java.lang.reflect.Method method = pasterClass.getMethod(
-                "tryUseSpawnSchematic", 
-                org.bukkit.plugin.java.JavaPlugin.class, World.class, int.class, int.class, int.class
-            );
-            Object result = method.invoke(null, plugin, world, cx, cy, cz);
-            return result != null && (Boolean) result;
-        } catch (Exception e) {
-            MessageUtil.log(plugin.getLogger(), Level.SEVERE, "§c[WorldManager] Failed to invoke SpawnSchematicPaster via reflection (WorldEdit may be missing or incompatible)", e);
-            return false;
-        }
-    }
-
     // ==================== UTILITY METHODS ====================
 
     private void removeDefaultWorldFilesAsync(String worldName) {

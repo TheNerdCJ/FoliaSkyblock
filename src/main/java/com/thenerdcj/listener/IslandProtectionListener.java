@@ -8,6 +8,7 @@ import org.bukkit.Location;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.*;
 import org.bukkit.event.entity.*;
@@ -23,6 +24,9 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.DragonFireball;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class IslandProtectionListener implements Listener {
 
     private final FoliaSkyblock plugin;
@@ -32,6 +36,7 @@ public class IslandProtectionListener implements Listener {
 
     // Configurable values
     private int spawnRadius;
+    private Set<String> spawnProtectedWorlds;
     private boolean wildernessProtection;
     private boolean explosionProtection;
     private boolean pistonProtection;
@@ -52,6 +57,7 @@ public class IslandProtectionListener implements Listener {
 
     public void loadConfig() {
         this.spawnRadius = config.getInt("protection.spawn-radius", 50);
+        this.spawnProtectedWorlds = new HashSet<>(config.getStringList("protection.spawn-protected-worlds"));
         this.wildernessProtection = config.getBoolean("protection.wilderness-protection", true);
         this.explosionProtection = config.getBoolean("protection.explosion-protection", true);
         this.pistonProtection = config.getBoolean("protection.piston-protection", true);
@@ -142,6 +148,10 @@ public class IslandProtectionListener implements Listener {
     }
 
     private boolean isSpawnProtected(Location loc) {
+        if (loc == null || loc.getWorld() == null) return false;
+        if (!spawnProtectedWorlds.isEmpty() && !spawnProtectedWorlds.contains(loc.getWorld().getName())) {
+            return false;
+        }
         return Math.abs(loc.getBlockX()) <= spawnRadius &&
                 Math.abs(loc.getBlockZ()) <= spawnRadius;
     }
@@ -483,6 +493,34 @@ public class IslandProtectionListener implements Listener {
             if (!e.getPlayer().hasPermission("foliasb.admin.bypass")) {
                 e.setCancelled(true);
             }
+        }
+    }
+
+    // ==================== ENHANCED SPAWN PROTECTION (mobs, PVP, PVE) ====================
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onCreatureSpawn(CreatureSpawnEvent e) {
+        // Keep spawn area free from mobs (natural, spawners, etc.)
+        if (isSpawnProtected(e.getLocation())) {
+            e.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityDamage(EntityDamageEvent e) {
+        // Prevent players from taking damage in spawn (PVE safe zone)
+        if (e.getEntity() instanceof Player && isSpawnProtected(e.getEntity().getLocation())) {
+            e.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent e) {
+        // Prevent PVP and PVE combat at spawn (if damager or victim in protected spawn area)
+        Location victimLoc = e.getEntity().getLocation();
+        Location damagerLoc = e.getDamager().getLocation();
+        if (isSpawnProtected(victimLoc) || isSpawnProtected(damagerLoc)) {
+            e.setCancelled(true);
         }
     }
 

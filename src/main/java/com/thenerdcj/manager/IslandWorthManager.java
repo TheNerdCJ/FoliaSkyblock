@@ -308,7 +308,15 @@ public class IslandWorthManager {
                 // Cache result (LRU bounded via LinkedHashMap override for massive server safety - see optimization suggestions)
                 worthCache.put(key, totalWorth);
                 int level = calculateWorthLevel(totalWorth);
+                int prevLevel = worthLevelCache.getOrDefault(key, 0);
                 worthLevelCache.put(key, level);
+
+                // Step 5: Hook worth level up to quest progress (CHALLENGE / EXPLORATION for island milestones)
+                if (level > prevLevel && plugin.getQuestManager() != null) {
+                    // Use island id for d/w progress
+                    plugin.getQuestManager().addProgressToIsland(key, com.thenerdcj.quest.Quest.QuestCategory.CHALLENGE, level - prevLevel);
+                    plugin.getQuestManager().addProgressToIsland(key, com.thenerdcj.quest.Quest.QuestCategory.EXPLORATION, 1);
+                }
 
                 // Persist for drift correction on load (this pass)
                 if (plugin.getDatabaseManager() != null && plugin.getDatabaseManager().getIslandDAO() != null) {

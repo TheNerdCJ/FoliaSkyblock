@@ -41,7 +41,7 @@ Full list in /is help and /isadmin.
 ## Installation & Config
 - Paper/Folia 1.21+ (java 21).
 - Drop jar, start (creates worlds skyblock* automatically).
-- Edit config.yml (island size, worth blocks, boosters prices, perf caps, party multipliers, dimension reqs, protection, upgrades.island-size for radius/gen, schematics opt).
+- Edit config.yml (island size, worth blocks, boosters prices, perf caps, party multipliers, dimension reqs, protection, upgrades.island-size for radius/gen).
 - ranks.yml for dynamic ranks.
 - anticheat.yml for heuristics.
 - Start with /is create. Spawn at 0,0 protected.
@@ -50,7 +50,7 @@ Full list in /is help and /isadmin.
 All power from grind. No donor stats/econ/levels/cooldowns. AC covers Skyblock specific (macros, dupes from YT videos/forums). Economy hardened (tryRemove/safeTransfer). Perms server-side. DB prepared statements. No player-controlled paths for exploits. Admin tools logged/perm gated.
 
 ## Competitor Comparison & Improvements
-- **vs IridiumSkyblock**: Similar missions/shop/upgrades/team. FoliaSkyblock superior in native Folia schedulers (large scale no lag), custom procedural gen (no WE dep, unique per island), explicit party XP balance + config, built-in Neural+heuristic AC (Iridium relies external), dual economy explicit + hardened, per-dim reset without main, museum/slayer/minion depth, PAPI + DB paginated tops. No schematics default (procedural + opt).
+- **vs IridiumSkyblock**: Similar missions/shop/upgrades/team. FoliaSkyblock superior in native Folia schedulers (large scale no lag), custom procedural gen (unique per island), explicit party XP balance + config, built-in Neural+heuristic AC (Iridium relies external), dual economy explicit + hardened, per-dim reset without main, museum/slayer/minion depth, PAPI + DB paginated tops. Pure procedural spawn (no external deps).
 - **vs SuperiorSkyblock2**: Rich API, sizes, roles, bank, generators. FoliaSkyblock better Folia perf (staggered Region per-island), strict PtW doc+enforce (no P2W), custom gen + starter, party balance, AC, cosmetics depth (all gated), dual econ, benchmark tools, admin spawn GUI. Size upgrades affect both protection + gen radius now.
 - **vs Skyllia**: Folia-first like us. FoliaSkyblock has more features (full cosmetics, museum, runes, enchants, prestige, challenges, neural AC, ranks, trading full), procedural gen, PtW focus, DB mod + migration, PAPI, admin tools, 500-island benchmark.
 - **vs Hypixel Skyblock (YT guides "ULTIMATE MINION/SLAYER", "Skyblock Levels", progression)**: Matches skills, slayer tiers/drops/pets (expanded in this batch), collections, minions (fuels expanded), AH/BZ, levels, prestige-like, party/coop balance. Improves with Folia scale, custom gen, dual econ explicit, museum (sink/display), built-in everything (no hub), strict no P2W (Hypixel has some rank perks), per-island dims/reset, donor cosmetic only. YT-style depth added (more tiers, inferno, museum tokens spend for cosmetic).

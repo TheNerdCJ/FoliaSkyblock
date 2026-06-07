@@ -57,7 +57,8 @@ public class EarlyGameListener implements Listener {
         long start = 0;
         if (plugin.getIslandWorthManager() != null && plugin.getIslandWorthManager().isProfileHotPaths()) start = System.nanoTime();
         if (plugin.getQuestManager() != null) {
-            plugin.getQuestManager().addProgressToIsland(island.getId(), category, 1);
+            // Per-player quest key (onboarding progress is individual, parallel)
+            plugin.getQuestManager().addProgressToIsland(player.getUniqueId().toString(), category, 1);
         }
         if (plugin.getAntiCheatManager() != null) {
             plugin.getAntiCheatManager().reportHighQuestProgress(player, "early_" + category.name().toLowerCase());
@@ -84,7 +85,7 @@ public class EarlyGameListener implements Listener {
         }
 
         if (plugin.getQuestManager() != null) {
-            plugin.getQuestManager().addProgressToIsland(island.getId(), Quest.QuestCategory.BUILDING, 1);
+            plugin.getQuestManager().addProgressToIsland(player.getUniqueId().toString(), Quest.QuestCategory.BUILDING, 1);
         }
         if (plugin.getAntiCheatManager() != null) {
             plugin.getAntiCheatManager().reportHighQuestProgress(player, "early_build");
@@ -107,7 +108,7 @@ public class EarlyGameListener implements Listener {
         }
 
         if (plugin.getQuestManager() != null) {
-            plugin.getQuestManager().addProgressToIsland(island.getId(), Quest.QuestCategory.COMBAT, 1);
+            plugin.getQuestManager().addProgressToIsland(player.getUniqueId().toString(), Quest.QuestCategory.COMBAT, 1);
         }
         if (plugin.getAntiCheatManager() != null) {
             plugin.getAntiCheatManager().reportHighQuestProgress(player, "early_combat");

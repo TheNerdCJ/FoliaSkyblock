@@ -168,6 +168,14 @@ public class PetManager {
 
         activePetEntities.put(uuid, stand);
 
+        // Step 5: Hook pet spawn/use to quest progress (EXPLORATION / CHALLENGE for volume)
+        if (plugin.getQuestManager() != null) {
+            String playerKey = uuid.toString();
+            plugin.getQuestManager().addProgressToIsland(playerKey, com.thenerdcj.quest.Quest.QuestCategory.EXPLORATION, 1);
+            com.thenerdcj.island.Island isl = plugin.getIslandManager() != null ? plugin.getIslandManager().getIsland(uuid, player.getWorld().getEnvironment()) : null;
+            if (isl != null) plugin.getQuestManager().addProgressToIsland(isl.getId(), com.thenerdcj.quest.Quest.QuestCategory.EXPLORATION, 1);
+        }
+
         // Spawn sound effect (themed)
         playPetSpawnSound(player, t);
 

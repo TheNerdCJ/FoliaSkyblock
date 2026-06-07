@@ -7,8 +7,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.TextDisplay;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import com.thenerdcj.util.MessageUtil;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -25,9 +23,8 @@ public class HologramManager {
 
     private final FoliaSkyblock plugin;
     private final DatabaseManager databaseManager;
-    private final Map<Integer, Hologram> activeHolograms = new HashMap<>();
+    private final Map<Integer, Hologram> activeHolograms = new ConcurrentHashMap<>();
     private final Map<Integer, ScheduledTask> dynamicTasks = new ConcurrentHashMap<>();
-    private final LegacyComponentSerializer legacySerializer = MessageUtil.getLegacySerializer();
 
     // Bounded for large scale (many dynamic/top holograms on large servers)
     private static final int MAX_HOLOGRAMS = 1000;
@@ -61,7 +58,36 @@ public class HologramManager {
     }
 
     public void spawnHologram(HologramData data) {
-        if (data == null || data.getLines().isEmpty()) return;
+        if (data == null) return;
+
+        // Clean any previous runtime hologram for this id (handles line edits, moves, refreshes, and re-spawns).
+        // This prevents duplicate entity stacks and ensures the active map always points to a current wrapper
+        // with up-to-date visuals. We remove the entry first, then schedule cleanup of its (possibly already
+        // cleared) displays using the persisted data location as the authoritative spot.
+        Hologram previous = activeHolograms.remove(data.getId());
+        ScheduledTask oldTask = dynamicTasks.remove(data.getId());
+        if (oldTask != null) oldTask.cancel();
+
+        if (previous != null) {
+            // Prefer the previous wrapper's actual display locations for cleanup (important for /movehere
+            // where the passed data has already been mutated to the *new* position).
+            if (!previous.getDisplays().isEmpty()) {
+                Location loc = previous.getDisplays().get(0).getLocation();
+                plugin.getServer().getRegionScheduler().execute(plugin, loc, previous::removeAll);
+            } else {
+                // Fallback to the (current) data location
+                World prevWorld = Bukkit.getWorld(data.getWorldName());
+                if (prevWorld != null) {
+                    Location cleanLoc = new Location(prevWorld, data.getX(), data.getY(), data.getZ());
+                    plugin.getServer().getRegionScheduler().execute(plugin, cleanLoc, previous::removeAll);
+                } else {
+                    // Last resort
+                    previous.removeAll();
+                }
+            }
+        }
+
+        if (data.getLines().isEmpty()) return;
 
         World world = Bukkit.getWorld(data.getWorldName());
         if (world == null) {
@@ -91,8 +117,10 @@ public class HologramManager {
                             .replace("%island_worth_level%", "N/A");
                     }
 
-                    entity.text(legacySerializer.deserialize(processedLine));
-                    entity.setBillboard(org.bukkit.entity.Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
+                    entity.text(MessageUtil.legacy(processedLine));
+                    String bb = data.getBillboard();
+                    if (bb == null || bb.isEmpty()) bb = "CENTER";
+                    entity.setBillboard(org.bukkit.entity.Display.Billboard.valueOf(bb.toUpperCase()));
                     entity.setSeeThrough(data.isSeeThrough());
                     entity.setShadowed(data.isShadow());
                     entity.setTransformation(new Transformation(
@@ -137,19 +165,12 @@ public class HologramManager {
         Hologram holo = activeHolograms.get(id);
         if (holo != null) {
             holo.getData().setLines(newLines);
-            if (!holo.getDisplays().isEmpty()) {
-                TextDisplay primary = holo.getDisplays().get(0);
-                Runnable removalTask = () -> {
-                    holo.removeAll();
-                    spawnHologram(holo.getData());
-                };
-
-                if (primary.isValid() && primary.getScheduler() != null) {
-                    primary.getScheduler().run(plugin, t -> removalTask.run(), null);
-                } else {
-                    plugin.getServer().getRegionScheduler().execute(plugin, primary.getLocation(), removalTask);
-                }
-            }
+            // Trigger visual recreate (or initial spawn if this id had no active wrapper).
+            // spawnHologram now centralizes previous-entry cleanup + dynamic task cancel + new stack creation.
+            spawnHologram(holo.getData());
+        } else {
+            // DB will still be updated. Visuals will appear on next loadAndSpawnAll or /holo reload.
+            plugin.getLogger().fine("[HologramManager] updateLines for id=" + id + " had no active wrapper; only DB updated.");
         }
         return databaseManager.updateHologramLines(id, newLines);
     }
@@ -173,6 +194,45 @@ public class HologramManager {
                     cancelDynamicTask(id);
                     startDynamicRefresh(holo);
                 }
+            }
+            return success;
+        });
+    }
+
+    /**
+     * Moves an existing hologram to a new location (persists + respawns visuals).
+     * Used by command /holo movehere and the GUI "move to player" action.
+     * Cleans up old visuals using the previous wrapper if present.
+     */
+    public CompletableFuture<Boolean> moveHologram(int id, Location newLocation) {
+        if (newLocation == null || newLocation.getWorld() == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        String worldName = newLocation.getWorld().getName();
+        double x = newLocation.getX();
+        double y = newLocation.getY();
+        double z = newLocation.getZ();
+
+        Hologram holo = activeHolograms.get(id);
+        if (holo != null) {
+            HologramData data = holo.getData();
+            data.setWorldName(worldName);
+            data.setX(x);
+            data.setY(y);
+            data.setZ(z);
+
+            // Schedule removal of the old visuals immediately (using their current positions)
+            if (!holo.getDisplays().isEmpty()) {
+                Location oldLoc = holo.getDisplays().get(0).getLocation();
+                plugin.getServer().getRegionScheduler().execute(plugin, oldLoc, holo::removeAll);
+            }
+        }
+
+        return databaseManager.updateHologramPosition(id, worldName, x, y, z).thenApply(success -> {
+            if (success && holo != null) {
+                // Respawn at the (now updated) data location.
+                // spawnHologram will clean any remaining map entry + schedule any leftover cleanup.
+                spawnHologram(holo.getData());
             }
             return success;
         });

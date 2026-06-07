@@ -196,6 +196,14 @@ public class ChestShopListener implements Listener {
 
                 buyer.sendMessage("§aBought §e" + shop.getAmount() + "x " + shop.getItemType().name() +
                         "§a for §6$" + cost);
+
+            // Step 5: Hook successful buy trade to quest progress (TRADING category)
+            if (plugin.getQuestManager() != null) {
+                String playerKey = buyer.getUniqueId().toString();
+                plugin.getQuestManager().addProgressToIsland(playerKey, com.thenerdcj.quest.Quest.QuestCategory.TRADING, 1);
+                com.thenerdcj.island.Island isl = plugin.getIslandManager() != null ? plugin.getIslandManager().getIsland(buyer.getUniqueId(), buyer.getWorld().getEnvironment()) : null;
+                if (isl != null) plugin.getQuestManager().addProgressToIsland(isl.getId(), com.thenerdcj.quest.Quest.QuestCategory.TRADING, 1);
+            }
             });
         });
     }
@@ -232,6 +240,14 @@ public class ChestShopListener implements Listener {
 
                 plugin.getThreadSafety().sendMessageSafely(seller,
                         "§aSold §e" + shop.getAmount() + "x " + shop.getItemType().name() + "§a for §6$" + earnings);
+
+            // Step 5: Hook successful sell trade to quest progress (TRADING category)
+            if (plugin.getQuestManager() != null) {
+                String playerKey = seller.getUniqueId().toString();
+                plugin.getQuestManager().addProgressToIsland(playerKey, com.thenerdcj.quest.Quest.QuestCategory.TRADING, 1);
+                com.thenerdcj.island.Island isl = plugin.getIslandManager() != null ? plugin.getIslandManager().getIsland(seller.getUniqueId(), seller.getWorld().getEnvironment()) : null;
+                if (isl != null) plugin.getQuestManager().addProgressToIsland(isl.getId(), com.thenerdcj.quest.Quest.QuestCategory.TRADING, 1);
+            }
             });
         });
     }

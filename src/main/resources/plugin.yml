@@ -5,7 +5,6 @@ api-version: 1.21
 load: STARTUP
 folia-supported: true
 author: TheNerdCJ
-softdepend: [PlaceholderAPI, WorldEdit]  # WorldEdit/FAWE for optional complex spawn schematics and island schematics. Graceful fallback to procedural.
 description: High-performance Skyblock plugin for Folia 1.21+ with custom island generation, party system, economy, trading, Play-to-Win progression, and full EssentialsX-style QoL commands.
 
 commands:
@@ -194,6 +193,11 @@ commands:
     description: Open the Cosmetic Death Messages menu (custom text on death/kills)
     usage: /<command>
     aliases: [deathmessage, killmessages, killmessage]
+
+  joinmessages:
+    description: Open the Cosmetic Join/Leave Messages menu (custom text on join and leave)
+    usage: /<command>
+    aliases: [leavemessages, joinleave]
 
   wardrobe:
     description: Open the wardrobe to save and swap armor + equipment loadouts

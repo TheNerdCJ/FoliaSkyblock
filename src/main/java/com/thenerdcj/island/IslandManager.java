@@ -163,11 +163,14 @@ public class IslandManager {
                                     biome = Biome.PLAINS;
                                 }
 
-                                // Early game / onboarding: seed first-island quests immediately (in-mem, lightweight)
+                                // Early game / onboarding: seed first-island quests immediately (per-player for parallel, persistent)
+                                // Daily/weekly per-island for unique island progression
                                 if (plugin.getQuestManager() != null) {
-                                    plugin.getQuestManager().generateOnboardingQuests(island.getId());
+                                    String playerKey = player.getUniqueId().toString();
+                                    plugin.getQuestManager().generateOnboardingQuests(playerKey);
                                     plugin.getQuestManager().generateDailyQuests(island.getId());
                                     plugin.getQuestManager().generateWeeklyQuests(island.getId());
+                                    // Main Story chains are generated inside generateOnboardingQuests (Step 1)
                                 }
 
                                 runGenerationOnRegionScheduler(player, island, biome, isDonor);
@@ -478,6 +481,13 @@ public class IslandManager {
             return;
         }
 
+        // Clear any active island world border before teleporting to global spawn (island==null).
+        // This prevents the Minecraft "outside border" red vignette/ring effect when arriving at spawn
+        // (spawn is far outside the player's island border).
+        if (island == null && plugin.getBorderVisualManager() != null) {
+            plugin.getBorderVisualManager().clearPlayerWorldBorder(player);
+        }
+
         final Location target = dest.clone();
         target.setX(target.getBlockX() + 0.5);
         target.setZ(target.getBlockZ() + 0.5);
@@ -510,11 +520,19 @@ public class IslandManager {
             player.teleport(target);
         }
         if (announce) {
-            MessageUtil.sendMessage(player, "§aTeleported to your island!");
+            if (island != null) {
+                MessageUtil.sendMessage(player, "§aTeleported to your island!");
+            } else {
+                MessageUtil.sendMessage(player, "§aTeleported to spawn!");
+            }
         }
         plugin.getThreadSafety().runOnMainThreadLater(() -> {
             if (player.isOnline() && plugin.getBorderVisualManager() != null) {
-                plugin.getBorderVisualManager().updatePlayerWorldBorder(player, island);
+                if (island != null) {
+                    plugin.getBorderVisualManager().updatePlayerWorldBorder(player, island);
+                } else {
+                    plugin.getBorderVisualManager().clearPlayerWorldBorder(player);
+                }
             }
         }, 15L);
     }

@@ -1095,7 +1095,7 @@ public class AntiCheatManager {
     }
 
     // ==================== TASK 6: EXPANDED HEURISTICS + NEURAL SAMPLES ====================
-    // New for museum/minion/schematic abuse (from logs + popular YT dupe videos for expanded features).
+    // New for museum/minion abuse (from logs + popular YT dupe videos for expanded features).
     // Neural: add training samples in test + runtime profile updates.
     public boolean isFlaggedForMinionMacro(Player player, int placedThisMinute) {
         if (placedThisMinute > 15) {
@@ -1110,7 +1110,7 @@ public class AntiCheatManager {
     }
 
     public boolean isFlaggedForSchematicAbuse(Player player) {
-        // Hook from generator if schematics on; rate limit pastes.
+        // Stub (schematic support removed; kept for potential future generator extensions).
         return false;
     }
 }

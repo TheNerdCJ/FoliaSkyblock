@@ -219,4 +219,32 @@ public class HologramDAO extends BaseDAO {
             }
         });
     }
+
+    /**
+     * Updates only the position of an existing hologram (used by /holo movehere and GUI move action).
+     * Does not touch lines or other metadata.
+     */
+    public CompletableFuture<Boolean> updateHologramPosition(int id, String world, double x, double y, double z) {
+        return supplyAsync(() -> {
+            try {
+                return withConnection(conn -> {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE holograms SET world = ?, x = ?, y = ?, z = ? WHERE id = ?")) {
+                        ps.setString(1, world);
+                        ps.setDouble(2, x);
+                        ps.setDouble(3, y);
+                        ps.setDouble(4, z);
+                        ps.setInt(5, id);
+                        ps.executeUpdate();
+                        return true;
+                    } catch (SQLException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[HologramDAO] updateHologramPosition failed: " + e.getMessage());
+                return false;
+            }
+        });
+    }
 }

@@ -1,6 +1,7 @@
 package com.thenerdcj.listener;
 
 import com.thenerdcj.FoliaSkyblock;
+import com.thenerdcj.cosmetic.JoinLeaveMessageCosmetic;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -22,6 +23,19 @@ public class PlayerQuitListener implements Listener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
+
+        // Personalized leave message as cosmetic (always override with rich name for personalization;
+        // falls back to default format with rank/tag if no custom selected)
+        if (plugin.getJoinLeaveMessageManager() != null) {
+            JoinLeaveMessageCosmetic msg = plugin.getJoinLeaveMessageManager().getActiveJoinLeaveMessage(player.getUniqueId());
+            String format = (msg != null && msg.getLeaveFormat() != null && !msg.getLeaveFormat().isEmpty())
+                    ? msg.getLeaveFormat()
+                    : "§e%player% left the game";
+            String formatted = plugin.getJoinLeaveMessageManager().formatMessage(format, player);
+            if (formatted != null) {
+                event.setQuitMessage(formatted);
+            }
+        }
 
         if (plugin.getChatManager() != null) {
             plugin.getChatManager().onPlayerQuit(player);
@@ -76,6 +90,11 @@ public class PlayerQuitListener implements Listener {
         if (plugin.getDeathMessageManager() != null) {
             plugin.getDeathMessageManager().savePlayer(player.getUniqueId());
             plugin.getDeathMessageManager().onPlayerQuit(player);
+        }
+
+        if (plugin.getJoinLeaveMessageManager() != null) {
+            plugin.getJoinLeaveMessageManager().savePlayer(player.getUniqueId());
+            plugin.getJoinLeaveMessageManager().onPlayerQuit(player);
         }
 
         if (plugin.getBackpackSkinManager() != null) {
@@ -134,6 +153,25 @@ public class PlayerQuitListener implements Listener {
         if (plugin != null) {
             plugin.setServerTabHeaderFooter(player);
         }
+
+        // Load Join/Leave manager early (synchronously) so the personalized join message can use the persisted active choice.
+        // (Other cosmetic loads stay async to avoid blocking the join event.)
+        if (plugin.getJoinLeaveMessageManager() != null) {
+            plugin.getJoinLeaveMessageManager().loadPlayer(player.getUniqueId());
+        }
+
+        // Personalized join message as cosmetic (always override with rich name for personalization;
+        // falls back to default yellow format with rank/tag if no custom selected)
+        if (plugin.getJoinLeaveMessageManager() != null) {
+            JoinLeaveMessageCosmetic msg = plugin.getJoinLeaveMessageManager().getActiveJoinLeaveMessage(player.getUniqueId());
+            String format = (msg != null && msg.getJoinFormat() != null && !msg.getJoinFormat().isEmpty())
+                    ? msg.getJoinFormat()
+                    : "§e%player% joined the game";
+            String formatted = plugin.getJoinLeaveMessageManager().formatMessage(format, player);
+            if (formatted != null) {
+                event.setJoinMessage(formatted);
+            }
+        }
         if (plugin.getIslandWorthManager() != null) {
             plugin.getIslandWorthManager().updatePlayerTabList(player);
         }
@@ -147,14 +185,6 @@ public class PlayerQuitListener implements Listener {
             plugin.getThreadSafety().runAsync(() -> {
                 plugin.getPetManager().loadPlayer(player.getUniqueId());
             });
-
-            // TEMP: Give new players a few starter cosmetic pets for testing
-            var petManager = plugin.getPetManager();
-            var owned = petManager.getOwnedPets(player.getUniqueId());
-            if (owned.isEmpty()) {
-                petManager.addPet(player.getUniqueId(), new com.thenerdcj.pets.CosmeticPet(com.thenerdcj.pets.PetType.BABY_PARROT, "Chirpy"));
-                petManager.addPet(player.getUniqueId(), new com.thenerdcj.pets.CosmeticPet(com.thenerdcj.pets.PetType.CAT, "Whiskers"));
-            }
 
             plugin.getPetManager().onPlayerJoin(player);
         }

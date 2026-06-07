@@ -5,6 +5,7 @@ import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.util.MessageUtil;
 import com.thenerdcj.util.ThreadSafety;
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
@@ -201,11 +202,27 @@ public class SeasonManager {
         int minY = Math.max(world.getMinHeight(), 0);
         int maxY = center.getBlockY() + 120; // cover terrain + some buffer above baseY=80
 
-        // Block clear (chunk-friendly loop)
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                for (int y = minY; y <= maxY; y++) {
-                    world.getBlockAt(x, y, z).setType(org.bukkit.Material.AIR, false);
+        // Optimized: chunk-iterated clear (avoids expensive world.getBlockAt in hot loops; only processes relevant chunk slices)
+        int minChunkX = minX >> 4;
+        int maxChunkX = maxX >> 4;
+        int minChunkZ = minZ >> 4;
+        int maxChunkZ = maxZ >> 4;
+
+        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                Chunk chunk = world.getChunkAt(cx, cz);
+                // Local block coords within this chunk that overlap the plot
+                int startLX = Math.max(0, minX - (cx << 4));
+                int endLX = Math.min(15, maxX - (cx << 4));
+                int startLZ = Math.max(0, minZ - (cz << 4));
+                int endLZ = Math.min(15, maxZ - (cz << 4));
+
+                for (int lx = startLX; lx <= endLX; lx++) {
+                    for (int lz = startLZ; lz <= endLZ; lz++) {
+                        for (int y = minY; y <= maxY; y++) {
+                            chunk.getBlock(lx, y, lz).setType(org.bukkit.Material.AIR, false);
+                        }
+                    }
                 }
             }
         }
@@ -302,6 +319,9 @@ public class SeasonManager {
             }
             if (plugin.getMinionManager() != null) {
                 plugin.getMinionManager().clearForNewSeason();
+            }
+            if (plugin.getQuestManager() != null) {
+                plugin.getQuestManager().clearForNewSeason();
             }
             // Economy island caches cleared via Worth or explicit if needed
             if (plugin.getEconomyManager() != null) {
