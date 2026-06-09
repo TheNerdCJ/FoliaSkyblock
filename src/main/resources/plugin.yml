@@ -396,6 +396,16 @@ commands:
     permission: foliasb.staff
     usage: /<command>
 
+  # EssentialsX-style time shortcuts (staff)
+  day:
+    description: Set the time to day
+    permission: foliasb.staff
+    usage: /<command>
+  night:
+    description: Set the time to night
+    permission: foliasb.staff
+    usage: /<command>
+
   holo:
     description: Manage holograms
     permission: foliasb.staff

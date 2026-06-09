@@ -135,10 +135,11 @@ public class EarlyGameListener implements Listener {
     }
 
     private boolean isMiningBlock(Material m) {
-        // Stone-like + ores for "first dig" onboarding
+        // Stone-like + ores + gravel for "first dig" / flint onboarding.
+        // Dirt and sand are land-clearing / building the first platform — default to BUILDING
+        // per the comment below so initial "digging up dirt on spawn" doesn't spam early_mining.
         return m == Material.STONE || m == Material.COBBLESTONE || m == Material.DEEPSLATE
-            || m.name().endsWith("_ORE") || m == Material.GRAVEL || m == Material.DIRT
-            || m == Material.SAND || m == Material.NETHERRACK;
+            || m.name().endsWith("_ORE") || m == Material.GRAVEL || m == Material.NETHERRACK;
     }
 
     // === STORY DIMENSION GATES ===

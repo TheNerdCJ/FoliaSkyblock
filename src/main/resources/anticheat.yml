@@ -65,6 +65,14 @@ farming:
   # even on the player's own island. Real players have natural jitter; macros do not.
   macro-variance-threshold-ms: 25.0
 
+quest:
+  # Threshold for non-exempt quest progress spam detection (actions in the last 60s).
+  # Early-game onboarding progress ("early_mining", "early_build", "early_combat", etc. from the first-island
+  # FIRST quests) is **completely exempt** when the player has an island in the current dimension.
+  # This prevents exactly the false positive of a new player digging the first 20-40 dirt blocks on spawn.
+  # Only later daily/weekly or sustained macro quest grinding is intended to be caught here.
+  spam-threshold: 60
+
 # === Experimental Neural Detector (Tier 3 review) ===
 # The neural network component is DISABLED by default.
 # It is over-engineered for most servers. Use the fastbreak/xray/dupe heuristics instead,

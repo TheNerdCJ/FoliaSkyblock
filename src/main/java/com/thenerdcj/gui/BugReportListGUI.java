@@ -21,6 +21,7 @@ import org.bukkit.persistence.PersistentDataType;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -46,11 +47,20 @@ public class BugReportListGUI implements InventoryHolder, Listener {
     private final NamespacedKey REPORT_ID_KEY;
     private final NamespacedKey ACTION_KEY;
 
-    // Per-staff pagination + selection (matching AdminIslandInspectGUI / modern GUI patterns)
-    private final Map<UUID, Integer> playerPages = new ConcurrentHashMap<>();
+    // Per-staff selection (matching AdminIslandInspectGUI / modern GUI patterns)
     private final Map<UUID, Integer> selectedReport = new ConcurrentHashMap<>();
     // Simple pending note state (staff clicks "Add Note" then types in chat or uses a follow-up command)
     private final Map<UUID, Integer> pendingNoteReport = new ConcurrentHashMap<>();
+    // History mode: when true we load *all* reports (incl. FIXED/DUPLICATE/WONTFIX) for persistence/history view
+    private final Map<UUID, Boolean> showAllReports = new ConcurrentHashMap<>();
+
+    // Scroll offset for continuous scrolling instead of pure page jumps (items to skip)
+    private final Map<UUID, Integer> scrollOffsets = new ConcurrentHashMap<>();
+
+    // View filter modes for the reports list
+    private enum ViewMode { OPEN_ONLY, ALL, CLOSED_ONLY }
+
+    private final Map<UUID, ViewMode> viewModes = new ConcurrentHashMap<>();
 
     public BugReportListGUI(FoliaSkyblock plugin) {
         this(plugin, true);
@@ -80,8 +90,17 @@ public class BugReportListGUI implements InventoryHolder, Listener {
 
         staff.openInventory(inventory);
 
-        // Async load a healthy number for pagination (large servers can have many reports)
-        reportManager.getOpenReports(200).thenAccept(reports -> {
+        // Async load based on current view filter (supports scrollable history + closed only)
+        ViewMode mode = getViewMode(staff);
+        CompletableFuture<List<BugReport>> loadFut;
+        if (mode == ViewMode.CLOSED_ONLY) {
+            loadFut = reportManager.getClosedReports(200);
+        } else if (mode == ViewMode.ALL) {
+            loadFut = reportManager.getAllReports(200);
+        } else {
+            loadFut = reportManager.getOpenReports(200);
+        }
+        loadFut.thenAccept(reports -> {
             plugin.getThreadSafety().runOnMainThread(() -> {
                 if (staff.getOpenInventory().getTopInventory().getHolder() != this) return;
                 populate(staff, reports);
@@ -92,19 +111,31 @@ public class BugReportListGUI implements InventoryHolder, Listener {
     private void populate(Player staff, List<BugReport> reports) {
         if (inventory == null) return;
 
-        int page = playerPages.getOrDefault(staff.getUniqueId(), 0);
+        // Use scroll offset for smooth scrolling (step of 9 items = 1 row for nice feel)
         int itemsPerPage = 45;
+        int scrollStep = 9;
+        int offset = scrollOffsets.getOrDefault(staff.getUniqueId(), 0);
         int total = reports.size();
-        int totalPages = Math.max(1, (total + itemsPerPage - 1) / itemsPerPage);
-        if (page >= totalPages) page = totalPages - 1;
-        playerPages.put(staff.getUniqueId(), page);
+        if (offset > total - 1) offset = Math.max(0, total - itemsPerPage);
+        if (offset < 0) offset = 0;
+        scrollOffsets.put(staff.getUniqueId(), offset);
 
         inventory.clear();
 
         int count = reports.size();
-        inventory = Bukkit.createInventory(this, 54, MessageUtil.legacy("§c§lBug Reports §7(" + count + " open) §8p" + (page + 1) + "/" + totalPages));
+        ViewMode mode = getViewMode(staff);
+        String viewLabel;
+        switch (mode) {
+            case CLOSED_ONLY -> viewLabel = "Closed Only";
+            case ALL -> viewLabel = "All / History";
+            default -> viewLabel = count + " open";
+        }
+        int first = Math.min(offset + 1, Math.max(1, total));
+        int last = Math.min(offset + itemsPerPage, total);
+        String scrollInfo = total > 0 ? " §8(" + first + "-" + last + "/" + total + ")" : "";
+        inventory = Bukkit.createInventory(this, 54, MessageUtil.legacy("§c§lBug Reports §7(" + viewLabel + ")" + scrollInfo));
 
-        int start = page * itemsPerPage;
+        int start = offset;
         int end = Math.min(start + itemsPerPage, total);
 
         int slot = 0;
@@ -134,7 +165,17 @@ public class BugReportListGUI implements InventoryHolder, Listener {
             inventory.setItem(slot++, item);
         }
 
-        // Info / selected slot (slot 49 is standard close area, we use 49 for detail like other GUIs)
+        if (total == 0) {
+            ItemStack empty = GUIUtils.createItem(Material.BARRIER, "§7No reports in this view",
+                    "§7Try the filter on the bottom row to switch between Open / All / Closed.");
+            inventory.setItem(22, empty);
+        }
+
+        // Close button first (bottom row)
+        ItemStack close = GUIUtils.createItem(Material.BARRIER, "§cClose");
+        inventory.setItem(49, close);
+
+        // Info / selected slot (detail overwrites close when a report is selected)
         int selectedId = selectedReport.getOrDefault(staff.getUniqueId(), -1);
         if (selectedId > 0) {
             for (BugReport r : reports) {
@@ -144,32 +185,57 @@ public class BugReportListGUI implements InventoryHolder, Listener {
                     break;
                 }
             }
-        } else {
-            ItemStack info = GUIUtils.createItem(Material.BOOK, "§6Select a report",
-                    "§7Click a report above to view full details", "§7and use the status buttons below.");
-            inventory.setItem(49, info);
         }
 
-        // Standard navigation (45/49/53 pattern used across modern GUIs)
-        if (page > 0) {
-            ItemStack prev = GUIUtils.createItem(Material.ARROW, "§e« Previous Page",
-                    "§7Page " + page + " of " + totalPages);
-            attachActionPDC(prev, "page:prev");
-            inventory.setItem(45, prev);
+        // Scrollable navigation (bottom row)
+        // Scroll up / refresh at 45 (left edge of controls)
+        if (offset > 0) {
+            ItemStack scrollUp = GUIUtils.createItem(Material.ARROW, "§e▲ Scroll Up",
+                    "§7Scroll up " + scrollStep + " items");
+            attachActionPDC(scrollUp, "scroll:up");
+            inventory.setItem(45, scrollUp);
         } else {
             ItemStack refresh = GUIUtils.createItem(Material.EMERALD, "§aRefresh",
-                    "§7Reload open reports list");
+                    "§7Reload current view");
             inventory.setItem(45, refresh);
         }
 
-        ItemStack close = GUIUtils.createItem(Material.BARRIER, "§cClose");
-        inventory.setItem(49, close);  // note: we may overwrite with detail above; close is still reachable via action
+        // Filter toggle on bottom row (slot 53). 
+        // Scroll down (if possible) will take slot 53 to show scrolling capability.
+        ViewMode currentMode = getViewMode(staff);
+        String filterName;
+        Material filterMat;
+        String filterLore;
+        switch (currentMode) {
+            case CLOSED_ONLY -> {
+                filterName = "§cClosed Only";
+                filterMat = Material.REDSTONE_BLOCK;
+                filterLore = "§7Showing only FIXED / DUPLICATE / WONTFIX";
+            }
+            case ALL -> {
+                filterName = "§bAll Reports (History)";
+                filterMat = Material.WRITABLE_BOOK;
+                filterLore = "§7Showing everything (open + closed)";
+            }
+            default -> {
+                filterName = "§aOpen / Active";
+                filterMat = Material.BOOK;
+                filterLore = "§7Showing OPEN and INVESTIGATING only";
+            }
+        }
+        ItemStack filterToggle = GUIUtils.createItem(filterMat, filterName,
+                filterLore,
+                "§7Click to cycle filter (Open → All → Closed)"
+        );
+        attachActionPDC(filterToggle, "filter:cycle");
+        inventory.setItem(53, filterToggle);
 
-        if (page < totalPages - 1) {
-            ItemStack next = GUIUtils.createItem(Material.ARROW, "§eNext Page »",
-                    "§7Page " + (page + 2) + " of " + totalPages);
-            attachActionPDC(next, "page:next");
-            inventory.setItem(53, next);
+        // Scroll down (overrides filter at 53 when there is more to scroll — shows scrolling capability)
+        if (offset + itemsPerPage < total) {
+            ItemStack scrollDown = GUIUtils.createItem(Material.ARROW, "§e▼ Scroll Down",
+                    "§7Scroll down " + scrollStep + " items");
+            attachActionPDC(scrollDown, "scroll:down");
+            inventory.setItem(53, scrollDown);
         }
 
         // Status action buttons (bottom row)
@@ -257,6 +323,20 @@ public class BugReportListGUI implements InventoryHolder, Listener {
         return item.getItemMeta().getPersistentDataContainer().get(ACTION_KEY, PersistentDataType.STRING);
     }
 
+    private ViewMode getViewMode(Player staff) {
+        return viewModes.getOrDefault(staff.getUniqueId(), ViewMode.OPEN_ONLY);
+    }
+
+    private void cycleViewMode(Player staff) {
+        ViewMode current = getViewMode(staff);
+        ViewMode next = switch (current) {
+            case OPEN_ONLY -> ViewMode.ALL;
+            case ALL -> ViewMode.CLOSED_ONLY;
+            case CLOSED_ONLY -> ViewMode.OPEN_ONLY;
+        };
+        viewModes.put(staff.getUniqueId(), next);
+    }
+
     @Override
     public Inventory getInventory() {
         return inventory;
@@ -277,29 +357,42 @@ public class BugReportListGUI implements InventoryHolder, Listener {
 
         if (clicked.getType() == Material.BARRIER) {
             pendingNoteReport.remove(staff.getUniqueId());
+            // keep scroll + view mode so user returns to same place/filter
             staff.closeInventory();
             return;
         }
 
-        // Pagination nav
-        if (action != null && action.equals("page:prev")) {
-            int p = playerPages.getOrDefault(staff.getUniqueId(), 0);
-            playerPages.put(staff.getUniqueId(), Math.max(0, p - 1));
+        // Scroll actions (smooth scrolling over the report list)
+        if (action != null && action.equals("scroll:up")) {
+            int currentOffset = scrollOffsets.getOrDefault(staff.getUniqueId(), 0);
+            int newOffset = Math.max(0, currentOffset - 9); // scroll one row
+            scrollOffsets.put(staff.getUniqueId(), newOffset);
             staff.closeInventory();
             new BugReportListGUI(plugin).open(staff);
             return;
         }
-        if (action != null && action.equals("page:next")) {
-            int p = playerPages.getOrDefault(staff.getUniqueId(), 0);
-            playerPages.put(staff.getUniqueId(), p + 1);
+        if (action != null && action.equals("scroll:down")) {
+            int currentOffset = scrollOffsets.getOrDefault(staff.getUniqueId(), 0);
+            scrollOffsets.put(staff.getUniqueId(), currentOffset + 9);
+            staff.closeInventory();
+            new BugReportListGUI(plugin).open(staff);
+            return;
+        }
+
+        // Cycle filter: Open Only → All (History) → Closed Only
+        if (action != null && action.equals("filter:cycle")) {
+            cycleViewMode(staff);
+            scrollOffsets.remove(staff.getUniqueId()); // reset scroll when changing filter
+            selectedReport.remove(staff.getUniqueId());
+            pendingNoteReport.remove(staff.getUniqueId());
             staff.closeInventory();
             new BugReportListGUI(plugin).open(staff);
             return;
         }
 
         if (clicked.getType() == Material.EMERALD) {
-            // Refresh
-            playerPages.remove(staff.getUniqueId());
+            // Refresh (keeps current filter + scroll position is reset for fresh view)
+            scrollOffsets.remove(staff.getUniqueId());
             pendingNoteReport.remove(staff.getUniqueId());
             staff.closeInventory();
             new BugReportListGUI(plugin).open(staff);
@@ -350,8 +443,26 @@ public class BugReportListGUI implements InventoryHolder, Listener {
             return;
         }
 
-        // Report item clicked -> select
+        // Report item clicked:
+        //   - Right-click: Quick mark FIXED (as advertised in the item lore)
+        //   - Left-click:  Select for details + status button actions (and /bug note)
         if (reportId != null && reportId > 0) {
+            if (event.isRightClick()) {
+                // Quick mark as FIXED (no need to pre-select)
+                String note = reportManager.consumePendingNote(reportId);
+                reportManager.resolveReport(reportId, BugReport.Status.FIXED, staff, note)
+                    .thenAccept(success -> {
+                        if (success) {
+                            plugin.getThreadSafety().runOnMainThread(() -> {
+                                staff.closeInventory();
+                                new BugReportListGUI(plugin).open(staff);
+                            });
+                        }
+                    });
+                return;
+            }
+
+            // Left click = select
             selectedReport.put(staff.getUniqueId(), reportId);
             reportManager.recordStaffReportSelection(staff.getUniqueId(), reportId); // for /bug note convenience
             staff.closeInventory();

@@ -835,6 +835,8 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("announce", staffCmd);
         safeRegisterCommand("clear", staffCmd);
         safeRegisterCommand("repair", staffCmd);
+        safeRegisterCommand("day", staffCmd);
+        safeRegisterCommand("night", staffCmd);
         safeRegisterCommand("setspawn", staffCmd);
         safeRegisterCommand("isadmin", new AdminCommand(this));
 

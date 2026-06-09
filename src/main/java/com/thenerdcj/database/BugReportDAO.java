@@ -119,6 +119,106 @@ public class BugReportDAO extends BaseDAO {
         });
     }
 
+    /** Get recent reports of any status (for history view in GUI). No open-only filter. */
+    public CompletableFuture<List<BugReport>> getAllReports(int limit) {
+        return supplyAsync(() -> {
+            List<BugReport> list = new ArrayList<>();
+            try {
+                return withConnection(conn -> {
+                    String sql = "SELECT * FROM bug_reports ORDER BY created_at DESC LIMIT ?";
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setInt(1, Math.max(1, limit));
+                        ResultSet rs = ps.executeQuery();
+                        while (rs.next()) {
+                            list.add(mapRow(rs));
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return list;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[BugReportDAO] getAllReports failed: " + e.getMessage());
+                return list;
+            }
+        });
+    }
+
+    public CompletableFuture<List<BugReport>> getAllReports(int limit, int offset) {
+        return supplyAsync(() -> {
+            List<BugReport> list = new ArrayList<>();
+            try {
+                return withConnection(conn -> {
+                    String sql = "SELECT * FROM bug_reports ORDER BY created_at DESC LIMIT ? OFFSET ?";
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setInt(1, Math.max(1, limit));
+                        ps.setInt(2, Math.max(0, offset));
+                        ResultSet rs = ps.executeQuery();
+                        while (rs.next()) {
+                            list.add(mapRow(rs));
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return list;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[BugReportDAO] getAllReports(paged) failed: " + e.getMessage());
+                return list;
+            }
+        });
+    }
+
+    /** Closed reports only (FIXED, DUPLICATE, WONTFIX) for "Show Closed Only" filter. */
+    public CompletableFuture<List<BugReport>> getClosedReports(int limit) {
+        return supplyAsync(() -> {
+            List<BugReport> list = new ArrayList<>();
+            try {
+                return withConnection(conn -> {
+                    String sql = "SELECT * FROM bug_reports WHERE status IN ('FIXED','DUPLICATE','WONTFIX') ORDER BY created_at DESC LIMIT ?";
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setInt(1, Math.max(1, limit));
+                        ResultSet rs = ps.executeQuery();
+                        while (rs.next()) {
+                            list.add(mapRow(rs));
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return list;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[BugReportDAO] getClosedReports failed: " + e.getMessage());
+                return list;
+            }
+        });
+    }
+
+    public CompletableFuture<List<BugReport>> getClosedReports(int limit, int offset) {
+        return supplyAsync(() -> {
+            List<BugReport> list = new ArrayList<>();
+            try {
+                return withConnection(conn -> {
+                    String sql = "SELECT * FROM bug_reports WHERE status IN ('FIXED','DUPLICATE','WONTFIX') ORDER BY created_at DESC LIMIT ? OFFSET ?";
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setInt(1, Math.max(1, limit));
+                        ps.setInt(2, Math.max(0, offset));
+                        ResultSet rs = ps.executeQuery();
+                        while (rs.next()) {
+                            list.add(mapRow(rs));
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return list;
+                });
+            } catch (Exception e) {
+                plugin.getLogger().severe("[BugReportDAO] getClosedReports(paged) failed: " + e.getMessage());
+                return list;
+            }
+        });
+    }
+
     public CompletableFuture<BugReport> getReportById(int id) {
         return supplyAsync(() -> {
             try {

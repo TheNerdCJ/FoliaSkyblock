@@ -15,6 +15,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.World;
 
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -256,6 +257,14 @@ public class StaffCommand implements CommandExecutor {
                 handleRepair(player);
                 break;
 
+            // === Time Controls (EssentialsX-style staff shortcuts) ===
+            case "day":
+                setWorldTime(player, 1000L, "day");
+                break;
+            case "night":
+                setWorldTime(player, 13000L, "night");
+                break;
+
             default:
                 player.sendMessage("§cUnknown staff command.");
         }
@@ -407,5 +416,11 @@ public class StaffCommand implements CommandExecutor {
         } else {
             player.sendMessage("§cThis item cannot be repaired.");
         }
+    }
+
+    private void setWorldTime(Player staff, long ticks, String label) {
+        World world = staff.getWorld();
+        world.setTime(ticks);
+        MessageUtil.sendMessage(staff, "§aTime set to §e" + label + "§a in §b" + world.getName() + "§a.");
     }
 }

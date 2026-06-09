@@ -150,11 +150,16 @@ public class BugReportManager {
                         SoundUtil.success(staff);
                     });
 
-                    // Append status update to the bug_reports.md file (keeps full history readable for Grok)
-                    String update = "Status changed to " + newStatus.name() + " by " + staff.getName() +
-                            (noteText.isEmpty() ? "" : " | " + noteText);
-                    // Use a lightweight call (null category means update entry)
-                    appendToBugReportsFile(reportId, staff.getName(), staff.getUniqueId(), null, "", update);
+                    if (newStatus == BugReport.Status.FIXED || newStatus == BugReport.Status.DUPLICATE || newStatus == BugReport.Status.WONTFIX) {
+                        // Clean up the on-disk md log so it only contains currently active/open reports.
+                        // (Full audit history + closed reports remain queryable in the DB and via GUI "History" toggle.)
+                        pruneReportFromMdFile(reportId);
+                    } else {
+                        // For OPEN/INVESTIGATING keep appending lightweight updates to the md (for AI context on active items)
+                        String update = "Status changed to " + newStatus.name() + " by " + staff.getName() +
+                                (noteText.isEmpty() ? "" : " | " + noteText);
+                        appendToBugReportsFile(reportId, staff.getName(), staff.getUniqueId(), null, "", update);
+                    }
                 }
                 return success;
             });
@@ -166,6 +171,14 @@ public class BugReportManager {
 
     public CompletableFuture<java.util.List<BugReport>> getOpenReports(int limit) {
         return plugin.getDatabaseManager().getOpenBugReports(limit);
+    }
+
+    public CompletableFuture<java.util.List<BugReport>> getAllReports(int limit) {
+        return plugin.getDatabaseManager().getAllBugReports(limit);
+    }
+
+    public CompletableFuture<java.util.List<BugReport>> getClosedReports(int limit) {
+        return plugin.getDatabaseManager().getClosedBugReports(limit);
     }
 
     public CompletableFuture<Integer> getOpenCount() {
@@ -223,6 +236,58 @@ public class BugReportManager {
 
         } catch (Exception e) {
             plugin.getLogger().warning("[BugReportManager] Failed to append to bug_reports.md (non-fatal): " + e.getMessage());
+        }
+    }
+
+    /**
+     * Removes all blocks for a given reportId from the bug_reports.md file.
+     * Called when a report is marked FIXED / DUPLICATE / WONTFIX so the on-disk
+     * log (used for AI/Grok analysis of current issues) only contains open/unresolved reports.
+     * Full history remains in the database (and is visible via GUI history toggle).
+     */
+    private void pruneReportFromMdFile(int reportId) {
+        if (reportId <= 0) return;
+        try {
+            Path dataDir = plugin.getDataFolder().toPath();
+            Path logFile = dataDir.resolve("bug_reports.md");
+            if (!Files.exists(logFile)) return;
+
+            String content = Files.readString(logFile, StandardCharsets.UTF_8);
+            if (!content.contains("## Report #" + reportId)) return;
+
+            String[] lines = content.split("\n", -1);
+            StringBuilder sb = new StringBuilder();
+            boolean skipping = false;
+
+            for (String line : lines) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("## Report #")) {
+                    if (trimmed.contains("#" + reportId)) {
+                        skipping = true;
+                        continue;
+                    } else {
+                        skipping = false;
+                    }
+                }
+                if (skipping) {
+                    // Stop skipping when we hit the start of a different report block
+                    if (trimmed.startsWith("## Report #")) {
+                        skipping = false;
+                        sb.append(line).append("\n");
+                    }
+                    continue;
+                }
+                sb.append(line).append("\n");
+            }
+
+            String cleaned = sb.toString().trim();
+            // Normalize extra separators left behind
+            cleaned = cleaned.replaceAll("(?m)^---\\s*\n{3,}", "---\n\n");
+            if (!cleaned.endsWith("\n")) cleaned += "\n";
+
+            Files.writeString(logFile, cleaned, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        } catch (Exception e) {
+            plugin.getLogger().warning("[BugReportManager] Failed to prune bug_reports.md for report #" + reportId + " (non-fatal): " + e.getMessage());
         }
     }
 

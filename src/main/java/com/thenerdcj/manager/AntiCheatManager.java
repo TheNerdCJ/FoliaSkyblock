@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.anticheat.NeuralCheatDetector;
 import com.thenerdcj.anticheat.PlayerBehaviorProfile;
 import com.thenerdcj.island.generator.IslandOreGenerator;
+import com.thenerdcj.island.Island;
 import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -199,9 +200,11 @@ public class AntiCheatManager {
     private final Map<UUID, List<Long>> recentMinionPlaces = new ConcurrentHashMap<>();
     private final Map<UUID, List<Long>> recentEnchantProcs = new ConcurrentHashMap<>();
     private final long generalWindowMs = 60000; // 1 min for most non-XP rates
-    private final int questSpamThreshold = 20;
-    private final int collectionSpamThreshold = 10;
-    private final int placeSpamThreshold = 15;
+    private int questSpamThreshold = 60;   // Raised default (was 20). Anything starting with "early_" on a player's own island
+                                           // is fully exempt and never recorded (see reportHighQuestProgress). This threshold
+                                           // now mainly protects against macro spam of daily/weekly quests later.
+    private int collectionSpamThreshold = 10;
+    private int placeSpamThreshold = 15;
 
     // === NEW: Fastbreak / Fastplace tracking ===
     private final Map<UUID, Long> lastBlockBreakTime = new ConcurrentHashMap<>();
@@ -252,6 +255,8 @@ public class AntiCheatManager {
         // Farming-specific (added to reduce false positives on legit farms while still catching macros)
         farmLeniencyMultiplier = config.getDouble("farming.leniency-multiplier", 4.0);
         farmMacroVarianceThreshold = config.getDouble("farming.macro-variance-threshold-ms", 25.0);
+
+        questSpamThreshold = config.getInt("quest.spam-threshold", 60);
 
         punishmentLevel1 = config.getString("punishment.level-1", "warn");
         punishmentLevel2 = config.getString("punishment.level-2", "kick");
@@ -572,9 +577,14 @@ public class AntiCheatManager {
     }
 
     private boolean isOnOwnIsland(Player player) {
-        // Communicates with IslandManager - verified working
-        return plugin.getIslandManager() != null &&
-               plugin.getIslandManager().getIslandAt(player.getLocation()) != null;
+        if (plugin.getIslandManager() == null) return false;
+        // Location-based first (most precise for "standing on my claimed land").
+        if (plugin.getIslandManager().getIslandAt(player.getLocation()) != null) return true;
+        // Fallback for brand new islands / edge blocks / just-broken dirt at the very start:
+        // If the player owns an island in the current dimension, treat actions here as "on own island"
+        // for leniency purposes (early quests, fastbreak expectations, item rates, etc.).
+        // This prevents false positives when getIslandAt hasn't fully registered the initial platform yet.
+        return plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment()) != null;
     }
 
     /**
@@ -839,11 +849,19 @@ public class AntiCheatManager {
         // Strong leniency for early game quests on own island.
         // New players legitimately dig dirt, place blocks, kill a few mobs etc. very quickly
         // at the very start while building their first base (exactly what the early_ quests encourage).
-        // "digging dirt at the start" should never flag as macro.
+        // "digging dirt at the start" should **never** feed the spam detector or cause kicks.
         if (source != null) {
             String s = source.toLowerCase();
-            if (s.startsWith("early_") && isOnOwnIsland(player)) {
-                return;
+            if (s.startsWith("early_")) {
+                // Use the same reliable lookup the EarlyGameListener already used before calling us
+                // (getIsland by owner+dimension). This is more robust on brand new islands than
+                // pure getIslandAt(location), which can be null for the first platform/edge dirt blocks.
+                Island own = (plugin.getIslandManager() != null)
+                        ? plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment())
+                        : null;
+                if (own != null) {
+                    return;  // completely exempt early onboarding actions
+                }
             }
         }
 

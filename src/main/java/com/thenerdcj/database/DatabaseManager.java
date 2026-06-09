@@ -2250,6 +2250,26 @@ public class DatabaseManager {
         return CompletableFuture.completedFuture(java.util.Collections.emptyList());
     }
 
+    public CompletableFuture<List<BugReport>> getAllBugReports(int limit) {
+        if (bugReportDAO != null) return bugReportDAO.getAllReports(limit);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
+    }
+
+    public CompletableFuture<List<BugReport>> getAllBugReports(int limit, int offset) {
+        if (bugReportDAO != null) return bugReportDAO.getAllReports(limit, offset);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
+    }
+
+    public CompletableFuture<List<BugReport>> getClosedBugReports(int limit) {
+        if (bugReportDAO != null) return bugReportDAO.getClosedReports(limit);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
+    }
+
+    public CompletableFuture<List<BugReport>> getClosedBugReports(int limit, int offset) {
+        if (bugReportDAO != null) return bugReportDAO.getClosedReports(limit, offset);
+        return CompletableFuture.completedFuture(java.util.Collections.emptyList());
+    }
+
     public CompletableFuture<BugReport> getBugReportById(int id) {
         if (bugReportDAO != null) return bugReportDAO.getReportById(id);
         return CompletableFuture.completedFuture(null);
