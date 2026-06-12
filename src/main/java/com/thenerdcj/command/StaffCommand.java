@@ -420,7 +420,10 @@ public class StaffCommand implements CommandExecutor {
 
     private void setWorldTime(Player staff, long ticks, String label) {
         World world = staff.getWorld();
-        world.setTime(ticks);
-        MessageUtil.sendMessage(staff, "§aTime set to §e" + label + "§a in §b" + world.getName() + "§a.");
+        // Folia requires world time modifications on the Global Region thread (not player region threads).
+        plugin.getThreadSafety().runOnMainThread(() -> {
+            world.setTime(ticks);
+            MessageUtil.sendMessage(staff, "§aTime set to §e" + label + "§a in §b" + world.getName() + "§a.");
+        });
     }
 }

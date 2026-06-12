@@ -68,17 +68,17 @@ public class BorderVisualManager {
     public void loadConfig() {
         var section = plugin.getConfig().getConfigurationSection("upgrades.island-size.visuals");
         if (section == null) {
-            worldBorderEnabled = true;
-            particlesEnabled = true;
+            worldBorderEnabled = false;  // Borders disabled by default for new islands
+            particlesEnabled = false;
             particleDensity = 4;
-            expansionEffectEnabled = true;
+            expansionEffectEnabled = false;
             return;
         }
 
-        worldBorderEnabled = section.getBoolean("worldborder", true);
-        particlesEnabled = section.getBoolean("particles", true);
+        worldBorderEnabled = section.getBoolean("worldborder", false);
+        particlesEnabled = section.getBoolean("particles", false);
         particleDensity = section.getInt("particle-density", 4);
-        expansionEffectEnabled = section.getBoolean("expansion-effect", true);
+        expansionEffectEnabled = section.getBoolean("expansion-effect", false);
     }
 
     /**

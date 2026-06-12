@@ -127,25 +127,10 @@ public class QuestManager implements org.bukkit.event.Listener {
     public void generateDailyQuests(String islandId) {
         List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
 
-        // Load any persisted active dailies/weeklies from DB (makes them survive restarts)
-        if (!hasLoadedActiveFromDb(islandId)) {
-            try {
-                List<Quest> loaded = plugin.getDatabaseManager().loadActiveQuests(islandId).join();
-                for (Quest q : loaded) {
-                    if (q.getType() == Quest.QuestType.DAILY || q.getType() == Quest.QuestType.WEEKLY) {
-                        // Avoid duplicates
-                        if (current.stream().noneMatch(existing -> existing.getId().equals(q.getId()))) {
-                            current.add(q);
-                        }
-                    }
-                }
-                markActiveLoaded(islandId);
-            } catch (Exception e) {
-                plugin.getLogger().warning("[QuestManager] Failed to load active quests for " + islandId);
-            }
-        }
+        // Ensure persisted active quests (incl. FIRST/onboarding) are loaded for this island.
+        ensureActiveQuestsLoaded(islandId);
 
-        // Clean up old/expired dailies (never touch FIRST/onboarding quests)
+        // Clean up old/expired dailies (FIRST/onboarding quests are left alone; they persist via active_quests)
         List<Quest> toRemove = new ArrayList<>();
         for (Quest q : current) {
             if (q.getType() == Quest.QuestType.DAILY && (q.isCompleted() || q.isExpired() || q.isClaimed())) {
@@ -173,24 +158,10 @@ public class QuestManager implements org.bukkit.event.Listener {
     public void generateWeeklyQuests(String islandId) {
         List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
 
-        // Load persisted if not already (shared with daily load)
-        if (!hasLoadedActiveFromDb(islandId)) {
-            try {
-                List<Quest> loaded = plugin.getDatabaseManager().loadActiveQuests(islandId).join();
-                for (Quest q : loaded) {
-                    if (q.getType() == Quest.QuestType.DAILY || q.getType() == Quest.QuestType.WEEKLY) {
-                        if (current.stream().noneMatch(existing -> existing.getId().equals(q.getId()))) {
-                            current.add(q);
-                        }
-                    }
-                }
-                markActiveLoaded(islandId);
-            } catch (Exception e) {
-                plugin.getLogger().warning("[QuestManager] Failed to load active quests for " + islandId);
-            }
-        }
+        // Ensure persisted active quests (incl. FIRST/onboarding) are loaded for this island.
+        ensureActiveQuestsLoaded(islandId);
 
-        // Clean up old weeklies (never touch FIRST/onboarding quests)
+        // Clean up old weeklies (FIRST/onboarding quests are left alone; they persist via active_quests)
         List<Quest> toRemove = new ArrayList<>();
         for (Quest q : current) {
             if (q.getType() == Quest.QuestType.WEEKLY && (q.isCompleted() || q.isExpired() || q.isClaimed())) {
@@ -219,11 +190,14 @@ public class QuestManager implements org.bukkit.event.Listener {
     public void generateOnboardingQuests(String islandId) {
         List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
 
+        // Ensure any persisted FIRST (onboarding) quests are loaded (progress survives restarts).
+        ensureActiveQuestsLoaded(islandId);
+
         long firstCount = current.stream()
             .filter(q -> q.getType() == Quest.QuestType.FIRST)
             .count();
 
-        if (firstCount > 0) return; // Already seeded for this island life
+        if (firstCount > 0) return; // Already seeded (or loaded from DB) for this island life
 
         // Note: history is still loaded/used for the dedicated history view and records across prestiges.
         // We intentionally re-seed onboarding/story for replay after prestige rebirth (new "run", re-level to experience chapters again).
@@ -492,8 +466,8 @@ public class QuestManager implements org.bukkit.event.Listener {
                 // Persist to DB so history survives restarts and "knows what player has completed"
                 plugin.getDatabaseManager().saveQuestToHistory(islandId, quest);
 
-                // Remove from active_quests table (for dailies/weeklies persistence)
-                if (quest.getType() == Quest.QuestType.DAILY || quest.getType() == Quest.QuestType.WEEKLY) {
+                // Remove from active_quests table (for dailies/weeklies + FIRST/onboarding persistence)
+                if (quest.getType() == Quest.QuestType.DAILY || quest.getType() == Quest.QuestType.WEEKLY || quest.getType() == Quest.QuestType.FIRST) {
                     plugin.getDatabaseManager().deleteActiveQuest(islandId, quest.getId());
                 }
 
@@ -643,7 +617,9 @@ public class QuestManager implements org.bukkit.event.Listener {
 
         for (Quest quest : quests) {
             if (quest.getCategory() == category && !quest.isCompleted() && !quest.isExpired() && !quest.isClaimed()) {
-                if ((quest.getQuestLine() == Quest.QuestLine.ONBOARDING || quest.getQuestLine() == Quest.QuestLine.MAIN_STORY) 
+                // Only enforce strict linear chapter for MAIN_STORY (one chapter at a time).
+                // Onboarding quests (different categories/chapters) should track simultaneously from normal play.
+                if (quest.getQuestLine() == Quest.QuestLine.MAIN_STORY 
                         && currentLinearChapter != 0 && quest.getChapter() != currentLinearChapter) {
                     continue; // linear story: only the current (lowest unclaimed) chapter receives progress
                 }
@@ -661,8 +637,8 @@ public class QuestManager implements org.bukkit.event.Listener {
                     plugin.getDatabaseManager().saveStoryChapterProgress(islandId, quest.getChapter(), quest.getProgress());
                 }
 
-                // Persist progress for daily/weekly so they survive restarts
-                if (quest.getType() == Quest.QuestType.DAILY || quest.getType() == Quest.QuestType.WEEKLY) {
+                // Persist progress for daily/weekly + FIRST (onboarding) so they survive restarts
+                if (quest.getType() == Quest.QuestType.DAILY || quest.getType() == Quest.QuestType.WEEKLY || quest.getType() == Quest.QuestType.FIRST) {
                     plugin.getDatabaseManager().saveActiveQuest(islandId, quest);
                 }
             }
@@ -888,6 +864,26 @@ public class QuestManager implements org.bukkit.event.Listener {
         activeQuestsLoadedFromDb.remove(islandId);
         recentDailyCategories.remove(islandId);
         recentWeeklyCategories.remove(islandId);
+    }
+
+    /**
+     * Ensures any persisted active quests (DAILY + WEEKLY + FIRST/onboarding) are loaded from DB.
+     * Safe to call multiple times; only loads once per island per server run.
+     */
+    private void ensureActiveQuestsLoaded(String islandId) {
+        if (hasLoadedActiveFromDb(islandId)) return;
+        List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
+        try {
+            List<Quest> loaded = plugin.getDatabaseManager().loadActiveQuests(islandId).join();
+            for (Quest q : loaded) {
+                if (current.stream().noneMatch(existing -> existing.getId().equals(q.getId()))) {
+                    current.add(q);
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("[QuestManager] Failed to load active quests for " + islandId);
+        }
+        markActiveLoaded(islandId);
     }
 
     @EventHandler

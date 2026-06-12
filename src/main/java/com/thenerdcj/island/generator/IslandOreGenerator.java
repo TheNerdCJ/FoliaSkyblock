@@ -125,7 +125,9 @@ public class IslandOreGenerator implements Listener {
             return false;
         }
 
-        int level = upgradeManager.getUpgradeLevel(island, IslandUpgrade.ORE_GENERATOR);
+        // Use the ID-based lookup for robustness (handles cold loads + cache + async DB fallback).
+        // Direct island.getUpgradeLevel() can return 0 if loadUpgrades future hasn't completed yet.
+        int level = upgradeManager.getUpgradeLevel(island.getId(), IslandUpgrade.ORE_GENERATOR);
         if (level <= 0) {
             return false;
         }
@@ -264,7 +266,9 @@ public class IslandOreGenerator implements Listener {
             return 0;
         }
         Island island = plugin.getIslandManager().getIslandAt(loc);
-        return upgradeManager.getUpgradeLevel(island, IslandUpgrade.ORE_GENERATOR);
+        if (island == null) return 0;
+        // Use ID-based for same robustness as the formation path.
+        return upgradeManager.getUpgradeLevel(island.getId(), IslandUpgrade.ORE_GENERATOR);
     }
 
     public boolean isLikelyGeneratorOre(Block brokenBlock, UUID playerUuid) {

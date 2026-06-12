@@ -88,7 +88,21 @@ public class HologramManager {
             }
         }
 
-        if (data.getLines().isEmpty()) return;
+        // Always ensure a wrapper exists in activeHolograms (even for 0-line "empty" holograms created via /holo create).
+        // This allows /holo addline etc. to find it by name immediately after creation (before any lines are added).
+        // Entities are only spawned below if there are lines.
+        Hologram wrapper = activeHolograms.get(data.getId());
+        if (wrapper == null) {
+            wrapper = new Hologram(data, new ArrayList<>());
+            activeHolograms.put(data.getId(), wrapper);
+        } else {
+            // Update the data reference in case it was reloaded
+            // (lines will be set below if we spawn)
+        }
+
+        if (data.getLines().isEmpty()) {
+            return;
+        }
 
         World world = Bukkit.getWorld(data.getWorldName());
         if (world == null) {
@@ -100,7 +114,7 @@ public class HologramManager {
 
         plugin.getServer().getRegionScheduler().execute(plugin, baseLoc, () -> {
             List<TextDisplay> displays = new ArrayList<>();
-            double yOffset = 0.0;
+            double yOffset = 1.0; // start a bit above feet level so the text is visibly floating even when base is at player.getLocation()
             double scale = data.getScale();   // Local scale variable for consistent use in spacing and entity scaling
 
             for (String rawLine : data.getLines()) {
@@ -123,6 +137,8 @@ public class HologramManager {
                     entity.setBillboard(org.bukkit.entity.Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
                     entity.setSeeThrough(data.isSeeThrough());
                     entity.setShadowed(data.isShadow());
+                    entity.setBrightness(new org.bukkit.entity.Display.Brightness(15, 15)); // full bright so text is always visible even at feet level / low light
+                    entity.setBackgroundColor(org.bukkit.Color.fromARGB(0, 0, 0, 0)); // transparent background for clean floating text
                     entity.setTransformation(new Transformation(
                             new Vector3f(0, 0, 0),                    // translation
                             new Quaternionf(),                        // left rotation
@@ -143,8 +159,17 @@ public class HologramManager {
                 yOffset -= 0.28 * scale;   // Spacing now correctly scales with the hologram size
             }
 
-            Hologram holo = new Hologram(data, displays);
-            activeHolograms.put(data.getId(), holo);
+            // Update the pre-created wrapper (from empty-hologram support above) with the live displays list.
+            // We avoid overwriting the map entry so that empty-created holograms remain findable by name.
+            Hologram holo = activeHolograms.get(data.getId());
+            if (holo != null) {
+                holo.getDisplays().clear();
+                holo.getDisplays().addAll(displays);
+            } else {
+                // Fallback safety (shouldn't happen)
+                holo = new Hologram(data, displays);
+                activeHolograms.put(data.getId(), holo);
+            }
 
             if (data.isDynamic()) {
                 startDynamicRefresh(holo);
@@ -165,11 +190,9 @@ public class HologramManager {
         Hologram holo = activeHolograms.get(id);
         if (holo != null) {
             holo.getData().setLines(newLines);
-            // Trigger visual recreate (or initial spawn if this id had no active wrapper).
-            // spawnHologram now centralizes previous-entry cleanup + dynamic task cancel + new stack creation.
-            spawnHologram(holo.getData());
+            // Visual spawn/respawn is now driven by the caller (e.g. HologramCommand) AFTER the DB update succeeds.
+            // This avoids race conditions between the sync spawn and the async DB future, ensuring the text reliably appears.
         } else {
-            // DB will still be updated. Visuals will appear on next loadAndSpawnAll or /holo reload.
             plugin.getLogger().fine("[HologramManager] updateLines for id=" + id + " had no active wrapper; only DB updated.");
         }
         return databaseManager.updateHologramLines(id, newLines);

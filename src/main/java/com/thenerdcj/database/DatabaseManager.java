@@ -468,7 +468,7 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS island_missions (id TEXT PRIMARY KEY, island_key TEXT, owner_uuid TEXT, type TEXT, objective TEXT, target_material TEXT, target INTEGER, progress INTEGER, reward_money INTEGER, reward_xp INTEGER, reward_item_base64 TEXT, reward_booster_type TEXT, reward_booster_duration INTEGER, completed BOOLEAN, claimed BOOLEAN, created_at INTEGER, expires_at INTEGER, title TEXT, description TEXT)",
                 "CREATE TABLE IF NOT EXISTS island_quest_history (island_key TEXT, quest_id TEXT, claimed_at INTEGER, title TEXT, description TEXT, category TEXT, type TEXT, reward_xp INTEGER, reward_money INTEGER, PRIMARY KEY(island_key, quest_id))",
                 "CREATE TABLE IF NOT EXISTS island_story_progress (island_key TEXT, chapter INTEGER, progress INTEGER DEFAULT 0, PRIMARY KEY(island_key, chapter))",
-                "CREATE TABLE IF NOT EXISTS island_active_quests (island_key TEXT, quest_id TEXT, title TEXT, description TEXT, category TEXT, type TEXT, progress INTEGER DEFAULT 0, target INTEGER, reward_xp INTEGER, reward_money INTEGER, created_at INTEGER, expires_at INTEGER, PRIMARY KEY(island_key, quest_id))",
+                "CREATE TABLE IF NOT EXISTS island_active_quests (island_key TEXT, quest_id TEXT, title TEXT, description TEXT, category TEXT, type TEXT, progress INTEGER DEFAULT 0, target INTEGER, reward_xp INTEGER, reward_money INTEGER, created_at INTEGER, expires_at INTEGER, quest_line TEXT DEFAULT 'ONBOARDING', chapter INTEGER DEFAULT 0, required_mob_type TEXT, PRIMARY KEY(island_key, quest_id))",
                 "CREATE TABLE IF NOT EXISTS island_boosters (island_key TEXT, booster_type TEXT, multiplier REAL, expires_at INTEGER, PRIMARY KEY(island_key, booster_type))",
                 "CREATE TABLE IF NOT EXISTS auctions (id TEXT PRIMARY KEY, seller_uuid TEXT, item_base64 TEXT, price REAL, end_time INTEGER, sold BOOLEAN DEFAULT 0, buyer_uuid TEXT)",
                 "CREATE TABLE IF NOT EXISTS bazaar_orders (id TEXT PRIMARY KEY, player_uuid TEXT, material TEXT, amount INTEGER, price_per_unit REAL, buy_order BOOLEAN, created_at INTEGER, filled BOOLEAN DEFAULT 0)",
@@ -2723,7 +2723,7 @@ public class DatabaseManager {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
-                         "INSERT OR REPLACE INTO island_active_quests (island_key, quest_id, title, description, category, type, progress, target, reward_xp, reward_money, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                         "INSERT OR REPLACE INTO island_active_quests (island_key, quest_id, title, description, category, type, progress, target, reward_xp, reward_money, created_at, expires_at, quest_line, chapter, required_mob_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 ps.setString(1, islandKey);
                 ps.setString(2, quest.getId());
                 ps.setString(3, quest.getTitle());
@@ -2736,6 +2736,9 @@ public class DatabaseManager {
                 ps.setInt(10, quest.getRewardMoney());
                 ps.setLong(11, System.currentTimeMillis());
                 ps.setLong(12, quest.getExpiryTime());
+                ps.setString(13, quest.getQuestLine() != null ? quest.getQuestLine().name() : "ONBOARDING");
+                ps.setInt(14, quest.getChapter());
+                ps.setString(15, quest.getRequiredMobType());
                 ps.executeUpdate();
                 return true;
             } catch (SQLException e) {
@@ -2750,7 +2753,7 @@ public class DatabaseManager {
             List<Quest> active = new ArrayList<>();
             try (Connection conn = getConnection();
                  PreparedStatement ps = conn.prepareStatement(
-                         "SELECT quest_id, title, description, category, type, progress, target, reward_xp, reward_money, expires_at FROM island_active_quests WHERE island_key = ?")) {
+                         "SELECT quest_id, title, description, category, type, progress, target, reward_xp, reward_money, expires_at, quest_line, chapter, required_mob_type FROM island_active_quests WHERE island_key = ?")) {
                 ps.setString(1, islandKey);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
@@ -2765,7 +2768,19 @@ public class DatabaseManager {
                         int money = rs.getInt("reward_money");
                         long expires = rs.getLong("expires_at");
 
-                        Quest q = new Quest(id, title, desc, cat, type, progress, target, xp, money, false, expires, Quest.QuestLine.ONBOARDING, 0);
+                        Quest.QuestLine line = Quest.QuestLine.ONBOARDING;
+                        try {
+                            String lineStr = rs.getString("quest_line");
+                            if (lineStr != null) line = Quest.QuestLine.valueOf(lineStr);
+                        } catch (Exception ignored) {}
+
+                        int chapter = 0;
+                        try { chapter = rs.getInt("chapter"); } catch (Exception ignored) {}
+
+                        String reqMob = null;
+                        try { reqMob = rs.getString("required_mob_type"); } catch (Exception ignored) {}
+
+                        Quest q = new Quest(id, title, desc, cat, type, progress, target, xp, money, false, expires, line, chapter, null, null, reqMob);
                         active.add(q);
                     }
                 }

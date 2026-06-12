@@ -283,6 +283,8 @@ public class FoliaSkyblock extends JavaPlugin {
         this.punishmentManager = new PunishmentManager(this);
         this.bugReportManager = new BugReportManager(this);
         this.bugReportListGUI = new BugReportListGUI(this);
+        // Register the shared instance as listener only once (prevents duplicate listeners on repeated GUI opens)
+        getServer().getPluginManager().registerEvents(this.bugReportListGUI, this);
         this.autoSellerManager = new AutoSellerManager(this);
 
         // Island Worth / Level + Economy sinks

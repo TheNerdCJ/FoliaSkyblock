@@ -63,7 +63,7 @@ public class BugReportListGUI implements InventoryHolder, Listener {
     private final Map<UUID, ViewMode> viewModes = new ConcurrentHashMap<>();
 
     public BugReportListGUI(FoliaSkyblock plugin) {
-        this(plugin, true);
+        this(plugin, false);  // Do not auto-register. Registration happens once for the shared instance in FoliaSkyblock.
     }
 
     public BugReportListGUI(FoliaSkyblock plugin, boolean autoRegister) {
@@ -368,14 +368,14 @@ public class BugReportListGUI implements InventoryHolder, Listener {
             int newOffset = Math.max(0, currentOffset - 9); // scroll one row
             scrollOffsets.put(staff.getUniqueId(), newOffset);
             staff.closeInventory();
-            new BugReportListGUI(plugin).open(staff);
+            plugin.getBugReportListGUI().open(staff);
             return;
         }
         if (action != null && action.equals("scroll:down")) {
             int currentOffset = scrollOffsets.getOrDefault(staff.getUniqueId(), 0);
             scrollOffsets.put(staff.getUniqueId(), currentOffset + 9);
             staff.closeInventory();
-            new BugReportListGUI(plugin).open(staff);
+            plugin.getBugReportListGUI().open(staff);
             return;
         }
 
@@ -386,7 +386,7 @@ public class BugReportListGUI implements InventoryHolder, Listener {
             selectedReport.remove(staff.getUniqueId());
             pendingNoteReport.remove(staff.getUniqueId());
             staff.closeInventory();
-            new BugReportListGUI(plugin).open(staff);
+            plugin.getBugReportListGUI().open(staff);
             return;
         }
 
@@ -395,7 +395,7 @@ public class BugReportListGUI implements InventoryHolder, Listener {
             scrollOffsets.remove(staff.getUniqueId());
             pendingNoteReport.remove(staff.getUniqueId());
             staff.closeInventory();
-            new BugReportListGUI(plugin).open(staff);
+            plugin.getBugReportListGUI().open(staff);
             return;
         }
 
@@ -436,7 +436,7 @@ public class BugReportListGUI implements InventoryHolder, Listener {
                     if (success) {
                         plugin.getThreadSafety().runOnMainThread(() -> {
                             staff.closeInventory();
-                            new BugReportListGUI(plugin).open(staff);
+                            plugin.getBugReportListGUI().open(staff);
                         });
                     }
                 });
@@ -455,7 +455,7 @@ public class BugReportListGUI implements InventoryHolder, Listener {
                         if (success) {
                             plugin.getThreadSafety().runOnMainThread(() -> {
                                 staff.closeInventory();
-                                new BugReportListGUI(plugin).open(staff);
+                                plugin.getBugReportListGUI().open(staff);
                             });
                         }
                     });
@@ -466,7 +466,7 @@ public class BugReportListGUI implements InventoryHolder, Listener {
             selectedReport.put(staff.getUniqueId(), reportId);
             reportManager.recordStaffReportSelection(staff.getUniqueId(), reportId); // for /bug note convenience
             staff.closeInventory();
-            new BugReportListGUI(plugin).open(staff);
+            plugin.getBugReportListGUI().open(staff);
         }
     }
 }

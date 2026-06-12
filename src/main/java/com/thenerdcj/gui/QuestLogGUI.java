@@ -85,9 +85,10 @@ public class QuestLogGUI implements Listener {
 
                 Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lQuest Log"));
 
-                // Top-row filter tabs (new GUI polish: All / Story / Daily / Weekly / Recommended)
+                // Top-row filter tabs (All / Storyline / Daily / Weekly / Recommended)
+                // "Storyline" covers Onboarding (early story) + Main Story chapters for a continuous narrative feel.
                 gui.setItem(0, createFilterTab(Material.BOOK, "§f§lAll", "ALL", filter));
-                gui.setItem(1, createFilterTab(Material.NETHER_STAR, "§b§lStory", "STORY", filter));
+                gui.setItem(1, createFilterTab(Material.NETHER_STAR, "§b§lStoryline", "STORY", filter));
                 gui.setItem(2, createFilterTab(Material.CLOCK, "§e§lDaily", "DAILY", filter));
                 gui.setItem(3, createFilterTab(Material.SUNFLOWER, "§6§lWeekly", "WEEKLY", filter));
                 gui.setItem(4, createFilterTab(Material.COMPASS, "§a§lRecommended", "RECOMMENDED", filter));
@@ -97,18 +98,19 @@ public class QuestLogGUI implements Listener {
                         .filter(q -> !q.isCompleted() && !q.isClaimed() && !q.isExpired())
                         .count();
 
-                // Prominent "Main Story" progress teaser (encourages linear chapter gameplay toward the dragon)
-                // Dailies/Weeklies are always simultaneous with the current story chapter.
+                // Prominent "Main Story Progress" teaser (encourages linear chapter gameplay toward the dragon/dimensions)
+                // Placed after the tabs so it doesn't look like another filter tab.
+                // Dailies/Weeklies run simultaneously (different tabs).
                 Quest activeMainStory = quests.stream()
                     .filter(q -> q.getQuestLine() == Quest.QuestLine.MAIN_STORY && !q.isClaimed() && !q.isCompleted() && !q.isExpired())
                     .findFirst().orElse(null);
                 String storyLine = (activeMainStory != null)
                     ? "§bChapter " + activeMainStory.getChapter() + "/20  §5→ §dEnder Dragon"
                     : "§7Finish onboarding to start the Main Story arc";
-                gui.setItem(5, createItem(Material.NETHER_STAR, "§d§lMain Story",
-                    "§7Sequential chapters — only the current one progresses.",
+                gui.setItem(5, createItem(Material.NETHER_STAR, "§d§lMain Story Progress",
+                    "§7Sequential chapters (see Storyline tab for details).",
                     storyLine,
-                    "§aDailies & Weeklies run at the same time!"));
+                    "§aDailies & Weeklies run at the same time in their tabs!"));
 
                 gui.setItem(8, createItem(Material.BOOK, "§6§lQuest Log",
                         "§7Daily & Weekly Missions", "§7Complete for rewards!",
@@ -117,8 +119,10 @@ public class QuestLogGUI implements Listener {
                 // Apply filter + simple recommended ordering (new GUI)
                 java.util.List<Quest> toShow = new java.util.ArrayList<>(quests);
                 if ("STORY".equals(filter)) {
-                    // Story tab focuses purely on the current Main Story chapter (linear, one at a time)
-                    toShow.removeIf(q -> q.getQuestLine() != Quest.QuestLine.MAIN_STORY);
+                    // Storyline tab shows Onboarding (early story chapters) + Main Story (linear narrative to dragon/dimensions).
+                    // This ensures the tab is populated early and provides the "story line of quests" to encourage dimension progression.
+                    toShow.removeIf(q -> q.getQuestLine() != Quest.QuestLine.MAIN_STORY 
+                                     && q.getQuestLine() != Quest.QuestLine.ONBOARDING);
                 } else if ("DAILY".equals(filter)) {
                     toShow.removeIf(q -> q.getType() != Quest.QuestType.DAILY);
                 } else if ("WEEKLY".equals(filter)) {

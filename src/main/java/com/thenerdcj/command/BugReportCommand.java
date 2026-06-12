@@ -55,7 +55,7 @@ public class BugReportCommand implements CommandExecutor, TabCompleter {
                 MessageUtil.sendMessage(player, "§cYou do not have permission to view bug reports.");
                 return true;
             }
-            new BugReportListGUI(plugin).open(player);
+            plugin.getBugReportListGUI().open(player);
             return true;
         }
 
@@ -72,7 +72,7 @@ public class BugReportCommand implements CommandExecutor, TabCompleter {
         String first = args[0].toLowerCase();
         if ((first.equals("reports") || first.equals("list") || first.equals("view")) &&
             (player.hasPermission("foliasb.staff") || player.hasPermission("foliasb.admin"))) {
-            new BugReportListGUI(plugin).open(player);
+            plugin.getBugReportListGUI().open(player);
             return true;
         }
 

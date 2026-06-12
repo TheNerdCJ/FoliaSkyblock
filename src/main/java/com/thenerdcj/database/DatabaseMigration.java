@@ -20,7 +20,7 @@ public class DatabaseMigration {
     private final DBOperations dbOps;        // future modular path
     private final MigrationScriptRegistry scriptRegistry;
 
-    private static final int CURRENT_SCHEMA_VERSION = 15; // v15: chest_shops chunk index (lazy-load / region scans)
+    private static final int CURRENT_SCHEMA_VERSION = 16; // v16: island_active_quests columns for quest_line + chapter (onboarding/FIRST persistence)
     // Note: DAO extractions (SkillDAO, IslandLevelDAO, prior ones) do not require schema bumps if tables pre-exist.
     // Migration system enhanced for DBOperations path + future Flyway-like. Tables still central for compat.
     // This completes "Finish DB modularization (remaining DAOs) + migration system (IMPROVEMENTS priority)".
@@ -161,6 +161,20 @@ public class DatabaseMigration {
                 executeIfNotExists(conn, "CREATE INDEX IF NOT EXISTS idx_seasons_started ON seasons(started_at)");
                 executeIfNotExists(conn, "ALTER TABLE islands ADD COLUMN created_season TEXT");
                 MessageUtil.info(plugin.getLogger(), "§a[DB Migration v13] Seasonal resets schema: server_meta + seasons + player_seasonal_grants + islands.created_season (compat).");
+                break;
+            case 14:
+                // v14 handled via script: island_worth_grid_index.sql
+                break;
+            case 15:
+                // v15 handled via script: chest_shops_chunk_index.sql
+                break;
+            case 16:
+                // island_active_quests now persists quest_line + chapter so FIRST (onboarding) quests keep progress across restarts/reloads.
+                // Also supports MAIN_STORY active chapter if we ever move them to active table.
+                executeIfNotExists(conn, "ALTER TABLE island_active_quests ADD COLUMN quest_line TEXT DEFAULT 'ONBOARDING'");
+                executeIfNotExists(conn, "ALTER TABLE island_active_quests ADD COLUMN chapter INTEGER DEFAULT 0");
+                executeIfNotExists(conn, "ALTER TABLE island_active_quests ADD COLUMN required_mob_type TEXT");
+                MessageUtil.info(plugin.getLogger(), "§a[DB Migration v16] island_active_quests columns for persistent onboarding (FIRST) and story quests.");
                 break;
             default:
                 break;

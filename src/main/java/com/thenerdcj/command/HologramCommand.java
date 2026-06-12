@@ -176,7 +176,7 @@ public class HologramCommand implements CommandExecutor {
     }
 
     private void createHologram(Player player, String name) {
-        Location loc = player.getLocation();
+        Location loc = player.getLocation();  // feet level as requested
         HologramData data = new HologramData(name, loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
         // No forced default text. Users add their own lines (with & colors) via addline/setline.
         // This prevents unwanted "Welcome to FoliaSkyblock" on every new hologram.
@@ -199,7 +199,15 @@ public class HologramCommand implements CommandExecutor {
         }
         holo.getData().addLine(text);
         hologramManager.updateLines(holo.getData().getId(), holo.getData().getLines())
-                .thenAccept(success -> player.sendMessage(success ? "§aLine added." : "§cUpdate failed."));
+                .thenAccept(success -> {
+                    if (success) {
+                        // Force a fresh visual spawn/respawn after DB confirm, to ensure the new line appears
+                        hologramManager.spawnHologram(holo.getData());
+                        player.sendMessage("§aLine added.");
+                    } else {
+                        player.sendMessage("§cUpdate failed.");
+                    }
+                });
     }
 
     private void setLine(Player player, String name, int index, String text) {
@@ -210,7 +218,14 @@ public class HologramCommand implements CommandExecutor {
         }
         holo.getData().setLine(index, text);
         hologramManager.updateLines(holo.getData().getId(), holo.getData().getLines())
-                .thenAccept(success -> player.sendMessage(success ? "§aLine updated." : "§cUpdate failed."));
+                .thenAccept(success -> {
+                    if (success) {
+                        hologramManager.spawnHologram(holo.getData());
+                        player.sendMessage("§aLine updated.");
+                    } else {
+                        player.sendMessage("§cUpdate failed.");
+                    }
+                });
     }
 
     private void removeLine(Player player, String name, int index) {
@@ -221,7 +236,14 @@ public class HologramCommand implements CommandExecutor {
         }
         holo.getData().removeLine(index);
         hologramManager.updateLines(holo.getData().getId(), holo.getData().getLines())
-                .thenAccept(success -> player.sendMessage(success ? "§aLine removed." : "§cUpdate failed."));
+                .thenAccept(success -> {
+                    if (success) {
+                        hologramManager.spawnHologram(holo.getData());
+                        player.sendMessage("§aLine removed.");
+                    } else {
+                        player.sendMessage("§cUpdate failed.");
+                    }
+                });
     }
 
     private void deleteHologram(Player player, String name) {
@@ -261,7 +283,8 @@ public class HologramCommand implements CommandExecutor {
     }
 
     private void createLeaderboard(Player player, String name, String type) {
-        Location loc = player.getLocation();
+        Location loc = player.getLocation();  // feet level as requested
+
         HologramData data = new HologramData(name, loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
 
         data.setDynamic(true);

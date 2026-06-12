@@ -388,11 +388,11 @@ upgrades:
       enabled: true
       extra-per-prestige: 2             # Additional radius per prestige level (modest, keeps focus on small starters)
     visuals:
-      enabled: true
-      worldborder: true                 # Use per-player WorldBorder for nice visuals
-      particles: true                   # Spawn border particles (Folia-safe repeating task)
+      enabled: false
+      worldborder: false                # Use per-player WorldBorder for nice visuals (disabled by default; players can enable via /is settings or admins via config)
+      particles: false                  # Spawn border particles (Folia-safe repeating task) (disabled by default)
       particle-density: 4               # Blocks between particles
-      expansion-effect: true            # Play nice sound + particles on upgrade purchase
+      expansion-effect: false           # Play nice sound + particles on upgrade purchase (disabled by default)
       # Colored borders now respect island_settings.border_color (BLUE, RED, GREEN, GOLD, PURPLE, PINK, etc.)
       # Admin commands: /isadmin border setsize <player> <blocks>  and  setcolor <player> <color>
       # Hologram markers and auto WorldBorder on movement are available via BorderVisualManager
