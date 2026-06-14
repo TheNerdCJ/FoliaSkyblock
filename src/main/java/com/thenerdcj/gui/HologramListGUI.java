@@ -24,15 +24,8 @@ import org.bukkit.persistence.PersistentDataType;
 import java.util.List;
 
 /**
- * Simple GUI for managing holograms.
- * Lists all active holograms with info and quick actions.
- * Click to delete or force refresh.
- *
- * Deep modernization pass:
- * - All manual ItemStack + ItemMeta creation (hologram list items, close, refreshAll) converted to GUIUtils.createItem + attachHologramPDC helper.
- * - Title now uses MessageUtil.legacy.
- * - Added PDC (hologram_name) for robust identification in click handler (replacing brittle displayName stripping).
- * - Preserved InventoryHolder pattern, Folia async delete/refresh paths, and all logic.
+ * GUI for managing holograms.
+ * Modernized with PDC, GUIUtils, Folia-safe actions (teleportAsync).
  */
 public class HologramListGUI implements InventoryHolder, Listener {
 
@@ -53,13 +46,12 @@ public class HologramListGUI implements InventoryHolder, Listener {
     }
 
     public void open(Player player) {
-        int size = 54; // 6 rows
+        int size = 54;
         inventory = Bukkit.createInventory(this, size, MessageUtil.legacy("§6§lHologram Manager"));
 
-        // Fill with hologram items (modernized creation + PDC)
         int slot = 0;
         for (Hologram holo : hologramManager.getActiveHolograms().values()) {
-            if (slot >= size - 9) break; // Leave bottom row for controls
+            if (slot >= size - 9) break;
 
             HologramData data = holo.getData();
 
@@ -85,7 +77,6 @@ public class HologramListGUI implements InventoryHolder, Listener {
             inventory.setItem(slot++, item);
         }
 
-        // Bottom row controls - modernized
         ItemStack close = GUIUtils.createItem(Material.BARRIER, "§cClose");
         inventory.setItem(53, close);
 
@@ -127,11 +118,9 @@ public class HologramListGUI implements InventoryHolder, Listener {
 
         String displayName = meta.getDisplayName();
 
-        // Robust identification via PDC (modernized)
         NamespacedKey holoNameKey = new NamespacedKey(plugin, "hologram_name");
         String holoName = meta.getPersistentDataContainer().get(holoNameKey, PersistentDataType.STRING);
         if (holoName == null) {
-            // Fallback
             holoName = displayName.replace("§e", "");
         }
 
@@ -163,43 +152,43 @@ public class HologramListGUI implements InventoryHolder, Listener {
 
         if (event.isLeftClick()) {
             if (event.isShiftClick()) {
-                // Move hologram to player's current location (movehere feature)
                 final String nameForMsg = holoName;
                 hologramManager.moveHologram(data.getId(), player.getLocation())
                         .thenAccept(success -> {
                             if (success) {
                                 player.sendMessage("§aHologram '" + nameForMsg + "' moved to your location.");
-                                // Refresh the list GUI
                                 plugin.getThreadSafety().runOnMainThread(() -> new HologramListGUI(plugin).open(player));
                             } else {
                                 player.sendMessage("§cFailed to move hologram.");
                             }
                         });
             } else {
-                // Teleport player to the hologram
                 World w = Bukkit.getWorld(data.getWorldName());
                 if (w != null) {
                     Location tpLoc = new Location(w, data.getX(), data.getY() + 0.5, data.getZ());
-                    player.teleport(tpLoc);
-                    player.sendMessage("§aTeleported to hologram §e" + holoName);
-                    // Keep GUI open so admin can perform more actions or close manually
+                    // Folia-safe: use teleportAsync from click handler (region thread)
+                    final String tpName = holoName;
+                    player.teleportAsync(tpLoc).thenAccept(success -> {
+                        if (success) {
+                            player.sendMessage("§aTeleported to hologram §e" + tpName);
+                        } else {
+                            player.sendMessage("§cTeleport failed.");
+                        }
+                    });
                 } else {
                     player.sendMessage("§cHologram world '" + data.getWorldName() + "' is not loaded.");
                 }
             }
         } else if (event.isRightClick()) {
             if (event.isShiftClick() && data.isDynamic()) {
-                // Shift-right on dynamic = force refresh (non-destructive)
                 hologramManager.refreshDynamicContent(holo);
                 player.sendMessage("§aForced refresh for dynamic hologram " + holoName);
             } else {
-                // Normal right click = delete
                 final String nameToDelete = holoName;
                 hologramManager.deleteHologram(data.getId())
                         .thenAccept(success -> {
                             if (success) {
                                 player.sendMessage("§cDeleted hologram: " + nameToDelete);
-                                // Re-open GUI after delete
                                 plugin.getThreadSafety().runOnMainThread(() -> new HologramListGUI(plugin).open(player));
                             }
                         });

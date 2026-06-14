@@ -4,23 +4,18 @@ import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.hologram.Hologram;
 import com.thenerdcj.hologram.HologramData;
 import com.thenerdcj.hologram.HologramManager;
-import org.bukkit.Bukkit;
+import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Admin command for managing persistent holograms.
- * Usage: /holo create <name> | /holo addline <name> <text...> | /holo setline <name> <index> <text> etc.
- * Requires staff/admin rank or permission "foliasb.admin.hologram".
- * Integrates with existing RankManager / StaffCommand patterns.
+ * Modern Folia-safe implementation.
  */
 public class HologramCommand implements CommandExecutor {
 
@@ -39,9 +34,7 @@ public class HologramCommand implements CommandExecutor {
             return true;
         }
 
-        // Permission check (integrate with your RankManager or use hasPermission)
-        if (!player.hasPermission("foliasb.admin.hologram") && !player.isOp()) {
-            // You can also check plugin.getRankManager().hasStaffPermission(player)
+        if (!player.hasPermission("foliasb.staff") && !player.isOp()) {
             player.sendMessage("§cYou do not have permission to manage holograms.");
             return true;
         }
@@ -126,34 +119,6 @@ public class HologramCommand implements CommandExecutor {
                 player.sendMessage("§aHolograms reloaded.");
                 break;
 
-            case "createleaderboard":
-            case "leaderboard":
-                if (args.length < 3) {
-                    player.sendMessage("§cUsage: /holo createleaderboard <name> topislands");
-                    return true;
-                }
-                createLeaderboard(player, args[1], args[2]);
-                break;
-
-            case "setinterval":
-                if (args.length < 3) {
-                    player.sendMessage("§cUsage: /holo setinterval <name> <seconds>");
-                    return true;
-                }
-                try {
-                    int seconds = Integer.parseInt(args[2]);
-                    setInterval(player, args[1], seconds);
-                } catch (NumberFormatException e) {
-                    player.sendMessage("§cSeconds must be a number (min 30).");
-                }
-                break;
-
-            case "gui":
-            case "manage":
-                // Open GUI (created below)
-                new com.thenerdcj.gui.HologramListGUI(plugin).open(player);
-                break;
-
             default:
                 sendHelp(player);
         }
@@ -170,21 +135,16 @@ public class HologramCommand implements CommandExecutor {
         player.sendMessage("§e/holo list");
         player.sendMessage("§e/holo movehere <name> §7- Move to your location");
         player.sendMessage("§e/holo reload §7- Respawn all from DB");
-        player.sendMessage("§e/holo createleaderboard <name> topislands §7- Dynamic auto-updating leaderboard");
-        player.sendMessage("§e/holo setinterval <name> <seconds> §7- Change refresh rate (min 30)");
-        player.sendMessage("§e/holo gui §7- Open Hologram Manager GUI");
     }
 
     private void createHologram(Player player, String name) {
-        Location loc = player.getLocation();  // feet level as requested
+        Location loc = player.getLocation();
         HologramData data = new HologramData(name, loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
-        // No forced default text. Users add their own lines (with & colors) via addline/setline.
-        // This prevents unwanted "Welcome to FoliaSkyblock" on every new hologram.
 
         plugin.getDatabaseManager().saveHologram(data).thenAccept(success -> {
             if (success) {
                 hologramManager.spawnHologram(data);
-                player.sendMessage("§aHologram '" + name + "' created (empty). Use /holo addline " + name + " <text> to add content (& colors supported).");
+                player.sendMessage("§aHologram '" + name + "' created (empty). Use /holo addline " + name + " <text> to add content.");
             } else {
                 player.sendMessage("§cFailed to save hologram (name may already exist).");
             }
@@ -201,7 +161,6 @@ public class HologramCommand implements CommandExecutor {
         hologramManager.updateLines(holo.getData().getId(), holo.getData().getLines())
                 .thenAccept(success -> {
                     if (success) {
-                        // Force a fresh visual spawn/respawn after DB confirm, to ensure the new line appears
                         hologramManager.spawnHologram(holo.getData());
                         player.sendMessage("§aLine added.");
                     } else {
@@ -277,59 +236,7 @@ public class HologramCommand implements CommandExecutor {
                     if (success) {
                         player.sendMessage("§aHologram moved to your location.");
                     } else {
-                        player.sendMessage("§cFailed to move hologram (DB update failed?).");
-                    }
-                });
-    }
-
-    private void createLeaderboard(Player player, String name, String type) {
-        Location loc = player.getLocation();  // feet level as requested
-
-        HologramData data = new HologramData(name, loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
-
-        data.setDynamic(true);
-        data.setDynamicType(type.toUpperCase()); // TOP_ISLANDS_LEVEL etc.
-        data.setUpdateInterval(300); // 5 minutes
-
-        // Initial header (will be overwritten on first refresh)
-        data.addLine("&6&l★ Top Islands Leaderboard ★");
-        data.addLine("&7Loading...");
-
-        plugin.getDatabaseManager().saveHologram(data).thenAccept(success -> {
-            if (success) {
-                hologramManager.spawnHologram(data);
-                // Immediate first refresh so players see data right away
-                plugin.getThreadSafety().runOnMainThreadLater(() -> {
-                    Hologram h = hologramManager.getHologramByName(name);
-                    if (h != null && h.getData().isDynamic()) {
-                        hologramManager.refreshDynamicContent(h);
-                    }
-                }, 40L); // 2 seconds delay to let spawn finish
-
-                player.sendMessage("§aDynamic leaderboard hologram '" + name + "' created! Type: " + type);
-                player.sendMessage("§7It will auto-update every 5 minutes (first refresh in ~2s).");
-            } else {
-                player.sendMessage("§cFailed to create leaderboard (name conflict?).");
-            }
-        });
-    }
-
-    private void setInterval(Player player, String name, int seconds) {
-        Hologram holo = hologramManager.getHologramByName(name);
-        if (holo == null) {
-            player.sendMessage("§cHologram not found.");
-            return;
-        }
-        if (!holo.getData().isDynamic()) {
-            player.sendMessage("§cThis hologram is not dynamic.");
-            return;
-        }
-        hologramManager.setUpdateInterval(holo.getData().getId(), seconds)
-                .thenAccept(success -> {
-                    if (success) {
-                        player.sendMessage("§aUpdate interval for '" + name + "' set to " + seconds + " seconds.");
-                    } else {
-                        player.sendMessage("§cFailed to update interval.");
+                        player.sendMessage("§cFailed to move hologram.");
                     }
                 });
     }

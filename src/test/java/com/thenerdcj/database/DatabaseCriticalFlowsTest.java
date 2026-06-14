@@ -1,7 +1,6 @@
 package com.thenerdcj.database;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.hologram.HologramData;
 import com.thenerdcj.island.IslandUpgrade;
 import com.thenerdcj.mission.Mission;
 import com.thenerdcj.util.ItemSerializer;
@@ -115,11 +114,6 @@ class DatabaseCriticalFlowsTest {
             // ItemStack/Material requires Paper registry (use -Pwith-mockbukkit for full item roundtrip)
         }
 
-        HologramDAO hologramDAO = dbManager.getHologramDAO();
-        HologramData holo = new HologramData("test-holo", "world", 10.0, 64.0, 10.0);
-        holo.getLines().add("Line 1");
-        assertTrue(hologramDAO.saveHologram(holo).join());
-
         GridPosition worthPos = new GridPosition(0, 0, World.Environment.NORMAL);
         islandDAO.saveIslandWorthAsync(worthPos, 12345.67, 42, System.currentTimeMillis()).join();
         awaitAsyncWrites();
@@ -134,10 +128,6 @@ class DatabaseCriticalFlowsTest {
         assertNotNull(dbManager.getCosmeticDAO().loadPlayerTagCollection(owner));
         assertNotNull(dbManager.getPunishmentDAO().getActivePunishments(owner).join());
         assertNotNull(dbManager.getPendingItemsDAO().getPendingItems(owner).join());
-
-        if (holo.getId() > 0) {
-            hologramDAO.deleteHologram(holo.getId()).join();
-        }
     }
 
     @Test

@@ -195,6 +195,11 @@ commands:
     usage: /<command>
     aliases: [deathmessage, killmessages, killmessage]
 
+  joinleave:
+    description: Open the Cosmetic Join/Leave Messages menu (personalized rich messages on join/quit)
+    usage: /<command>
+    aliases: [joinleavemessage]
+
   wardrobe:
     description: Open the wardrobe to save and swap armor + equipment loadouts
     usage: /<command>

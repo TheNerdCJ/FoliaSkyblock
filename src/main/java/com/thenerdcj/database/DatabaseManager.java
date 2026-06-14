@@ -53,7 +53,7 @@ public class DatabaseManager {
     private PrestigeDAO prestigeDAO;
     private MissionDAO missionDAO;
     private IslandDAO islandDAO; // Core island persistence extracted as part of full modularization
-    private HologramDAO hologramDAO; // Extracted as continuation of DB modularization (hologram persistence moved out of god class)
+    private HologramDAO hologramDAO; // Hologram persistence for admin/info/leaderboard displays
     private BalanceDAO balanceDAO;
     private PunishmentDAO punishmentDAO;
     private BugReportDAO bugReportDAO;
@@ -873,13 +873,12 @@ public class DatabaseManager {
         }
     }
 
-    // ==================== HOLOGRAM PERSISTENCE (delegated to HologramDAO as part of DB modularization) ====================
+    // ==================== HOLOGRAM PERSISTENCE (delegated to HologramDAO) ====================
 
     public CompletableFuture<List<HologramData>> loadAllHolograms() {
         if (hologramDAO != null) {
             return hologramDAO.loadAllHolograms();
         }
-        // Fallback during partial migration (should not normally hit)
         plugin.getLogger().warning("[DatabaseManager] HologramDAO not available, falling back to legacy path (deprecated).");
         return CompletableFuture.completedFuture(java.util.Collections.emptyList());
     }

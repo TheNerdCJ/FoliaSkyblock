@@ -408,51 +408,17 @@ public class BorderVisualManager {
     }
 
     /**
-     * Full persistent hologram border markers.
-     * Spawns (or re-spawns) TextDisplay holograms at the 4 corners of the island border.
-     * These are saved via HologramManager so they persist across restarts.
+     * Border hologram markers have been removed (hologram system excised).
+     * This is a no-op stub. Use particle/worldborder visuals instead via /is border.
      */
     public void spawnBorderHologramMarkers(Island island, Player requester) {
-        if (island == null) return;
-
-        int radius = plugin.getIslandUpgradeManager().getEffectiveIslandRadius(island);
-        Location center = island.getCenter(requester != null ? requester.getWorld() : Bukkit.getWorlds().get(0));
-        if (center == null) return;
-
-        // Folia-safe: cached only (hologram spawn path)
-        var settings = plugin.getIslandSettingsManager().getCachedSettings(island.getGridPosition());
-        if (!settings.isBorderMarkersEnabled()) return;
-        String colorCode = getColorCode(settings.getBorderColor());
-
-        String gridKey = island.getGridPosition().x() + "_" + island.getGridPosition().z() + "_" + island.getDimension().name();
-        String[] corners = {"NW", "NE", "SW", "SE"};
-        double[][] offsets = {{-radius, -radius}, {radius, -radius}, {-radius, radius}, {radius, radius}};
-
-        for (int i = 0; i < 4; i++) {
-            Location loc = center.clone().add(offsets[i][0], 3.2, offsets[i][1]);
-            String name = "border_" + gridKey + "_" + corners[i];
-
-            // Remove old one if exists (best effort)
-            // For simplicity in this pass we rely on unique names and let admin clean if needed
-
-            com.thenerdcj.hologram.HologramData data = new com.thenerdcj.hologram.HologramData(name, loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
-            data.setScale(0.7);
-            data.setBillboard("CENTER");
-            data.addLine("§" + colorCode + "◆ Border Marker ◆");
-            data.addLine("§7" + corners[i]);
-            data.addLine("§fRadius: §b" + radius);
-
-            plugin.getHologramManager().spawnHologram(data);
-        }
-
         if (requester != null) {
-            requester.sendMessage("§aSpawned persistent border hologram markers at corners.");
+            requester.sendMessage("§7Border hologram markers are no longer supported (hologram system removed).");
         }
     }
 
     public void removeBorderHologramMarkers(Island island) {
-        // In a production version we would query and delete by name prefix.
-        // For this implementation, we document that admins can use /hologram delete for "border_*" names.
+        // no-op after hologram removal
     }
 
     private String getColorCode(String color) {

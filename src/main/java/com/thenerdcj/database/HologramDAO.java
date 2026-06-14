@@ -14,11 +14,8 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Data Access Object for persistent holograms (admin/info/leaderboard displays).
- * Extracted from DatabaseManager as continuation of full modularization.
- * 
- * Follows IslandDAO/BaseDAO + DBOperations bridge pattern during migration.
- * Table creation stays centralized in DatabaseManager for this phase.
- * Folia async via supplyAsync (prefers AsyncScheduler).
+ * Modern implementation using DBOperations for Folia-safe async DB access.
+ * Supports text lines and basic properties for TextDisplay entities.
  */
 public class HologramDAO extends BaseDAO {
 
@@ -28,7 +25,7 @@ public class HologramDAO extends BaseDAO {
 
     @Override
     public void initialize() {
-        // Schema (holograms + hologram_lines) remains in DatabaseManager.initDatabase() for now.
+        // Schema handled in DatabaseManager for now.
     }
 
     public CompletableFuture<List<HologramData>> loadAllHolograms() {
@@ -62,14 +59,15 @@ public class HologramDAO extends BaseDAO {
                                 throw new RuntimeException(ex);
                             }
 
-                            // Optional fields (billboard, scale, etc.)
-                            try {
-                                data.setBillboard(rs.getString("billboard"));
-                            } catch (Exception ignored) {}
-                            try {
-                                data.setScale(rs.getDouble("scale"));
-                            } catch (Exception ignored) {}
-                            // ... other fields can be populated similarly if present in result
+                            // Optional fields
+                            try { data.setBillboard(rs.getString("billboard")); } catch (Exception ignored) {}
+                            try { data.setScale(rs.getDouble("scale")); } catch (Exception ignored) {}
+                            try { data.setSeeThrough(rs.getBoolean("see_through")); } catch (Exception ignored) {}
+                            try { data.setShadow(rs.getBoolean("shadow")); } catch (Exception ignored) {}
+                            try { data.setBackgroundColor(rs.getString("background_color")); } catch (Exception ignored) {}
+                            try { data.setDynamic(rs.getBoolean("is_dynamic")); } catch (Exception ignored) {}
+                            try { data.setDynamicType(rs.getString("dynamic_type")); } catch (Exception ignored) {}
+                            try { data.setUpdateInterval(rs.getInt("update_interval")); } catch (Exception ignored) {}
 
                             list.add(data);
                         }
@@ -220,10 +218,6 @@ public class HologramDAO extends BaseDAO {
         });
     }
 
-    /**
-     * Updates only the position of an existing hologram (used by /holo movehere and GUI move action).
-     * Does not touch lines or other metadata.
-     */
     public CompletableFuture<Boolean> updateHologramPosition(int id, String world, double x, double y, double z) {
         return supplyAsync(() -> {
             try {

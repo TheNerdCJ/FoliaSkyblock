@@ -5,8 +5,9 @@ import java.util.List;
 
 /**
  * Data model for a persistent admin hologram.
- * Stored in database and used to (re)spawn TextDisplay entities.
- * FoliaSkyblock - Play to Win compliant, admin-only tool for info/leaderboards.
+ * Stored in database and used to (re)spawn Display entities (TextDisplay/ItemDisplay).
+ * Modernized: supports text and item lines (prefix "ITEM:material" for items).
+ * FoliaSkyblock - fully Folia scheduler aware via HologramManager.
  */
 public class HologramData {
 
@@ -17,17 +18,17 @@ public class HologramData {
     private double y;
     private double z;
     private String billboard = "CENTER";
-    private String backgroundColor; // e.g. "#00000080" or null for default
+    private String backgroundColor; // e.g. "#00000080" or null
     private double scale = 1.0;
     private boolean seeThrough = false;
     private boolean shadow = true;
-    private String permission; // optional permission node or rank name
+    private String permission; // optional
     private final List<String> lines = new ArrayList<>();
 
-    // Dynamic leaderboard support
+    // Dynamic leaderboard support (e.g. top islands)
     private boolean dynamic = false;
-    private String dynamicType;      // e.g. "TOP_ISLANDS_LEVEL", "TOP_ISLANDS_XP", "TOP_PLAYERS_BALANCE"
-    private int updateInterval = 300; // seconds (default 5 minutes)
+    private String dynamicType;      // e.g. "TOP_ISLANDS_LEVEL"
+    private int updateInterval = 300; // seconds
 
     public HologramData() {}
 
@@ -97,7 +98,7 @@ public class HologramData {
         }
     }
 
-    // === Dynamic Leaderboard Getters/Setters ===
+    // Dynamic
     public boolean isDynamic() { return dynamic; }
     public void setDynamic(boolean dynamic) { this.dynamic = dynamic; }
 
@@ -105,5 +106,5 @@ public class HologramData {
     public void setDynamicType(String dynamicType) { this.dynamicType = dynamicType; }
 
     public int getUpdateInterval() { return updateInterval; }
-    public void setUpdateInterval(int updateInterval) { this.updateInterval = Math.max(30, updateInterval); } // minimum 30s
+    public void setUpdateInterval(int updateInterval) { this.updateInterval = Math.max(30, updateInterval); }
 }

@@ -476,11 +476,8 @@ public class IslandProtectionListener implements Listener {
     public void onWorldUnload(WorldUnloadEvent e) {
         World world = e.getWorld();
         if (world == null) return;
-        // Delegate cleanup to managers holding per-world / per-island active entities (holograms, minions, furniture, structures)
+        // Delegate cleanup to managers holding per-world / per-island active entities (minions, furniture, structures)
         // Prevents holding references to entities in unloaded worlds (Folia region safety + memory).
-        if (plugin.getHologramManager() != null) {
-            plugin.getHologramManager().onWorldUnload(world);
-        }
         if (plugin.getMinionManager() != null) {
             plugin.getMinionManager().onWorldUnload(world);
         }

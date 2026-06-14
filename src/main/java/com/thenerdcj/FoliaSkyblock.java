@@ -614,7 +614,9 @@ public class FoliaSkyblock extends JavaPlugin {
         MessageUtil.info(getLogger(), "§e[WorldManager] Creating custom void worlds for Skyblock...");
 
         this.hologramManager = new HologramManager(this);
-        hologramManager.loadAndSpawnAll();
+        // Hologram loading/spawning is triggered from WorldManager.completeHubSpawn()
+        // (after spawn platform chunks are preloaded and ready on Folia). This ensures
+        // holograms located at/near the central spawn reliably appear.
 
         // === GUIs ===
         this.tradeGUI = new TradeGUI(this);
@@ -918,8 +920,8 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandManager getIslandManager() { return islandManager; }
     public EconomyManager getEconomyManager() { return economyManager; }
     public RankManager getRankManager() { return rankManager; }
-    public HologramManager getHologramManager() { return hologramManager; }
     public GridManager getGridManager() { return gridManager; }
+    public HologramManager getHologramManager() { return hologramManager; }
     public IslandGenerator getIslandGenerator() { return islandGenerator; }
     public IslandBankManager getIslandBankManager() { return islandBankManager; }
     public BossManager getBossManager() { return bossManager; }

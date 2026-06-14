@@ -111,6 +111,10 @@ public class WorldManager {
             MessageUtil.warning(plugin.getLogger(), "§c[WorldManager] Overworld never loaded — cannot generate spawn hub. "
                     + "Allowing joins without spawn gate.");
             hubSpawnReady = true;
+            // Still attempt to load holograms (spawn-area ones will gracefully no-op / warn)
+            if (plugin.getHologramManager() != null) {
+                plugin.getHologramManager().loadAndSpawnAll();
+            }
             return;
         }
 
@@ -350,6 +354,14 @@ public class WorldManager {
         MessageUtil.info(plugin.getLogger(), "§a[WorldManager] Hub spawn ready at "
                 + spawn.getBlockX() + ", " + spawn.getBlockY() + ", " + spawn.getBlockZ()
                 + " (world: " + world.getName() + ")");
+
+        // Trigger hologram loading/spawning *after* the central spawn platform/hub chunks
+        // have been preloaded and built. This fixes "holograms don't generate in the spawn"
+        // on Folia (central region tasks for holograms at 0,0 would otherwise race with
+        // the batched platform generation and chunk preload).
+        if (plugin.getHologramManager() != null) {
+            plugin.getHologramManager().loadAndSpawnAll();
+        }
     }
 
     public void generateSpawnPlatform(World world) {
