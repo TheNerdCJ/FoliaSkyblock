@@ -5,6 +5,7 @@ import com.thenerdcj.database.DatabaseManager;
 import com.thenerdcj.database.TopIslandEntry;
 import com.thenerdcj.util.MessageUtil;
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -37,6 +38,9 @@ public class HologramManager {
     private final DatabaseManager databaseManager;
     private final Map<Integer, Hologram> activeHolograms = new ConcurrentHashMap<>();
     private final Map<Integer, ScheduledTask> dynamicTasks = new ConcurrentHashMap<>();
+    // All known (persistent) holograms loaded from DB. Used to re-spawn on chunk load/return.
+    // This ensures holograms always re-appear when their chunk is loaded, unless they are temp with timer.
+    private final Map<Integer, HologramData> allKnownHolograms = new ConcurrentHashMap<>();
 
     // Bounded for large scale
     private static final int MAX_HOLOGRAMS = 1000;
@@ -48,8 +52,13 @@ public class HologramManager {
     }
 
     public void loadAndSpawnAll() {
+        plugin.getLogger().info("[HOLO-DEBUG] loadAndSpawnAll() called - starting async DB load for all holograms");
         databaseManager.loadAllHolograms().thenAccept(holoList -> {
+            allKnownHolograms.clear();
+            plugin.getLogger().info("[HOLO-DEBUG] DB load complete - found " + holoList.size() + " holograms to spawn");
             for (HologramData data : holoList) {
+                allKnownHolograms.put(data.getId(), data);
+                plugin.getLogger().info("[HOLO-DEBUG] loadAndSpawnAll processing: id=" + data.getId() + " name='" + data.getName() + "' world=" + data.getWorldName() + " lines=" + data.getLines().size() + " dynamic=" + data.isDynamic());
                 spawnHologram(data);
 
                 if (data.isDynamic() && data.getDynamicType() != null &&
@@ -62,19 +71,31 @@ public class HologramManager {
             }
             MessageUtil.info(plugin.getLogger(), "§a[HologramManager] Loaded and spawned " + holoList.size() + " persistent holograms.");
         }).exceptionally(ex -> {
-            plugin.getLogger().log(Level.WARNING, "Failed to load holograms", ex);
+            plugin.getLogger().log(Level.WARNING, "[HOLO-DEBUG] Failed to load holograms", ex);
             return null;
         });
     }
 
     public void spawnHologram(HologramData data) {
-        if (data == null) return;
+        if (data == null) {
+            plugin.getLogger().warning("[HOLO-DEBUG] spawnHologram called with null data!");
+            return;
+        }
+
+        plugin.getLogger().info("[HOLO-DEBUG] === SPAWN START === id=" + data.getId() + " name='" + data.getName() + "' world='" + data.getWorldName() + 
+            "' pos=(" + String.format("%.2f,%.2f,%.2f", data.getX(), data.getY(), data.getZ()) + ") lines=" + data.getLines().size() + 
+            " scale=" + data.getScale() + " billboard=" + data.getBillboard() + " dynamic=" + data.isDynamic());
+
+        if (data.getLines().isEmpty()) {
+            plugin.getLogger().warning("[HOLO-DEBUG] Aborting spawn - 0 lines for id=" + data.getId());
+        }
 
         Hologram previous = activeHolograms.remove(data.getId());
         ScheduledTask oldTask = dynamicTasks.remove(data.getId());
         if (oldTask != null) oldTask.cancel();
 
         if (previous != null) {
+            plugin.getLogger().info("[HOLO-DEBUG] Cleaning previous wrapper for id=" + data.getId() + " (had " + previous.getDisplays().size() + " displays)");
             if (!previous.getDisplays().isEmpty()) {
                 Location loc = previous.getDisplays().get(0).getLocation();
                 plugin.getServer().getRegionScheduler().execute(plugin, loc, previous::removeAll);
@@ -93,6 +114,7 @@ public class HologramManager {
         if (wrapper == null) {
             wrapper = new Hologram(data, new ArrayList<>());
             activeHolograms.put(data.getId(), wrapper);
+            plugin.getLogger().info("[HOLO-DEBUG] Created new empty wrapper and put in activeHolograms for id=" + data.getId());
         }
 
         if (data.getLines().isEmpty()) {
@@ -102,83 +124,108 @@ public class HologramManager {
 
         World world = Bukkit.getWorld(data.getWorldName());
         if (world == null) {
-            plugin.getLogger().warning("[HologramManager] Hologram world not found for id=" + data.getId() + " name=" + data.getName() + ": " + data.getWorldName());
+            plugin.getLogger().severe("[HOLO-DEBUG] CRITICAL: World '" + data.getWorldName() + "' is NULL for hologram id=" + data.getId() + " name='" + data.getName() + "'. Cannot spawn. Check world name in DB vs actual loaded world.");
             return;
         }
+        plugin.getLogger().info("[HOLO-DEBUG] World resolved: " + world.getName() + " (env=" + world.getEnvironment() + ") for id=" + data.getId());
 
         Location baseLoc = new Location(world, data.getX(), data.getY(), data.getZ());
+        boolean isSpawnArea = (plugin.getWorldManager() != null && plugin.getWorldManager().getHubSpawnLocation(world) != null 
+            && baseLoc.distance(plugin.getWorldManager().getHubSpawnLocation(world)) < 150);
+        plugin.getLogger().info("[HOLO-DEBUG] isSpawnArea=" + isSpawnArea + " for this hologram");
 
         plugin.getLogger().info("[HologramManager] Scheduling spawn for hologram id=" + data.getId() + " '" + data.getName() + "' with " + data.getLines().size() + " line(s) at " +
                 String.format("%.1f,%.1f,%.1f", data.getX(), data.getY(), data.getZ()) + " in world " + data.getWorldName());
 
-        // Use RegionScheduler with small delay for reliability on Folia (region activation)
+        // Reduced delay for faster hologram spawn. Spawn area gets small extra time.
+        final int delayTicks = isSpawnArea ? 5 : 1;
+        plugin.getLogger().info("[HOLO-DEBUG] Computed delayTicks=" + delayTicks + " (spawnArea=" + isSpawnArea + ")");
+
+        // Use RegionScheduler with delay for reliability on Folia (region activation + chunk load)
         plugin.getServer().getRegionScheduler().runDelayed(plugin, baseLoc, scheduledTask -> {
             try {
-                plugin.getLogger().info("[HologramManager] Region task executing for hologram id=" + data.getId() + " '" + data.getName() + "' (5-tick delayed).");
+                plugin.getLogger().info("[HOLO-DEBUG] >>> REGION TASK START <<< for id=" + data.getId() + " name='" + data.getName() + "' delayWas=" + delayTicks + " thread=" + Thread.currentThread().getName());
 
                 Location chunkLoc = baseLoc.clone();
+                boolean wasLoaded = chunkLoc.getChunk().isLoaded();
                 chunkLoc.getChunk().load();
+                boolean nowLoaded = chunkLoc.getChunk().isLoaded();
+                plugin.getLogger().info("[HOLO-DEBUG] Chunk at " + (baseLoc.getBlockX()>>4) + "," + (baseLoc.getBlockZ()>>4) + " wasLoaded=" + wasLoaded + " nowLoaded=" + nowLoaded + " after .load()");
 
                 List<Display> displays = new ArrayList<>();
                 double yOffset = 1.0;
                 double scale = data.getScale();
+                int lineIndex = 0;
 
                 for (String rawLine : data.getLines()) {
+                    lineIndex++;
                     Location lineLoc = baseLoc.clone().add(0, yOffset, 0);
                     try { lineLoc.getChunk().load(); } catch (Exception ignored) {}
 
-                    Display display;
-                    if (rawLine.startsWith("ITEM:")) {
-                        // Item line: ITEM:DIAMOND or ITEM:DIAMOND:1
-                        String[] parts = rawLine.substring(5).split(":");
-                        Material mat = Material.matchMaterial(parts[0]);
-                        if (mat == null) mat = Material.STONE;
-                        int amount = 1;
-                        if (parts.length > 1) {
-                            try { amount = Integer.parseInt(parts[1]); } catch (Exception ignored) {}
+                    plugin.getLogger().info("[HOLO-DEBUG] Line " + lineIndex + "/" + data.getLines().size() + ": '" + (rawLine.length() > 50 ? rawLine.substring(0,50)+"..." : rawLine) + "' at " + String.format("%.1f,%.1f,%.1f", lineLoc.getX(), lineLoc.getY(), lineLoc.getZ()));
+
+                    Display display = null;
+                    try {
+                        if (rawLine.startsWith("ITEM:")) {
+                            String[] parts = rawLine.substring(5).split(":");
+                            Material mat = Material.matchMaterial(parts[0]);
+                            if (mat == null) mat = Material.STONE;
+                            int amount = 1;
+                            if (parts.length > 1) {
+                                try { amount = Integer.parseInt(parts[1]); } catch (Exception ignored) {}
+                            }
+                            ItemStack item = new ItemStack(mat, amount);
+                            display = world.spawn(lineLoc, ItemDisplay.class, entity -> {
+                                entity.setItemStack(item);
+                                entity.setBillboard(Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
+                                entity.setTransformation(new org.bukkit.util.Transformation(
+                                        new org.joml.Vector3f(0,0,0),
+                                        new org.joml.Quaternionf(),
+                                        new org.joml.Vector3f((float) scale, (float) scale, (float) scale),
+                                        new org.joml.Quaternionf()
+                                ));
+                                entity.setPersistent(false);
+                            });
+                        } else {
+                            display = world.spawn(lineLoc, TextDisplay.class, entity -> {
+                                String processed = rawLine;
+                                if (rawLine.contains("%island_worth%") || rawLine.contains("%island_worth_level%")) {
+                                    processed = processed.replace("%island_worth%", "N/A").replace("%island_worth_level%", "N/A");
+                                }
+                                entity.text(MessageUtil.legacy(processed));
+                                entity.setBillboard(Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
+                                entity.setSeeThrough(data.isSeeThrough());
+                                entity.setShadowed(data.isShadow());
+                                entity.setBrightness(new Display.Brightness(15, 15));
+                                entity.setBackgroundColor(org.bukkit.Color.fromARGB(0, 0, 0, 0));
+                                if (data.getBackgroundColor() != null && !data.getBackgroundColor().isEmpty()) {
+                                    try {
+                                        int argb = Integer.parseUnsignedInt(data.getBackgroundColor().replace("#", ""), 16);
+                                        entity.setBackgroundColor(org.bukkit.Color.fromARGB(argb));
+                                    } catch (Exception ignored) {}
+                                }
+                                entity.setTransformation(new org.bukkit.util.Transformation(
+                                        new org.joml.Vector3f(0,0,0),
+                                        new org.joml.Quaternionf(),
+                                        new org.joml.Vector3f((float) scale, (float) scale, (float) scale),
+                                        new org.joml.Quaternionf()
+                                ));
+                                entity.setPersistent(false);
+                            });
                         }
-                        ItemStack item = new ItemStack(mat, amount);
-                        display = world.spawn(lineLoc, ItemDisplay.class, entity -> {
-                            entity.setItemStack(item);
-                            entity.setBillboard(Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
-                            entity.setTransformation(new org.bukkit.util.Transformation(
-                                    new org.joml.Vector3f(0,0,0),
-                                    new org.joml.Quaternionf(),
-                                    new org.joml.Vector3f((float) scale, (float) scale, (float) scale),
-                                    new org.joml.Quaternionf()
-                            ));
-                            entity.setPersistent(false);
-                        });
-                    } else {
-                        // Text line
-                        display = world.spawn(lineLoc, TextDisplay.class, entity -> {
-                            String processed = rawLine;
-                            if (rawLine.contains("%island_worth%") || rawLine.contains("%island_worth_level%")) {
-                                processed = processed.replace("%island_worth%", "N/A").replace("%island_worth_level%", "N/A");
-                            }
-                            entity.text(MessageUtil.legacy(processed));
-                            entity.setBillboard(Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
-                            entity.setSeeThrough(data.isSeeThrough());
-                            entity.setShadowed(data.isShadow());
-                            entity.setBrightness(new Display.Brightness(15, 15));
-                            entity.setBackgroundColor(org.bukkit.Color.fromARGB(0, 0, 0, 0));
-                            if (data.getBackgroundColor() != null && !data.getBackgroundColor().isEmpty()) {
-                                try {
-                                    int argb = Integer.parseUnsignedInt(data.getBackgroundColor().replace("#", ""), 16);
-                                    entity.setBackgroundColor(org.bukkit.Color.fromARGB(argb));
-                                } catch (Exception ignored) {}
-                            }
-                            entity.setTransformation(new org.bukkit.util.Transformation(
-                                    new org.joml.Vector3f(0,0,0),
-                                    new org.joml.Quaternionf(),
-                                    new org.joml.Vector3f((float) scale, (float) scale, (float) scale),
-                                    new org.joml.Quaternionf()
-                            ));
-                            entity.setPersistent(false);
-                        });
+                    } catch (Throwable spawnEx) {
+                        plugin.getLogger().severe("[HOLO-DEBUG] FAILED to spawn display for line " + lineIndex + " id=" + data.getId() + ": " + spawnEx.getMessage());
+                        spawnEx.printStackTrace();
                     }
 
-                    displays.add(display);
+                    if (display != null) {
+                        boolean valid = display.isValid();
+                        displays.add(display);
+                        plugin.getLogger().info("[HOLO-DEBUG] Spawned " + (rawLine.startsWith("ITEM:") ? "ItemDisplay" : "TextDisplay") + " for line " + lineIndex + " valid=" + valid + " at y=" + String.format("%.2f", display.getLocation().getY()));
+                    } else {
+                        plugin.getLogger().warning("[HOLO-DEBUG] display was null after spawn attempt for line " + lineIndex);
+                    }
+
                     yOffset -= 0.28 * scale;
                 }
 
@@ -186,24 +233,28 @@ public class HologramManager {
                 if (holo != null) {
                     holo.getDisplays().clear();
                     for (Display d : displays) holo.addDisplay(d);
+                    plugin.getLogger().info("[HOLO-DEBUG] Assigned " + displays.size() + " displays to EXISTING wrapper for id=" + data.getId());
                 } else {
                     Hologram newH = new Hologram(data, displays);
                     activeHolograms.put(data.getId(), newH);
+                    plugin.getLogger().info("[HOLO-DEBUG] Created NEW wrapper and assigned " + displays.size() + " displays for id=" + data.getId());
                 }
 
-                plugin.getLogger().info("[HologramManager] Successfully spawned hologram '" + data.getName() + "' (id=" + data.getId() + ") with " + displays.size() + " Display(s).");
+                plugin.getLogger().info("[HologramManager] Successfully spawned hologram '" + data.getName() + "' (id=" + data.getId() + ") with " + displays.size() + " Display(s). Active count now: " + activeHolograms.size());
 
                 if (data.isDynamic()) {
+                    plugin.getLogger().info("[HOLO-DEBUG] Starting dynamic refresh for id=" + data.getId());
                     startDynamicRefresh(activeHolograms.get(data.getId()));
                 }
             } catch (Throwable t) {
-                plugin.getLogger().severe("[HologramManager] Exception while spawning hologram id=" + data.getId() + " name='" + data.getName() + "': " + t.getMessage());
+                plugin.getLogger().severe("[HOLO-DEBUG] EXCEPTION in region task for id=" + data.getId() + " name='" + data.getName() + "': " + t.getMessage());
                 t.printStackTrace();
             }
-        }, 5L);
+        }, delayTicks);
     }
 
     public CompletableFuture<Boolean> deleteHologram(int id) {
+        allKnownHolograms.remove(id);
         Hologram holo = activeHolograms.remove(id);
         if (holo != null && !holo.getDisplays().isEmpty()) {
             Location loc = holo.getDisplays().get(0).getLocation();
@@ -411,6 +462,31 @@ public class HologramManager {
                 ScheduledTask t = dynamicTasks.remove(id);
                 if (t != null) t.cancel();
                 toRemove--;
+            }
+        }
+    }
+
+    /**
+     * Called on ChunkLoadEvent to re-spawn any known holograms whose location falls in this chunk.
+     * This ensures holograms always re-appear when their chunk is loaded/returned to (fixes disappearing on chunk leave/return).
+     * All holograms are persistent by default (re-spawned).
+     * For temporary ones with timer, they are deleted on timer, so won't be in known after.
+     */
+    public void onChunkLoad(Chunk chunk) {
+        if (chunk == null || allKnownHolograms.isEmpty()) return;
+        String wName = chunk.getWorld().getName();
+        int cx = chunk.getX();
+        int cz = chunk.getZ();
+        for (HologramData data : allKnownHolograms.values()) {
+            if (!data.getWorldName().equals(wName)) continue;
+            int hx = (int) Math.floor(data.getX()) >> 4;
+            int hz = (int) Math.floor(data.getZ()) >> 4;
+            if (hx == cx && hz == cz) {
+                Hologram active = activeHolograms.get(data.getId());
+                if (active == null || active.getDisplays().isEmpty()) {
+                    plugin.getLogger().info("[HOLO-DEBUG] Re-spawning hologram id=" + data.getId() + " name='" + data.getName() + "' on chunk load " + cx + "," + cz);
+                    spawnHologram(data);
+                }
             }
         }
     }

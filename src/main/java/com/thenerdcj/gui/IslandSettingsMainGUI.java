@@ -187,6 +187,17 @@ public class IslandSettingsMainGUI extends BaseGUI {
             String displayName = toggleDisplayName(key);
             plugin.getIslandSettingsManager().toggleSetting(pos, key).thenAccept(newValue -> {
                 player.sendMessage("§e" + displayName + " has been " + (newValue ? "§aenabled" : "§cdisabled") + "§e.");
+                // For border markers (hologram corners), immediately spawn or remove using the hologram system
+                if ("BORDER_MARKERS".equals(key) && plugin.getBorderVisualManager() != null) {
+                    Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+                    if (island != null) {
+                        if (newValue) {
+                            plugin.getBorderVisualManager().spawnBorderHologramMarkers(island, player);
+                        } else {
+                            plugin.getBorderVisualManager().removeBorderHologramMarkers(island);
+                        }
+                    }
+                }
                 reopen(player);
             });
         }
@@ -203,6 +214,7 @@ public class IslandSettingsMainGUI extends BaseGUI {
             case "ANIMALS" -> "Animal Spawning";
             case "LEAVES" -> "Leaf Decay";
             case "WARP" -> "Island Warp";
+            case "BORDER_MARKERS" -> "Border Markers (hologram corners)";
             default -> key;
         };
     }

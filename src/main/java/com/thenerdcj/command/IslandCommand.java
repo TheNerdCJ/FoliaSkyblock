@@ -176,7 +176,11 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
                 handlePrestige(player);
                 break;
             case "border":
-                handleBorder(player);
+                if (args.length > 1 && args[1].equalsIgnoreCase("markers")) {
+                    handleBorderMarkers(player, args);
+                } else {
+                    handleBorder(player);
+                }
                 break;
             case "boss":
                 handleBossCommand(player, args);
@@ -818,8 +822,58 @@ public class IslandCommand implements CommandExecutor, TabCompleter {
         if (prestige > 0) {
             MessageUtil.sendMessage(player, "§7Prestige Bonus: §d+" + (prestige * plugin.getConfig().getInt("upgrades.island-size.prestige-bonus.extra-per-prestige", 2)) + " radius");
         }
-        // Folia-safe: use cached value (non-blocking). Background refresh if needed.
+        // Folia-safe cached
+        boolean markers = plugin.getIslandSettingsManager()
+            .getCachedSettings(island.getGridPosition())
+            .isBorderMarkersEnabled();
+        MessageUtil.sendMessage(player, "§7Corner Markers (holograms): " + (markers ? "§aEnabled" : "§7Disabled") + " §8(/is border markers toggle)");
         MessageUtil.sendMessage(player, "§7Upgrade size with §b/is upgrade §7(ISLAND_SIZE)");
+    }
+
+    private void handleBorderMarkers(Player player, String[] args) {
+        Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        if (island == null) {
+            MessageUtil.sendMessage(player, "§cYou don't have an island in this dimension.");
+            return;
+        }
+
+        plugin.getIslandSettingsManager().getSettings(island.getGridPosition()).thenAccept(settings -> {
+            boolean current = settings.isBorderMarkersEnabled();
+            boolean newValue = current;
+
+            String action = (args.length > 2) ? args[2].toLowerCase() : "toggle";
+
+            switch (action) {
+                case "on", "enable" -> newValue = true;
+                case "off", "disable" -> newValue = false;
+                case "toggle", "" -> newValue = !current;
+                default -> {
+                    MessageUtil.sendMessage(player, "§cUsage: /is border markers [toggle|on|off]");
+                    return;
+                }
+            }
+
+            if (newValue == current) {
+                MessageUtil.sendMessage(player, "§eBorder markers are already " + (current ? "§aenabled" : "§7disabled") + "§e.");
+                return;
+            }
+
+            settings.setBorderMarkersEnabled(newValue);
+            plugin.getIslandSettingsManager().saveSettings(settings);
+
+            final boolean finalNewValue = newValue;
+            plugin.getThreadSafety().runOnMainThread(() -> {
+                if (plugin.getBorderVisualManager() != null) {
+                    if (finalNewValue) {
+                        plugin.getBorderVisualManager().spawnBorderHologramMarkers(island, player);
+                        MessageUtil.sendMessage(player, "§aPersistent border hologram markers §aenabled§a! Corners now have markers.");
+                    } else {
+                        plugin.getBorderVisualManager().removeBorderHologramMarkers(island);
+                        MessageUtil.sendMessage(player, "§7Persistent border hologram markers §cdisabled§7.");
+                    }
+                }
+            });
+        });
     }
 
     private void handleCrate(Player player) {

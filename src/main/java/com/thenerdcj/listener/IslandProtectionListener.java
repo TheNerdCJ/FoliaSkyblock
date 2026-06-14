@@ -16,6 +16,8 @@ import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.vehicle.*;
+import org.bukkit.Chunk;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.EnderDragon;
@@ -488,6 +490,19 @@ public class IslandProtectionListener implements Listener {
             plugin.getIslandStructureManager().onWorldUnload(world);
         }
         plugin.getLogger().info("[FoliaSkyblock] Folia unload cleanup performed for world: " + world.getName());
+        // Also delegate hologram cleanup (though chunk load will re-spawn persistent ones)
+        if (plugin.getHologramManager() != null) {
+            plugin.getHologramManager().onWorldUnload(world);
+        }
+    }
+
+    @EventHandler
+    public void onChunkLoad(ChunkLoadEvent e) {
+        Chunk chunk = e.getChunk();
+        if (plugin.getHologramManager() != null) {
+            plugin.getHologramManager().onChunkLoad(chunk);
+        }
+        // Could delegate to other managers (e.g. chest shops, minions) if they need per-chunk respawn.
     }
 
     // ==================== SPAWN PROTECTION ====================

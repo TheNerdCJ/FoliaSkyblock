@@ -2,6 +2,8 @@ package com.thenerdcj.manager;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
+import com.thenerdcj.hologram.Hologram;
+import com.thenerdcj.hologram.HologramData;
 import com.thenerdcj.island.Island;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
@@ -33,15 +35,10 @@ public class BorderVisualManager {
         this.plugin = plugin;
         loadConfig();
 
-        // Start the repeating particle task (Folia-safe)
-        if (particlesEnabled) {
-            startParticleTask();
-        }
-
-        // Start WorldBorder auto-apply task (every 2 seconds - lightweight)
-        if (worldBorderEnabled) {
-            startWorldBorderTask();
-        }
+        // Always start the repeating tasks (Folia-safe). They guard with the current enabled flags inside,
+        // so if you enable visuals in config they will activate (after restart or manual reload).
+        startParticleTask();
+        startWorldBorderTask();
     }
 
     private void startWorldBorderTask() {
@@ -408,24 +405,64 @@ public class BorderVisualManager {
     }
 
     /**
-     * Border hologram markers have been removed (hologram system excised).
-     * This is a no-op stub. Use particle/worldborder visuals instead via /is border.
+     * Spawns (or re-spawns) persistent hologram markers at the 4 corners of the island border.
+     * Uses the hologram system (TextDisplay) so they persist across restarts.
+     * Called when border markers setting is enabled for the island.
      */
     public void spawnBorderHologramMarkers(Island island, Player requester) {
+        if (island == null || plugin.getHologramManager() == null) return;
+
+        int radius = plugin.getIslandUpgradeManager().getEffectiveIslandRadius(island);
+        Location center = island.getCenter(requester != null ? requester.getWorld() : Bukkit.getWorlds().get(0));
+        if (center == null) return;
+
+        // Folia-safe: cached settings
+        var settings = plugin.getIslandSettingsManager().getCachedSettings(island.getGridPosition());
+        if (!settings.isBorderMarkersEnabled()) return;
+
+        String colorCode = getColorCode(settings.getBorderColor());
+
+        String gridKey = island.getGridPosition().x() + "_" + island.getGridPosition().z() + "_" + island.getDimension().name();
+        String[] corners = {"NW", "NE", "SW", "SE"};
+        double[][] offsets = {{-radius, -radius}, {radius, -radius}, {-radius, radius}, {radius, radius}};
+
+        for (int i = 0; i < 4; i++) {
+            Location loc = center.clone().add(offsets[i][0], 3.2, offsets[i][1]);
+            String name = "border_" + gridKey + "_" + corners[i];
+
+            HologramData data = new HologramData(name, loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
+            data.setScale(0.7);
+            data.setBillboard("CENTER");
+            data.addLine("§" + colorCode + "◆ Border Marker ◆");
+            data.addLine("§7" + corners[i]);
+            data.addLine("§fRadius: §b" + radius);
+
+            plugin.getHologramManager().spawnHologram(data);
+        }
+
         if (requester != null) {
-            requester.sendMessage("§7Border hologram markers are no longer supported (hologram system removed).");
+            requester.sendMessage("§aSpawned persistent border hologram markers at corners.");
         }
     }
 
     public void removeBorderHologramMarkers(Island island) {
-        // no-op after hologram removal
+        if (island == null || plugin.getHologramManager() == null) return;
+
+        String gridKey = island.getGridPosition().x() + "_" + island.getGridPosition().z() + "_" + island.getDimension().name();
+        for (String c : new String[]{"NW", "NE", "SW", "SE"}) {
+            String name = "border_" + gridKey + "_" + c;
+            Hologram h = plugin.getHologramManager().getHologramByName(name);
+            if (h != null) {
+                plugin.getHologramManager().deleteHologram(h.getData().getId());
+            }
+        }
     }
 
     private String getColorCode(String color) {
         if (color == null) return "b";
         String c = color.toUpperCase();
         if (c.startsWith("#")) {
-            return "b"; // hex not directly mappable to chat color codes, fallback
+            return "b"; // hex fallback
         }
         return switch (c) {
             case "RED", "DARK_RED" -> "c";
@@ -439,4 +476,5 @@ public class BorderVisualManager {
             default -> "b";
         };
     }
+
 }
