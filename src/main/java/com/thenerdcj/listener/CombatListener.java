@@ -15,18 +15,12 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * CombatListener - Fully optimized for Folia 1.21+
- * Uses ConcurrentHashMap for thread-safe combat tagging.
- */
 public class CombatListener implements Listener {
 
     private final FoliaSkyblock plugin;
 
-    // Thread-safe combat tag storage: UUID -> expiry time (ms)
     private final ConcurrentHashMap<UUID, Long> combatTags = new ConcurrentHashMap<>();
 
-    // Combat tag duration in milliseconds (default 15 seconds)
     private final long combatTagDuration;
 
     public CombatListener(FoliaSkyblock plugin) {
@@ -55,13 +49,10 @@ public class CombatListener implements Listener {
         return true;
     }
 
-    // ====================== EVENT HANDLERS ======================
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageByEntityEvent e) {
         if (!(e.getDamager() instanceof Player damager)) return;
         if (!(e.getEntity() instanceof Player victim)) return;
-
-        // Tag both players
         tagPlayer(damager);
         tagPlayer(victim);
     }
@@ -72,26 +63,13 @@ public class CombatListener implements Listener {
         UUID uuid = player.getUniqueId();
 
         if (isInCombat(player)) {
-            // Use EntityScheduler for Folia-safe player killing
-            if (plugin.isFolia()) {
-                player.getScheduler().run(plugin, scheduledTask -> {
-                    if (player.isOnline()) {
-                        player.setHealth(0);
-                        MessageUtil.info(plugin.getLogger(), "§c" + player.getName() + " combat logged and was killed.");
-                    }
-                }, null);
-            } else {
-                // Fallback for Paper/Spigot
-                plugin.getThreadSafety().runOnMainThread(() -> {
-                    if (player.isOnline()) {
-                        player.setHealth(0);
-                        MessageUtil.info(plugin.getLogger(), "§c" + player.getName() + " combat logged and was killed.");
-                    }
-                });
-            }
+            player.getScheduler().run(plugin, scheduledTask -> {
+                if (player.isOnline()) {
+                    player.setHealth(0);
+                    MessageUtil.info(plugin.getLogger(), "§c" + player.getName() + " combat logged and was killed.");
+                }
+            }, null);
         }
-
-        // Clean up
         combatTags.remove(uuid);
     }
 

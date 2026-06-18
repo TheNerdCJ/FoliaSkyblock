@@ -257,7 +257,7 @@ public class MinionManager {
         };
 
         // Use Folia EntityScheduler when possible — this is the correct way to tick per-entity on Folia
-        if (plugin.getThreadSafety().isFolia() && minion != null && minion.isValid()) {
+        if (minion != null && minion.isValid()) {
             plugin.getThreadSafety().runRepeatingForEntity(minion, minionTask, 20L * 5, 20L * 10);
         } else {
             // Fallback for Paper/Spigot — use ThreadSafety

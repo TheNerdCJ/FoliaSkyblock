@@ -2,8 +2,7 @@ package com.thenerdcj.tags;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.util.ThreadSafety;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import org.bukkit.Bukkit;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;import net.kyori.adventure.text.Component;import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
@@ -32,17 +31,7 @@ public class PlayerNametagManager {
 
     private static final int MAX_TEAM_NAME = 16;
 
-    public PlayerNametagManager(FoliaSkyblock plugin) {
-        this.plugin = plugin;
-        this.threadSafety = plugin.getThreadSafety();
-        if (!plugin.isFolia()) {
-            initScoreboardLegacy();
-        }
-    }
-
-    private void initScoreboardLegacy() {
-        threadSafety.runOnMainThread(() -> ensureCosmeticBoard());
-    }
+    public PlayerNametagManager(FoliaSkyblock plugin){this.plugin=plugin;this.threadSafety=plugin.getThreadSafety();threadSafety.runOnMainThread(this::ensureCosmeticBoard);}
 
     private void ensureCosmeticBoard() {
         if (cosmeticBoard != null || scoreboardUnsupported) {
@@ -55,16 +44,7 @@ public class PlayerNametagManager {
         }
     }
 
-    private void runNametagTask(Player player, Runnable task) {
-        if (player == null || !player.isOnline()) {
-            return;
-        }
-        if (plugin.isFolia()) {
-            player.getScheduler().run(plugin, t -> task.run(), null);
-        } else {
-            threadSafety.runOnMainThread(task);
-        }
-    }
+    private void runNametagTask(Player player, Runnable task){if(player==null||!player.isOnline())return;player.getScheduler().run(plugin,t->task.run(),null);}
 
     public void applyNametag(Player player) {
         if (player == null || !player.isOnline()) return;
@@ -88,11 +68,7 @@ public class PlayerNametagManager {
         if (plugin.getRankManager() != null) {
             var rankData = plugin.getRankManager().getPlayerRankData(uuid);
             if (rankData != null) {
-                String prefix = rankData.getPrefix();
-                if (prefix != null) {
-                    rankShort = org.bukkit.ChatColor.translateAlternateColorCodes('&', prefix);
-                    if (rankShort.length() > 10) rankShort = rankShort.substring(0, 10);
-                }
+                String prefix = rankData.getPrefix(); if (prefix != null) { rankShort = LegacyComponentSerializer.legacyAmpersand().serialize(LegacyComponentSerializer.legacyAmpersand().deserialize(prefix)); if (rankShort.length() > 10) rankShort = rankShort.substring(0, 10); }
             }
         }
 
@@ -120,8 +96,7 @@ public class PlayerNametagManager {
             team = cosmeticBoard.registerNewTeam(teamName);
         }
 
-        team.setPrefix(org.bukkit.ChatColor.translateAlternateColorCodes('&', finalPrefix + " "));
-        team.setSuffix(org.bukkit.ChatColor.translateAlternateColorCodes('&', finalSuffix));
+        team.prefix(LegacyComponentSerializer.legacyAmpersand().deserialize(finalPrefix + " ")); team.suffix(LegacyComponentSerializer.legacyAmpersand().deserialize(finalSuffix));
 
         if (!team.hasEntry(player.getName())) {
             for (Team t : cosmeticBoard.getTeams()) {
@@ -170,26 +145,9 @@ public class PlayerNametagManager {
         }
     }
 
-    public void onPlayerJoin(Player player) {
-        if (plugin.isFolia()) {
-            player.getScheduler().runDelayed(plugin, t -> applyNametag(player), null, 10L);
-        } else {
-            threadSafety.runOnMainThreadLater(() -> applyNametag(player), 10L);
-        }
-    }
-
-    public void onPlayerQuit(Player player) {
-        removeNametag(player);
-    }
-
-    public void refreshNametag(Player player) {
-        removeNametag(player);
-        if (plugin.isFolia()) {
-            player.getScheduler().runDelayed(plugin, t -> applyNametag(player), null, 2L);
-        } else {
-            threadSafety.runOnMainThreadLater(() -> applyNametag(player), 2L);
-        }
-    }
+    public void onPlayerJoin(Player player){if(player==null||!player.isOnline())return;player.getScheduler().runDelayed(plugin,t->applyNametag(player),null,10L);}
+    public void onPlayerQuit(Player player){removeNametag(player);}
+    public void refreshNametag(Player player){removeNametag(player);if(player!=null&&player.isOnline())player.getScheduler().runDelayed(plugin,t->applyNametag(player),null,2L);}
 
     public boolean toggleNametagVisibility(Player player) {
         UUID uuid = player.getUniqueId();

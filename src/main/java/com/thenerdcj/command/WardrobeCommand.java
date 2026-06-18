@@ -1,17 +1,6 @@
 package com.thenerdcj.command;
 
-import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.wardrobe.WardrobeGUI;
-import com.thenerdcj.wardrobe.WardrobeManager;
-import org.bukkit.Bukkit;
-import org.bukkit.Material;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
-import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
+import com.thenerdcj.FoliaSkyblock;import com.thenerdcj.wardrobe.WardrobeGUI;import com.thenerdcj.wardrobe.WardrobeManager;import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;import org.bukkit.Bukkit;import org.bukkit.Material;import org.bukkit.command.Command;import org.bukkit.command.CommandExecutor;import org.bukkit.command.CommandSender;import org.bukkit.entity.Player;import org.bukkit.inventory.Inventory;import org.bukkit.inventory.ItemStack;import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -55,7 +44,7 @@ public class WardrobeCommand implements CommandExecutor {
             }
         }
 
-        // Default: open the main wardrobe
+
         wardrobeGUI.openWardrobe(player);
         return true;
     }
@@ -72,42 +61,20 @@ public class WardrobeCommand implements CommandExecutor {
 
         Inventory inv = Bukkit.createInventory(null, 54, "§6§lWardrobe Collection §8(§a" + count + "§8)");
 
-        // Fill with collected materials as icons (using the new public getter from manager)
         Set<Material> collected = wardrobeManager.getEquipmentCollection(player.getUniqueId());
 
         int slot = 10;
         for (Material mat : collected) {
             if (slot >= 44) break;
 
-            ItemStack item = new ItemStack(mat);
-            ItemMeta meta = item.getItemMeta();
-            if (meta != null) {
-                meta.setDisplayName("§e" + mat.name());
-                List<String> lore = new ArrayList<>();
-                lore.add("§7Collected via Wardrobe");
-                lore.add("§7Contributes to Island XP");
-                meta.setLore(lore);
-                item.setItemMeta(meta);
-            }
+            ItemStack item = new ItemStack(mat); ItemMeta meta = item.getItemMeta(); if (meta != null) { var ser = LegacyComponentSerializer.legacyAmpersand(); meta.displayName(ser.deserialize("§e" + mat.name())); java.util.List<net.kyori.adventure.text.Component> lore = new ArrayList<>(); lore.add(ser.deserialize("§7Collected via Wardrobe")); lore.add(ser.deserialize("§7Contributes to Island XP")); meta.lore(lore); item.setItemMeta(meta); }
             inv.setItem(slot, item);
             slot++;
-            if ((slot - 9) % 9 == 0) slot += 2; // nice spacing
+            if ((slot - 9) % 9 == 0) slot += 2;
         }
 
-        // Info item
-        ItemStack info = new ItemStack(org.bukkit.Material.BOOK);
-        ItemMeta im = info.getItemMeta();
-        im.setDisplayName("§e§lYour Collection");
-        im.setLore(java.util.Arrays.asList(
-            "§7Total unique equipment pieces: §a" + count,
-            "§7Each new material grants Island XP",
-            "§7when first saved to any wardrobe slot.",
-            "",
-            "§8Collection grows as you save more gear!"
-        ));
-        info.setItemMeta(im);
+        ItemStack info = new ItemStack(org.bukkit.Material.BOOK); ItemMeta im = info.getItemMeta(); var ser = LegacyComponentSerializer.legacyAmpersand(); im.displayName(ser.deserialize("§e§lYour Collection")); im.lore(java.util.Arrays.asList(ser.deserialize("§7Total unique equipment pieces: §a" + count), ser.deserialize("§7Each new material grants Island XP"), ser.deserialize("§7when first saved to any wardrobe slot."), ser.deserialize(""), ser.deserialize("§8Collection grows as you save more gear!"))); info.setItemMeta(im);
         inv.setItem(49, info);
-
         player.openInventory(inv);
         player.sendMessage("§aOpened your Wardrobe Collection view (§e" + count + " §apieces).");
     }

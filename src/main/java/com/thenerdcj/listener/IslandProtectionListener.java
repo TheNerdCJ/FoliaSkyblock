@@ -122,11 +122,7 @@ public class IslandProtectionListener implements Listener {
         // Use MessageUtil.legacy to properly parse § colors (and hex) into Adventure Component.
         // Direct Component.text(msg) would show raw § codes instead of applying chat colors in the action bar.
         Component component = MessageUtil.legacy(msg);
-        if (plugin.isFolia()) {
-            player.getScheduler().run(plugin, t -> player.sendActionBar(component), null);
-        } else {
-            player.sendActionBar(component);
-        }
+        player.getScheduler().run(plugin, t -> player.sendActionBar(component), null);
     }
 
     private boolean canInteract(Player player, Location location) {

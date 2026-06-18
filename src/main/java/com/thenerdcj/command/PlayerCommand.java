@@ -203,7 +203,7 @@ public class PlayerCommand implements CommandExecutor, TabCompleter {
 
         // Alternative (just prefix):
         // RankData data = plugin.getRankManager().getPlayerRankData(uuid);
-        // return data != null ? org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getPrefix()) : "§7";
+
     }
 
     private void handleSpawn(Player player) {

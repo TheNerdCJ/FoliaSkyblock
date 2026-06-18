@@ -286,11 +286,7 @@ public class IslandXPListener implements Listener {
             String levelUpMsg = "§a§lISLAND LEVEL UP! §7Your island reached Level §e" + newLevel + "§7! (+" + String.format("%.1f", xp) + " XP from " + source + ")";
             island.getOnlineMembers().forEach(member -> {
                 if (member.isOnline()) {
-                    if (plugin.isFolia()) {
-                        member.getScheduler().run(plugin, t -> member.sendMessage(levelUpMsg), null);
-                    } else {
-                        member.sendMessage(levelUpMsg);
-                    }
+                    member.getScheduler().run(plugin, t -> member.sendMessage(levelUpMsg), null);
                 }
             });
 

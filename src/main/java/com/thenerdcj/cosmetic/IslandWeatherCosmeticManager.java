@@ -247,19 +247,7 @@ public class IslandWeatherCosmeticManager {
 
         // Schedule repeating particle effect (visible to this player).
         // Uses ThreadSafety helper for Paper fallback path (Folia uses direct player scheduler for self-cancel on disconnect).
-        Object task;
-        if (threadSafety.isFolia() && player.isValid()) {
-            task = player.getScheduler().runAtFixedRate(plugin, (scheduledTask) -> {
-                if (player.isOnline()) {
-                    particleTask.run();
-                } else {
-                    scheduledTask.cancel();
-                }
-            }, null, 10L, 15L); // fairly frequent for nice effect, low cost
-        } else {
-            task = threadSafety.runRepeatingForPlayer(player, particleTask, 10L, 15L);
-        }
-        if (task != null) activeWeatherTasks.put(player.getUniqueId(), task);
+        Object task=null;if(player!=null&&player.isValid()){task=player.getScheduler().runAtFixedRate(plugin,(scheduledTask)->{if(player.isOnline()){particleTask.run();}else{scheduledTask.cancel();}},null,10L,15L);}if(task!=null)activeWeatherTasks.put(player.getUniqueId(),task);
 
         // Immediate burst
         particleTask.run();

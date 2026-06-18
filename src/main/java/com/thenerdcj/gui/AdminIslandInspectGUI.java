@@ -17,32 +17,12 @@ import org.bukkit.inventory.ItemStack;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * Admin "island inspect" GUI for staff.
- * Uses DAOs (IslandDAO, CosmeticDAO, BalanceDAO, etc.) + managers to display
- * rich state for an island + player (upgrades, collections, skills, active cosmetics, balances, punishments).
- *
- * Opened via /isadmin inspect <player> (or island owner).
- * Read-only for diagnostics / support (Play-to-Win audit friendly).
- *
- * Task 7 polish: added spawn edit action (admin can set target island spawn to current loc for fix).
- * Data loaded via IslandDAO (bank/settings/worth/prestige/collections promoted), CosmeticDAO, BalanceDAO, PunishmentDAO.
- * Bug reports for the player are available separately via BugReportDAO (or /isadmin reports + /bug reports for staff triage).
- * Uses .join() for admin/staff tool (infrequent); production GUIs prefer full async + ThreadSafety.runOnMainThread.
- * TODO (follow-up): richer async non-join loads (data in runAsync background, build/open on main via ThreadSafety; no blocking in open caller); teleport action etc. (pagination largely complete per passes below).
- * Pagination complete (advanced across passes + this cycle via related tops GUI): target persisted + page nav re-opens with updated page + async reload + pure CF. More lists (collections, furniture, puns/full logs, overhead, emotes, skills, structures, quests, slayer, minions + now player IslandTopGUI offset pages) paged for large scale data compression (enhanced page size for full puns; structures/quests/slayer/minions + tops integration this/prior pass). Stale list in old TODO text cleaned.
- */
 public class AdminIslandInspectGUI implements Listener {
 
     private final FoliaSkyblock plugin;
-    // Simple per-staff page state for pagination in inspect (follow-up polish)
     private final java.util.Map<UUID, Integer> inspectPages = new java.util.concurrent.ConcurrentHashMap<>();
-    // Per-staff target owner for seamless re-open on page change (completes pagination)
     private final java.util.Map<UUID, UUID> inspectTargets = new java.util.concurrent.ConcurrentHashMap<>();
 
-    /**
-     * Holder for async fetched data to enable pure CF chaining (no blocking .join inside fetch lambdas for "pure CF" per MD).
-     */
     private static class InspectData {
         final double worth, bankBal, playerBal, avgRating;
         final int wLevel, prestige, collCount, tagCount, petCount, activePunish, ratingCount;
@@ -95,14 +75,9 @@ public class AdminIslandInspectGUI implements Listener {
             }
         }
 
-        // Store target for pagination re-open support (completes the pagination feature)
         UUID staffId = staff.getUniqueId();
         inspectTargets.put(staffId, targetOwner);
-
-        // Pagination state (simple per-staff for this inspect session)
         int page = inspectPages.getOrDefault(staffId, 0);
-
-        // DAOs (may be null in test)
         com.thenerdcj.database.IslandDAO islandDAO = plugin.getDatabaseManager() != null ? plugin.getDatabaseManager().getIslandDAO() : null;
         com.thenerdcj.database.CosmeticDAO cosmeticDAO = plugin.getDatabaseManager() != null ? plugin.getDatabaseManager().getCosmeticDAO() : null;
         com.thenerdcj.database.BalanceDAO balanceDAO = plugin.getDatabaseManager() != null ? plugin.getDatabaseManager().getBalanceDAO() : null;

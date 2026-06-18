@@ -57,263 +57,26 @@ public class FoliaSkyblock extends JavaPlugin {
         return new VoidChunkGenerator();
     }
 
-    // ==================== MANAGERS ====================
-    private DatabaseManager databaseManager;
-    private GridManager gridManager;
-    private IslandManager islandManager;
-    private EconomyManager economyManager;
-    private RankManager rankManager;
-    private ChallengeManager challengeManager;
-    private QuestManager questManager;
-    private QuestLogGUI questLogGUI;
-    private QuestDetailGUI questDetailGUI;
-    private BossManager bossManager;
-    private AntiCheatManager antiCheatManager;
-    private IslandUpgradeManager islandUpgradeManager;
-    private MinionManager minionManager;
-    private IslandSettingsManager islandSettingsManager;
-    private IslandBankManager islandBankManager;
-    private IslandRatingManager islandRatingManager;
-    private IslandWarpManager islandWarpManager;
-    private ChestShopManager chestShopManager;
-    private AuctionManager auctionManager;
-    private BazaarManager bazaarManager;
-    private ChatManager chatManager;
-    private WorldManager worldManager;
-    private IslandGenerator islandGenerator;
-    private IslandOreGenerator islandOreGenerator;
-    private HologramManager hologramManager;
-    private TeleportRequestManager teleportRequestManager;
-    private PunishmentManager punishmentManager;
-    private BugReportManager bugReportManager;
-    private BugReportListGUI bugReportListGUI;
-    private AutoSellerManager autoSellerManager;
-    private ThreadSafety threadSafety;
-    private NameCache nameCache;
+    private DatabaseManager databaseManager;private GridManager gridManager;private IslandManager islandManager;private EconomyManager economyManager;private RankManager rankManager;private ChallengeManager challengeManager;private QuestManager questManager;private QuestLogGUI questLogGUI;private QuestDetailGUI questDetailGUI;private BossManager bossManager;private AntiCheatManager antiCheatManager;private IslandUpgradeManager islandUpgradeManager;private MinionManager minionManager;private IslandSettingsManager islandSettingsManager;private IslandBankManager islandBankManager;private IslandRatingManager islandRatingManager;private IslandWarpManager islandWarpManager;private ChestShopManager chestShopManager;private AuctionManager auctionManager;private BazaarManager bazaarManager;private ChatManager chatManager;private WorldManager worldManager;private IslandGenerator islandGenerator;private IslandOreGenerator islandOreGenerator;private HologramManager hologramManager;private TeleportRequestManager teleportRequestManager;private PunishmentManager punishmentManager;private BugReportManager bugReportManager;private BugReportListGUI bugReportListGUI;private AutoSellerManager autoSellerManager;private ThreadSafety threadSafety;private NameCache nameCache;
 
-    // Island Worth / Level System
-    private IslandWorthManager islandWorthManager;
-    private MissionManager missionManager;
-    private BoosterManager boosterManager;
-    private BoosterGUI boosterGUI;
+    private IslandWorthManager islandWorthManager;private MissionManager missionManager;private BoosterManager boosterManager;private BoosterGUI boosterGUI;private IslandShopManager islandShopManager;private IslandShopGUI islandShopGUI;private IslandBankGUI islandBankGUI;private IslandSettingsGUI islandSettingsGUI;private PrestigeManager prestigeManager;private PrestigeGUI prestigeGUI;private BorderVisualManager borderVisualManager;private CrateManager crateManager;private CrateGUI crateGUI;private ParticleTrailManager particleTrailManager;private ParticleTrailGUI particleTrailGUI;private GeneratorGUI generatorGUI;private AdminIslandInspectGUI adminIslandInspectGUI;private SpawnEditGUI spawnEditGUI;private WardrobeManager wardrobeManager;private WardrobeGUI wardrobeGUI;private WardrobeSlotOptionsGUI wardrobeSlotOptionsGUI;private PetManager petManager;private PetGUI petGUI;private PlayerTagManager playerTagManager;private TagGUI tagGUI;private com.thenerdcj.cosmetic.JoinLeaveMessageManager joinLeaveMessageManager;private com.thenerdcj.cosmetic.JoinLeaveMessageMainGUI joinLeaveMessageMainGUI;private PlayerNametagManager playerNametagManager;private ElytraWingManager elytraWingManager;private WingGUI wingGUI;private RuneManager runeManager;private RuneGUI runeGUI;private HelmetSkinManager helmetSkinManager;private HelmetSkinGUI helmetSkinGUI;private DeathEffectManager deathEffectManager;private DeathEffectGUI deathEffectGUI;private DeathMessageManager deathMessageManager;
+    private DeathMessageGUI deathMessageGUI;private BackpackSkinManager backpackSkinManager;private BackpackSkinGUI backpackSkinGUI;private PowerOrbSkinManager powerOrbSkinManager;private PowerOrbSkinGUI powerOrbSkinGUI;private MinionSkinManager minionSkinManager;private MinionSkinGUI minionSkinGUI;private IslandFurnitureManager islandFurnitureManager;private IslandFurnitureGUI islandFurnitureGUI;private IslandMusicManager islandMusicManager;private IslandMusicGUI islandMusicGUI;private OverheadCosmeticManager overheadCosmeticManager;private EmoteCosmeticManager emoteCosmeticManager;private IslandStructureManager islandStructureManager;private IslandStructureGUI islandStructureGUI;
 
-    // Island Shop
-    private IslandShopManager islandShopManager;
-    private IslandShopGUI islandShopGUI;
-    private IslandBankGUI islandBankGUI;
-    private IslandSettingsGUI islandSettingsGUI;
-
-    // Prestige System
-    private PrestigeManager prestigeManager;
-    private PrestigeGUI prestigeGUI;
-
-    // Border / Size Upgrades + Visuals
-    private BorderVisualManager borderVisualManager;
-
-    // Crates + Cosmetics + Wardrobe
-    private CrateManager crateManager;
-    private CrateGUI crateGUI;
-    private ParticleTrailManager particleTrailManager;
-    private ParticleTrailGUI particleTrailGUI;
-    private GeneratorGUI generatorGUI;
-
-    // Admin tools
-    private AdminIslandInspectGUI adminIslandInspectGUI;
-    // Task batch: dedicated SpawnEditGUI (polish for admin spawn fixes)
-    private SpawnEditGUI spawnEditGUI;
-
-    private WardrobeManager wardrobeManager;
-    private WardrobeGUI wardrobeGUI;
-    private WardrobeSlotOptionsGUI wardrobeSlotOptionsGUI;
-
-    // Pet System (cosmetic followers, integrated with Wardrobe)
-    private PetManager petManager;
-    private PetGUI petGUI;
-
-    // Player Tag System (cosmetic chat/tab tags - prestige/slayer/collection gated)
-    private PlayerTagManager playerTagManager;
-    private TagGUI tagGUI;
-
-    // Join/Leave Message cosmetic system (personalized rich messages on join/quit)
-    private com.thenerdcj.cosmetic.JoinLeaveMessageManager joinLeaveMessageManager;
-    private com.thenerdcj.cosmetic.JoinLeaveMessageMainGUI joinLeaveMessageMainGUI;
-
-    // Overhead Nametags (cosmetic tags above player heads via scoreboard teams)
-    private PlayerNametagManager playerNametagManager;
-
-    // Elytra Wing Cosmetics (advanced gliding visual effects)
-    private ElytraWingManager elytraWingManager;
-    private WingGUI wingGUI;
-
-    // Cosmetic Runes
-    private RuneManager runeManager;
-    private RuneGUI runeGUI;
-
-    // Helmet Skins (cosmetic helmet appearance overrides)
-    private HelmetSkinManager helmetSkinManager;
-    private HelmetSkinGUI helmetSkinGUI;
-
-    // Death / Kill Effects (cosmetic on death and kill visuals)
-    private DeathEffectManager deathEffectManager;
-    private DeathEffectGUI deathEffectGUI;
-
-    // Cosmetic Death Messages (new system - text on kill/death, parallels DeathEffect)
-    private DeathMessageManager deathMessageManager;
-    private DeathMessageGUI deathMessageGUI;
-
-    // Backpack Skins (cosmetic overrides for backpacks - exploration/full impl started)
-    private BackpackSkinManager backpackSkinManager;
-    private BackpackSkinGUI backpackSkinGUI;
-
-    // Power Orb Skins (new cosmetic system - started)
-    private PowerOrbSkinManager powerOrbSkinManager;
-    private PowerOrbSkinGUI powerOrbSkinGUI;
-
-    // Minion Skins (cosmetic themes for island minions - active implementation)
-    private MinionSkinManager minionSkinManager;
-    private MinionSkinGUI minionSkinGUI;
-
-    // Island Furniture / Housing Cosmetics (foundation)
-    private IslandFurnitureManager islandFurnitureManager;
-    private IslandFurnitureGUI islandFurnitureGUI;
-
-    // Island Music & Ambient Cosmetics (new)
-    private IslandMusicManager islandMusicManager;
-    private IslandMusicGUI islandMusicGUI;
-
-    // Advanced Overhead Cosmetics (TextDisplay floating effects - new foundation)
-    private OverheadCosmeticManager overheadCosmeticManager;
-
-    // Cosmetic Emotes (new)
-    private EmoteCosmeticManager emoteCosmeticManager;
-
-    // Island Structure Decorations (new)
-    private IslandStructureManager islandStructureManager;
-    private IslandStructureGUI islandStructureGUI;
-
-    // Chat Bubble Cosmetics (floating chat visuals - new)
-    private ChatBubbleCosmeticManager chatBubbleCosmeticManager;
-
-    // Island Weather Cosmetics (new)
-    private IslandWeatherCosmeticManager islandWeatherCosmeticManager;
-    private IslandWeatherGUI islandWeatherGUI;
-
-    // Light Accessories (new)
-    private AccessoryCosmeticManager accessoryCosmeticManager;
-
-    // Core Collections System (unique per-island item discovery for progression + cosmetic rewards)
-    private CollectionManager collectionManager;
-    private CollectionsGUI collectionsGUI;
-
-    // Seasonal resets (full Option B impl: DB wipe + staggered Region clear + grants + safety)
-    private SeasonManager seasonManager;
-
-    // Task 4: Museum system (Hypixel depth)
-    private MuseumManager museumManager;
-    private MuseumGUI museumGUI;
-
-    // Player Skill System (MCMMO-inspired per-player skills with abilities, anti-cheat safe)
-    private PlayerSkillManager playerSkillManager;
-    private SkillGUI skillGUI;
-    private IslandTopGUI islandTopGUI;
-    private IslandBrowseGUI islandBrowseGUI;
-
-    // ==================== GUI INSTANCES ====================
-    private TradeGUI tradeGUI;
-    private SlayerGUI slayerGUI;
-    private SlayerLeaderboardGUI slayerLeaderboardGUI;
-    private SlayerAchievementGUI slayerAchievementGUI;
-    private SlayerShopGUI slayerShopGUI;
-    private SlayerTokenLeaderboardGUI slayerTokenLeaderboardGUI;
-    private EnchantingTableGUI enchantingTableGUI;
-    private EnchantmentManager enchantmentManager;
-    private IslandChatManager islandChatManager;
-    private IslandUpgradeGUI islandUpgradeGUI;
-    private ResetConfirmationGUI resetConfirmationGUI;
-    private BiomeSelectionGUI biomeSelectionGUI;
-    private TPAListGUI tpaListGUI;
-    private AuctionGUI auctionGUI;
-    private BazaarGUI bazaarGUI;
-
-    // NEW: Per-dimension island reset system
-    private DimensionResetGUI dimensionResetGUI;
+    private ChatBubbleCosmeticManager chatBubbleCosmeticManager;private IslandWeatherCosmeticManager islandWeatherCosmeticManager;private IslandWeatherGUI islandWeatherGUI;private AccessoryCosmeticManager accessoryCosmeticManager;private CollectionManager collectionManager;private CollectionsGUI collectionsGUI;private SeasonManager seasonManager;private MuseumManager museumManager;private MuseumGUI museumGUI;private PlayerSkillManager playerSkillManager;private SkillGUI skillGUI;private IslandTopGUI islandTopGUI;private IslandBrowseGUI islandBrowseGUI;private TradeGUI tradeGUI;private SlayerGUI slayerGUI;private SlayerLeaderboardGUI slayerLeaderboardGUI;private SlayerAchievementGUI slayerAchievementGUI;private SlayerShopGUI slayerShopGUI;private SlayerTokenLeaderboardGUI slayerTokenLeaderboardGUI;private EnchantingTableGUI enchantingTableGUI;private EnchantmentManager enchantmentManager;private IslandChatManager islandChatManager;private IslandUpgradeGUI islandUpgradeGUI;private ResetConfirmationGUI resetConfirmationGUI;private BiomeSelectionGUI biomeSelectionGUI;private TPAListGUI tpaListGUI;private AuctionGUI auctionGUI;private BazaarGUI bazaarGUI;private DimensionResetGUI dimensionResetGUI;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         validateConfiguration();
 
-        // No auto-download of any soft dependencies. The plugin is designed to be as independent
-        // as possible (no ProtocolLib, no WorldEdit, no PlaceholderAPI, etc.).
+        this.threadSafety = new ThreadSafety(this);this.nameCache = new NameCache(this);this.databaseManager = new DatabaseManager(this);databaseManager.initDatabase();this.gridManager = new GridManager(this);this.islandGenerator = new IslandGenerator(this);this.islandManager = new IslandManager(this);this.economyManager = new EconomyManager(this);this.rankManager = new RankManager(this);this.challengeManager = new ChallengeManager(this);this.questManager = new QuestManager(this);Bukkit.getPluginManager().registerEvents(questManager, this);this.questLogGUI = new QuestLogGUI(this);this.questDetailGUI = new QuestDetailGUI(this);this.bossManager = new BossManager(this);this.antiCheatManager = new AntiCheatManager(this);
 
-        // Schedulers must exist before managers that register repeating tasks in constructors
-        this.threadSafety = new ThreadSafety(this);
-        this.nameCache = new NameCache(this);
+        this.islandUpgradeManager = new IslandUpgradeManager(this);this.islandOreGenerator = new IslandOreGenerator(this, gridManager, islandUpgradeManager);this.islandSettingsManager = new IslandSettingsManager(this);
+        this.islandBankManager = new IslandBankManager(this);this.islandRatingManager = new IslandRatingManager(this);this.islandWarpManager = new IslandWarpManager(this);this.minionManager = new MinionManager(this);this.chestShopManager = new ChestShopManager(this);this.auctionManager = new AuctionManager(this);this.bazaarManager = new BazaarManager(this);this.chatManager = new ChatManager(this);this.teleportRequestManager = new TeleportRequestManager(this);this.tpaListGUI = new TPAListGUI(this, teleportRequestManager);this.punishmentManager = new PunishmentManager(this);this.bugReportManager = new BugReportManager(this);this.bugReportListGUI = new BugReportListGUI(this);getServer().getPluginManager().registerEvents(this.bugReportListGUI, this);this.autoSellerManager = new AutoSellerManager(this);this.islandWorthManager = new IslandWorthManager(this);this.missionManager = new MissionManager(this);this.boosterManager = new BoosterManager(this);this.boosterGUI = new BoosterGUI(this);this.islandShopManager = new IslandShopManager(this);this.islandShopGUI = new IslandShopGUI(this);this.islandBankGUI = new IslandBankGUI(this);this.islandSettingsGUI = new IslandSettingsGUI(this);this.prestigeManager = new PrestigeManager(this);this.prestigeGUI = new PrestigeGUI(this);this.borderVisualManager = new BorderVisualManager(this);this.crateManager = new CrateManager(this);this.crateGUI = new CrateGUI(this);this.particleTrailManager = new ParticleTrailManager(this);this.particleTrailGUI = new ParticleTrailGUI(this);this.generatorGUI = new GeneratorGUI(this);this.adminIslandInspectGUI = new AdminIslandInspectGUI(this);this.spawnEditGUI = new SpawnEditGUI(this);
 
-        // === Core Managers ===
-        this.databaseManager = new DatabaseManager(this);
-        databaseManager.initDatabase();
-
-        this.gridManager = new GridManager(this);
-        this.islandGenerator = new IslandGenerator(this);
-        this.islandManager = new IslandManager(this);
-        this.economyManager = new EconomyManager(this);
-        this.rankManager = new RankManager(this);
-        this.challengeManager = new ChallengeManager(this);
-        this.questManager = new QuestManager(this);
-        Bukkit.getPluginManager().registerEvents(questManager, this);
-        this.questLogGUI = new QuestLogGUI(this);
-        this.questDetailGUI = new QuestDetailGUI(this);
-        this.bossManager = new BossManager(this);
-        this.antiCheatManager = new AntiCheatManager(this);
-
-        this.islandUpgradeManager = new IslandUpgradeManager(this);
-        this.islandOreGenerator = new IslandOreGenerator(this, gridManager, islandUpgradeManager);
-        this.islandSettingsManager = new IslandSettingsManager(this);
-        this.islandBankManager = new IslandBankManager(this);
-        this.islandRatingManager = new IslandRatingManager(this);
-        this.islandWarpManager = new IslandWarpManager(this);
-        this.minionManager = new MinionManager(this);
-        this.chestShopManager = new ChestShopManager(this);
-        this.auctionManager = new AuctionManager(this);
-        this.bazaarManager = new BazaarManager(this);
-        this.chatManager = new ChatManager(this);
-        this.teleportRequestManager = new TeleportRequestManager(this);
-        this.tpaListGUI = new TPAListGUI(this, teleportRequestManager);
-        this.punishmentManager = new PunishmentManager(this);
-        this.bugReportManager = new BugReportManager(this);
-        this.bugReportListGUI = new BugReportListGUI(this);
-        // Register the shared instance as listener only once (prevents duplicate listeners on repeated GUI opens)
-        getServer().getPluginManager().registerEvents(this.bugReportListGUI, this);
-        this.autoSellerManager = new AutoSellerManager(this);
-
-        // Island Worth / Level + Economy sinks
-        this.islandWorthManager = new IslandWorthManager(this);
-        this.missionManager = new MissionManager(this);
-        this.boosterManager = new BoosterManager(this);
-        this.boosterGUI = new BoosterGUI(this);
-        this.islandShopManager = new IslandShopManager(this);
-        this.islandShopGUI = new IslandShopGUI(this);
-        this.islandBankGUI = new IslandBankGUI(this);
-        this.islandSettingsGUI = new IslandSettingsGUI(this);
-
-        // Prestige + Border + Crates + Cosmetics
-        this.prestigeManager = new PrestigeManager(this);
-        this.prestigeGUI = new PrestigeGUI(this);
-        this.borderVisualManager = new BorderVisualManager(this);
-        this.crateManager = new CrateManager(this);
-        this.crateGUI = new CrateGUI(this);
-        this.particleTrailManager = new ParticleTrailManager(this);
-        this.particleTrailGUI = new ParticleTrailGUI(this);
-        this.generatorGUI = new GeneratorGUI(this);
-        this.adminIslandInspectGUI = new AdminIslandInspectGUI(this);
-        this.spawnEditGUI = new SpawnEditGUI(this);
-
-        // Scheduled tasks - worth recalc now respects config (economy/perf optimization)
-        // For large servers, set recalc-interval-minutes high or 0 in config + rely on event-driven adjustBlockWorth in block listeners.
         long worthIntervalMin = (islandWorthManager != null && islandWorthManager.isPeriodicRecalcEnabled())
                 ? islandWorthManager.getWorthRecalcIntervalMinutes() : 0;
-        long worthDelay = (worthIntervalMin > 0) ? (20 * 60 * Math.max(1, worthIntervalMin)) : (20 * 60 * 60); // fallback 1h if disabled
+        long worthDelay = (worthIntervalMin > 0) ? (20 * 60 * Math.max(1, worthIntervalMin)) : (20 * 60 * 60);
         if (worthIntervalMin > 0) {
             threadSafety.runRepeatingOnMainThread(() -> {
                 if (islandWorthManager != null && islandManager != null) {
@@ -323,8 +86,6 @@ public class FoliaSkyblock extends JavaPlugin {
                     for (Island island : islandManager.getAllLoadedIslands().values()) {
                         if (island != null) {
                             if (cap > 0 && count >= cap) break;
-                            // Actual per-island RegionScheduler stagger for large scale worth drift correction (more than previous; use center for locality, cap work).
-                            // See IMPROVEMENTS "staggered per-island recalc using RegionScheduler", "Worth recalculation → break into per-island RegionScheduler", "more per-island RegionScheduler for globals".
                             org.bukkit.Location center = island.getCenter(null);
                             GridPosition gpForLog = island.getGridPosition();
                             if (center != null && center.getWorld() != null) {
@@ -345,7 +106,7 @@ public class FoliaSkyblock extends JavaPlugin {
                     }
                 }
             }, worthDelay, worthDelay);
-        } // else: fully event-driven (block events + explicit calls on upgrades/prestige/shop) for max scale perf
+        }
 
         threadSafety.runRepeatingOnMainThread(() -> {
             if (islandWorthManager != null) {
@@ -364,9 +125,6 @@ public class FoliaSkyblock extends JavaPlugin {
             }
         }, 20 * 30L, 20 * 30L);
 
-        // Island upkeep tax sink (economy/perf optimization from IMPROVEMENTS.md)
-        // Applies configurable % drain on island balances periodically (hourly) if enabled.
-        // Uses hardened tryRemove paths. Fire-and-forget per island. Uses RegionScheduler at island center for Folia safety.
         threadSafety.runRepeatingOnMainThread(() -> {
             if (economyManager != null && islandManager != null) {
                 if (getConfig().getBoolean("island.upkeep.enabled", false)) {
@@ -377,8 +135,7 @@ public class FoliaSkyblock extends JavaPlugin {
                         if (island != null) {
                             if (cap > 0 && count >= cap) break;
                             GridPosition gp = island.getGridPosition();
-                            // Schedule apply at island region for Folia correctness (even though DB async)
-                            org.bukkit.Location center = island.getCenter(null); // dim handled in get
+                            org.bukkit.Location center = island.getCenter(null);
                             if (center != null) {
                                 threadSafety.runAtLocation(center, () -> economyManager.applyIslandUpkeepTax(gp));
                             } else {
@@ -395,7 +152,6 @@ public class FoliaSkyblock extends JavaPlugin {
             }
         }, 20L * 60 * 60, 20L * 60 * 60); // hourly check
 
-        // Weekly Slayer Token leaderboard reset check (lightweight)
         threadSafety.runRepeatingOnMainThread(() -> {
             if (bossManager != null) {
                 long start = 0;
@@ -407,8 +163,6 @@ public class FoliaSkyblock extends JavaPlugin {
                         getLogger().info("[FoliaSkyblock] PROFILE: weekly token leaderboard reset took " + (ns / 1_000_000.0) + " ms");
                     }
                 }
-                // Additional actual staggered per-island RegionScheduler for large scale global tasks (e.g. weekly leaderboards + per-island holograms on 1000+).
-                // Cap + runAtLocation at island centers for locality instead of pure global.
                 if (islandManager != null) {
                     int sCount = 0; int sMax = 3;
                     for (Island is : islandManager.getAllLoadedIslands().values()) {
@@ -426,25 +180,16 @@ public class FoliaSkyblock extends JavaPlugin {
             }
         }, 20 * 60 * 5L, 20 * 60 * 5L);
 
-        // Global tops/leaderboards for large scale (1000+ islands): use DB paginated + event-driven (dirty flags like topsDirty in rating + worthTopsDirty/levelTopsDirty/membersTopsDirty in worth manager) + short TTL result caching in IslandWorthManager + pre-warm of first pages here + per-island RegionScheduler for any island-specific refresh (e.g., at island center via runAtLocation). 
-        // Example: stagger global top refresh to avoid global hot path.
         threadSafety.runRepeatingOnMainThread(() -> {
             if (islandRatingManager != null) {
                 long start = 0;
                 if (islandWorthManager != null && islandWorthManager.isProfileHotPaths()) start = System.nanoTime();
                 islandRatingManager.getTopRatedIslands(5).thenAccept(tops -> {
-                    // For real large scale, for each top island, could do threadSafety.runAtLocation(islandCenter, () -> updateHologramOrCache(top));
-                    // This staggers per-island RegionScheduler instead of one global.
-                    // Actual staggered per-island RegionScheduler for large scale (1000+ islands) global tops compression.
-                    // Cap and run lightweight work at per-island region centers (locality) instead of global hot path.
-                    // See IMPROVEMENTS "staggered RegionScheduler for more (e.g. global tops, leaderboards)", "per-island RegionScheduler for globals".
                     if (islandManager != null) {
                         int staggerCount = 0;
                         int maxStagger = islandWorthManager != null ? Math.min(5, islandWorthManager.getMaxIslandsPerRecalcTick()) : 3;
                         for (GridPosition pos : tops.keySet()) {
                             if (staggerCount++ >= maxStagger) break;
-                            // Placeholder center (in full impl: resolve real island center loc from pos via IslandManager/Grid);
-                            // Demonstrates executable stagger using ThreadSafety.runAtLocation for region-aware work.
                             org.bukkit.Location exampleCenter = new org.bukkit.Location(
                                 org.bukkit.Bukkit.getWorlds().isEmpty() ? null : org.bukkit.Bukkit.getWorlds().get(0), 
                                 pos.x() * 512 + 256, 100, pos.z() * 512 + 256
@@ -459,21 +204,11 @@ public class FoliaSkyblock extends JavaPlugin {
                         }
                     }
                 });
-                // Exercise DB-paginated tops (offset) for 1000+ scale compression (fetch only needed page, complements LIMIT in DAO).
-                islandRatingManager.getTopRatedIslands(5, 5).thenAccept(page2Tops -> {
-                    // page 2 sample; in production can drive paged leaderboard GUIs or partial refreshes.
-                });
-
-                // Pre-warm worth / level / members tops caches (event-driven + TTL in IslandWorthManager) for /is top GUI, PAPI, etc.
-                // Calling the getters triggers cache refresh if dirty/expired (short TTL + dirty sinks).
-                // Ties into "Top result caching + event-driven", "pre-warm top pages in Folia global tops task (staggered)".
+                islandRatingManager.getTopRatedIslands(5, 5).thenAccept(page2Tops -> {});
                 if (islandWorthManager != null) {
-                    islandWorthManager.getTopIslandsByWorth(20, 0); // pre-warm default worth tops (used by IslandTopGUI)
+                    islandWorthManager.getTopIslandsByWorth(20, 0);
                     islandWorthManager.getTopIslandsByLevel(10, 0);
                     islandWorthManager.getTopIslandsByMemberCount(10, 0);
-                    // Note: the getters handle the actual refresh + clearDirty internally when miss.
-                    // For full stagger on the top islands themselves, the per-pos runAtLocation above can be extended in future.
-                    // Also refresh rank snapshots from the (now populated) top windows.
                     islandWorthManager.refreshRankSnapshotsFromTops();
                 }
 
@@ -486,119 +221,10 @@ public class FoliaSkyblock extends JavaPlugin {
             }
         }, 20 * 60 * 10L, 20 * 60 * 10L);
 
-        // Periodic rank snapshot backfill/refresh task (the "Periodic or event-driven full rank snapshot backfill/refresh task" next step).
-        // Low-freq GlobalRegion task: calls refresh from current top caches (position-based stamps, no COUNT cost for hot islands)
-        // + backfillMissing which finds islands with worth>0 but no last_*_rank and fires the getMy* (which do one-time COUNT + persist snapshot).
-        // Complements per-island saves on calc/prestige, window stamps on cache populate, and TopGUITest coverage.
-        // Frequency low (30min) to keep work compressed for 1000+ islands. Initial delay to let startup settle.
-        // Event-driven aspect: cache gets in pre-warm/GUI/PAPI also trigger refreshRankSnapshotsFromTops.
-        threadSafety.runRepeatingOnMainThread(() -> {
-            if (islandWorthManager != null) {
-                islandWorthManager.refreshRankSnapshotsFromTops();
-                islandWorthManager.backfillMissingRankSnapshots(100);  // batch the long-tail
-            }
-        }, 20 * 60 * 2L, 20 * 60 * 30L);
+        threadSafety.runRepeatingOnMainThread(() -> { if (islandWorthManager != null) { islandWorthManager.refreshRankSnapshotsFromTops(); islandWorthManager.backfillMissingRankSnapshots(100); } }, 20 * 60 * 2L, 20 * 60 * 30L);
 
-        // Note: for global leaderboards/tops on large scale (1000+ islands), prefer per-island RegionScheduler staggering where possible (e.g. refresh per-island data at center) + DB paginated queries + event-driven invalidation via dirty flags (auctionsDirty, topsDirty, worthTopsDirty etc.) + short-TTL result caching (IslandWorthManager) + pre-warm here instead of pure periodic global. See IMPROVEMENTS suggestions for "per-island RegionScheduler for globals/leaderboards", "staggered RegionScheduler for more (e.g. global tops, leaderboards)", "For 1000+ islands: make leaderboard/top queries fully DB paginated", "Top result caching + event-driven". HologramManager and rating use some GlobalRegion for tops; can layer Region at island centers for locality.
-
-        // Wardrobe
-        this.wardrobeManager = new WardrobeManager(this);
-        this.wardrobeGUI = new WardrobeGUI(this);
-        this.wardrobeSlotOptionsGUI = new WardrobeSlotOptionsGUI(this);
-
-        // Pet System (cosmetic)
-        this.petManager = new PetManager(this);
-        this.petGUI = new PetGUI(this);
-
-        // Player Tag System
-        this.playerTagManager = new PlayerTagManager(this);
-        this.tagGUI = new TagGUI(this);
-
-        // Join/Leave Message System (personalized cosmetics for join/quit)
-        this.joinLeaveMessageManager = new com.thenerdcj.cosmetic.JoinLeaveMessageManager(this);
-        this.joinLeaveMessageMainGUI = new com.thenerdcj.cosmetic.JoinLeaveMessageMainGUI(this);
-
-        // Overhead Nametag System (scoreboard teams)
-        this.playerNametagManager = new PlayerNametagManager(this);
-
-        // Elytra Wing Cosmetics System
-        this.elytraWingManager = new ElytraWingManager(this);
-        this.wingGUI = new WingGUI(this);
-
-        // Cosmetic Runes System
-        this.runeManager = new RuneManager(this);
-        this.runeGUI = new RuneGUI(this);
-
-        // Helmet Skins System
-        this.helmetSkinManager = new HelmetSkinManager(this);
-        this.helmetSkinGUI = new HelmetSkinGUI(this);
-
-        // Death / Kill Effects System
-        this.deathEffectManager = new DeathEffectManager(this);
-        this.deathEffectGUI = new DeathEffectGUI(this);
-
-        // Death Messages cosmetic
-        this.deathMessageManager = new DeathMessageManager(this);
-        this.deathMessageGUI = new DeathMessageGUI(this);
-
-        // Backpack Skins System (exploration)
-        this.backpackSkinManager = new BackpackSkinManager(this);
-        this.backpackSkinGUI = new BackpackSkinGUI(this);
-
-        // Power Orb Skins System (new)
-        this.powerOrbSkinManager = new PowerOrbSkinManager(this);
-        this.powerOrbSkinGUI = new PowerOrbSkinGUI(this);
-
-        // Minion Skins System (active)
-        this.minionSkinManager = new MinionSkinManager(this);
-        this.minionSkinGUI = new MinionSkinGUI(this);
-
-        // Island Furniture / Housing (foundation)
-        this.islandFurnitureManager = new IslandFurnitureManager(this);
-        this.islandFurnitureGUI = new IslandFurnitureGUI(this);
-
-        // Island Music & Ambient (new)
-        this.islandMusicManager = new IslandMusicManager(this);
-        this.islandMusicGUI = new IslandMusicGUI(this);
-
-        // Advanced Overhead Cosmetics (foundation)
-        this.overheadCosmeticManager = new OverheadCosmeticManager(this);
-        // Overhead GUI
-        // (instantiated on demand for now; can be eager if needed)
-
-        // Cosmetic Emotes (new)
-        this.emoteCosmeticManager = new EmoteCosmeticManager(this);
-
-        // Island Structure Decorations (new)
-        this.islandStructureManager = new IslandStructureManager(this);
-        this.islandStructureGUI = new IslandStructureGUI(this);
-
-        // Chat Bubble Cosmetics (new)
-        this.chatBubbleCosmeticManager = new ChatBubbleCosmeticManager(this);
-
-        // Island Weather Cosmetics (new)
-        this.islandWeatherCosmeticManager = new IslandWeatherCosmeticManager(this);
-        this.islandWeatherGUI = new IslandWeatherGUI(this);
-
-        // Light Accessories (new)
-        this.accessoryCosmeticManager = new AccessoryCosmeticManager(this);
-
-        // Core Collections (island discovery)
-        this.collectionManager = new CollectionManager(this);
-        this.collectionsGUI = new CollectionsGUI(this);
-
-        // Seasonal resets (full Option B: data wipe + RegionScheduler plot clears + grant support)
-        this.seasonManager = new SeasonManager(this);
-
-        // Task 4: Museum (Hypixel-aligned collection sink/display + tokens for cosmetics)
-        this.museumManager = new MuseumManager(this);
-        this.museumGUI = new MuseumGUI(this);
-
-        // Player Skills (MCMMO reference, Folia + anti-cheat safe)
-        this.playerSkillManager = new PlayerSkillManager(this);
-        this.skillGUI = new SkillGUI(this);
-        this.islandTopGUI = new IslandTopGUI(this);
-        this.islandBrowseGUI = new IslandBrowseGUI(this);
+        this.wardrobeManager = new WardrobeManager(this);this.wardrobeGUI = new WardrobeGUI(this);this.wardrobeSlotOptionsGUI = new WardrobeSlotOptionsGUI(this);this.petManager = new PetManager(this);this.petGUI = new PetGUI(this);this.playerTagManager = new PlayerTagManager(this);this.tagGUI = new TagGUI(this);this.joinLeaveMessageManager = new com.thenerdcj.cosmetic.JoinLeaveMessageManager(this);this.joinLeaveMessageMainGUI = new com.thenerdcj.cosmetic.JoinLeaveMessageMainGUI(this);this.playerNametagManager = new PlayerNametagManager(this);this.elytraWingManager = new ElytraWingManager(this);this.wingGUI = new WingGUI(this);this.runeManager = new RuneManager(this);this.runeGUI = new RuneGUI(this);this.helmetSkinManager = new HelmetSkinManager(this);this.helmetSkinGUI = new HelmetSkinGUI(this);this.deathEffectManager = new DeathEffectManager(this);this.deathEffectGUI = new DeathEffectGUI(this);this.deathMessageManager = new DeathMessageManager(this);this.deathMessageGUI = new DeathMessageGUI(this);this.backpackSkinManager = new BackpackSkinManager(this);this.backpackSkinGUI = new BackpackSkinGUI(this);this.powerOrbSkinManager = new PowerOrbSkinManager(this);this.powerOrbSkinGUI = new PowerOrbSkinGUI(this);this.minionSkinManager = new MinionSkinManager(this);
+        this.minionSkinGUI = new MinionSkinGUI(this);this.islandFurnitureManager = new IslandFurnitureManager(this);this.islandFurnitureGUI = new IslandFurnitureGUI(this);this.islandMusicManager = new IslandMusicManager(this);this.islandMusicGUI = new IslandMusicGUI(this);this.overheadCosmeticManager = new OverheadCosmeticManager(this);this.emoteCosmeticManager = new EmoteCosmeticManager(this);this.islandStructureManager = new IslandStructureManager(this);this.islandStructureGUI = new IslandStructureGUI(this);this.chatBubbleCosmeticManager = new ChatBubbleCosmeticManager(this);this.islandWeatherCosmeticManager = new IslandWeatherCosmeticManager(this);this.islandWeatherGUI = new IslandWeatherGUI(this);this.accessoryCosmeticManager = new AccessoryCosmeticManager(this);this.collectionManager = new CollectionManager(this);this.collectionsGUI = new CollectionsGUI(this);this.seasonManager = new SeasonManager(this);this.museumManager = new MuseumManager(this);this.museumGUI = new MuseumGUI(this);this.playerSkillManager = new PlayerSkillManager(this);this.skillGUI = new SkillGUI(this);this.islandTopGUI = new IslandTopGUI(this);this.islandBrowseGUI = new IslandBrowseGUI(this);
 
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.DeathEffectListener(this), this);
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.ChatBubbleListener(this), this);
@@ -607,44 +233,16 @@ public class FoliaSkyblock extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.SkillListener(this), this);
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.EarlyGameListener(this), this);
 
-        // World + Holograms
         this.worldManager = new WorldManager(this);
         Bukkit.getPluginManager().registerEvents(new com.thenerdcj.listener.SpawnJoinListener(this), this);
         this.worldManager.initializeWorlds();
         MessageUtil.info(getLogger(), "§e[WorldManager] Creating custom void worlds for Skyblock...");
 
-        this.hologramManager = new HologramManager(this);
-        // Hologram loading/spawning is triggered from WorldManager.completeHubSpawn()
-        // (after spawn platform chunks are preloaded and ready on Folia). This ensures
-        // holograms located at/near the central spawn reliably appear.
+        this.hologramManager = new HologramManager(this);this.tradeGUI = new TradeGUI(this);this.slayerGUI = new SlayerGUI(this);this.slayerLeaderboardGUI = new SlayerLeaderboardGUI(this);this.slayerAchievementGUI = new SlayerAchievementGUI(this);this.slayerShopGUI = new SlayerShopGUI(this);this.slayerTokenLeaderboardGUI = new SlayerTokenLeaderboardGUI(this);this.enchantingTableGUI = new EnchantingTableGUI(this);this.enchantmentManager = new EnchantmentManager(this);this.islandChatManager = new IslandChatManager(this);this.resetConfirmationGUI = new ResetConfirmationGUI(this);this.biomeSelectionGUI = new BiomeSelectionGUI(this);this.islandUpgradeGUI = new IslandUpgradeGUI(this);this.auctionGUI = new AuctionGUI(this, auctionManager);this.bazaarGUI = new BazaarGUI(this, bazaarManager);this.dimensionResetGUI = new DimensionResetGUI(this);
 
-        // === GUIs ===
-        this.tradeGUI = new TradeGUI(this);
-        this.slayerGUI = new SlayerGUI(this);
-        this.slayerLeaderboardGUI = new SlayerLeaderboardGUI(this);
-        this.slayerAchievementGUI = new SlayerAchievementGUI(this);
-        this.slayerShopGUI = new SlayerShopGUI(this);
-        this.slayerTokenLeaderboardGUI = new SlayerTokenLeaderboardGUI(this);
-        this.enchantingTableGUI = new EnchantingTableGUI(this);
-        this.enchantmentManager = new EnchantmentManager(this);
-        this.islandChatManager = new IslandChatManager(this);
-        this.resetConfirmationGUI = new ResetConfirmationGUI(this);
-        this.biomeSelectionGUI = new BiomeSelectionGUI(this);
-        this.islandUpgradeGUI = new IslandUpgradeGUI(this);
-        this.auctionGUI = new AuctionGUI(this, auctionManager);
-        this.bazaarGUI = new BazaarGUI(this, bazaarManager);
-
-        // NEW: Per-dimension island reset GUI
-        this.dimensionResetGUI = new DimensionResetGUI(this);
-
-        // Register commands & listeners
         registerCommands();
         registerListeners();
-
-        // Load islands for online players
         Bukkit.getOnlinePlayers().forEach(player -> islandManager.loadPlayerIslands(player));
-
-        // Improved tab list header/footer (polish)
         setServerTabHeaderFooter();
 
         MessageUtil.info(getLogger(), "§a[FoliaSkyblock] Plugin enabled successfully on Folia! (v1.0.2)");
@@ -658,7 +256,6 @@ public class FoliaSkyblock extends JavaPlugin {
         MessageUtil.info(getLogger(), "§e[FoliaSkyblock] Plugin disabled.");
     }
 
-    // ==================== COMMAND REGISTRATION ====================
     private void registerCommands() {
         safeRegisterCommand("island", new IslandCommand(this));
         safeRegisterCommand("is", new IslandCommand(this));
@@ -668,125 +265,9 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("spawn", new PlayerCommand(this));
         safeRegisterCommand("home", new PlayerCommand(this));
 
-        // TPA
-        safeRegisterCommand("tpa", new PlayerCommand(this));
-        safeRegisterCommand("tpaccept", new PlayerCommand(this));
-        safeRegisterCommand("tpdeny", new PlayerCommand(this));
-        safeRegisterCommand("tpignore", new PlayerCommand(this));
-        safeRegisterCommand("tplist", new PlayerCommand(this));
-        safeRegisterCommand("pending", new PlayerCommand(this));
+        safeRegisterCommand("tpa", new PlayerCommand(this));safeRegisterCommand("tpaccept", new PlayerCommand(this));safeRegisterCommand("tpdeny", new PlayerCommand(this));safeRegisterCommand("tpignore", new PlayerCommand(this));safeRegisterCommand("tplist", new PlayerCommand(this));safeRegisterCommand("pending", new PlayerCommand(this));safeRegisterCommand("msg", new PlayerCommand(this));safeRegisterCommand("r", new PlayerCommand(this));safeRegisterCommand("list", new PlayerCommand(this));safeRegisterCommand("online", new PlayerCommand(this));safeRegisterCommand("help", new PlayerCommand(this));safeRegisterCommand("rules", new PlayerCommand(this));safeRegisterCommand("challenge", new ChallengeCommand(this));safeRegisterCommand("challenges", new ChallengeCommand(this));safeRegisterCommand("daily", new ChallengeCommand(this));safeRegisterCommand("slayer", new SlayerCommand(this));safeRegisterCommand("enchant", new EnchantCommand(this));safeRegisterCommand("trail", new ParticleCommand(this));safeRegisterCommand("particles", new ParticleCommand(this));safeRegisterCommand("auction", new AuctionCommand(this));safeRegisterCommand("ah", new AuctionCommand(this));safeRegisterCommand("bazaar", new BazaarCommand(this));safeRegisterCommand("minions", new MinionsCommand(this));safeRegisterCommand("wardrobe", new WardrobeCommand(this));safeRegisterCommand("wd", new WardrobeCommand(this));safeRegisterCommand("pets", new PetCommand(this));safeRegisterCommand("tags", new TagCommand(this));safeRegisterCommand("joinleave", new com.thenerdcj.command.JoinLeaveMessageCommand(this));safeRegisterCommand("wings", new WingsCommand(this));safeRegisterCommand("runes", new RunesCommand(this));safeRegisterCommand("deatheffects", new DeathEffectCommand(this));safeRegisterCommand("death", new DeathEffectCommand(this));safeRegisterCommand("deathmessages", new DeathMessageCommand(this));safeRegisterCommand("deathmessage", new DeathMessageCommand(this));safeRegisterCommand("killmessages", new DeathMessageCommand(this));safeRegisterCommand("backpackskins", new BackpackSkinCommand(this));safeRegisterCommand("backpacks", new BackpackSkinCommand(this));safeRegisterCommand("powerorbskins", new PowerOrbSkinCommand(this));safeRegisterCommand("orbskins", new PowerOrbSkinCommand(this));safeRegisterCommand("minionskins", new MinionSkinCommand(this));safeRegisterCommand("minionskin", new MinionSkinCommand(this));safeRegisterCommand("furniture", new IslandFurnitureCommand(this));safeRegisterCommand("housing", new IslandFurnitureCommand(this));safeRegisterCommand("decor", new IslandFurnitureCommand(this));safeRegisterCommand("music", new IslandMusicCommand(this));safeRegisterCommand("ambience", new IslandMusicCommand(this));safeRegisterCommand("sounds", new IslandMusicCommand(this));safeRegisterCommand("emotes", new EmoteCosmeticCommand(this));safeRegisterCommand("emote", new EmoteCosmeticCommand(this));safeRegisterCommand("structures", new IslandStructureCommand(this));safeRegisterCommand("structure", new IslandStructureCommand(this));safeRegisterCommand("chatbubbles", new ChatBubbleCommand(this));safeRegisterCommand("chatbubble", new ChatBubbleCommand(this));safeRegisterCommand("bubble", new ChatBubbleCommand(this));safeRegisterCommand("weather", new IslandWeatherCommand(this));safeRegisterCommand("islandweather", new IslandWeatherCommand(this));safeRegisterCommand("weathereffects", new IslandWeatherCommand(this));
 
-        // Messaging & Utility
-        safeRegisterCommand("msg", new PlayerCommand(this));
-        safeRegisterCommand("r", new PlayerCommand(this));
-        safeRegisterCommand("list", new PlayerCommand(this));
-        safeRegisterCommand("online", new PlayerCommand(this));
-        safeRegisterCommand("help", new PlayerCommand(this));
-        safeRegisterCommand("rules", new PlayerCommand(this));
-
-        // Gameplay
-        safeRegisterCommand("challenge", new ChallengeCommand(this));
-        safeRegisterCommand("challenges", new ChallengeCommand(this));
-        safeRegisterCommand("daily", new ChallengeCommand(this));
-        safeRegisterCommand("slayer", new SlayerCommand(this));
-        safeRegisterCommand("enchant", new EnchantCommand(this));
-        safeRegisterCommand("trail", new ParticleCommand(this));
-        safeRegisterCommand("particles", new ParticleCommand(this));
-        safeRegisterCommand("auction", new AuctionCommand(this));
-        safeRegisterCommand("ah", new AuctionCommand(this));
-        safeRegisterCommand("bazaar", new BazaarCommand(this));
-        safeRegisterCommand("minions", new MinionsCommand(this));
-        safeRegisterCommand("wardrobe", new WardrobeCommand(this));
-        safeRegisterCommand("wd", new WardrobeCommand(this));
-
-        // Pet command (temporary - will be merged into Wardrobe later)
-        safeRegisterCommand("pets", new PetCommand(this));
-
-        // Tags command (new cosmetic tag system)
-        safeRegisterCommand("tags", new TagCommand(this));
-
-        // Join/Leave Message command (personalized cosmetics)
-        safeRegisterCommand("joinleave", new com.thenerdcj.command.JoinLeaveMessageCommand(this));
-
-        // Elytra Wings command (new dedicated GUI)
-        safeRegisterCommand("wings", new WingsCommand(this));
-
-        // Runes command
-        safeRegisterCommand("runes", new RunesCommand(this));
-
-        // Death Effects command (new cosmetic system)
-        safeRegisterCommand("deatheffects", new DeathEffectCommand(this));
-        safeRegisterCommand("death", new DeathEffectCommand(this));
-
-        // Death Messages cosmetic command
-        safeRegisterCommand("deathmessages", new DeathMessageCommand(this));
-        safeRegisterCommand("deathmessage", new DeathMessageCommand(this));
-        safeRegisterCommand("killmessages", new DeathMessageCommand(this));
-
-        // Backpack Skins command (exploration)
-        safeRegisterCommand("backpackskins", new BackpackSkinCommand(this));
-        safeRegisterCommand("backpacks", new BackpackSkinCommand(this));
-
-        // Power Orb Skins command (new system)
-        safeRegisterCommand("powerorbskins", new PowerOrbSkinCommand(this));
-        safeRegisterCommand("orbskins", new PowerOrbSkinCommand(this));
-
-        // Minion Skins command (new system)
-        safeRegisterCommand("minionskins", new MinionSkinCommand(this));
-        safeRegisterCommand("minionskin", new MinionSkinCommand(this));
-
-        // Island Furniture / Housing command (foundation)
-        safeRegisterCommand("furniture", new IslandFurnitureCommand(this));
-        safeRegisterCommand("housing", new IslandFurnitureCommand(this));
-        safeRegisterCommand("decor", new IslandFurnitureCommand(this));
-
-        // Island Music / Ambience command (new)
-        safeRegisterCommand("music", new IslandMusicCommand(this));
-        safeRegisterCommand("ambience", new IslandMusicCommand(this));
-        safeRegisterCommand("sounds", new IslandMusicCommand(this));
-
-        // Cosmetic Emotes command (new)
-        safeRegisterCommand("emotes", new EmoteCosmeticCommand(this));
-        safeRegisterCommand("emote", new EmoteCosmeticCommand(this));
-
-        // Island Structures command (new)
-        safeRegisterCommand("structures", new IslandStructureCommand(this));
-        safeRegisterCommand("structure", new IslandStructureCommand(this));
-
-        // Chat Bubble Cosmetics command (new)
-        safeRegisterCommand("chatbubbles", new ChatBubbleCommand(this));
-        safeRegisterCommand("chatbubble", new ChatBubbleCommand(this));
-        safeRegisterCommand("bubble", new ChatBubbleCommand(this));
-
-        // Island Weather Cosmetics command (new)
-        safeRegisterCommand("weather", new IslandWeatherCommand(this));
-        safeRegisterCommand("islandweather", new IslandWeatherCommand(this));
-        safeRegisterCommand("weathereffects", new IslandWeatherCommand(this));
-
-        // Light Accessories command (new)
-        safeRegisterCommand("accessories", new AccessoryCommand(this));
-        safeRegisterCommand("accessory", new AccessoryCommand(this));
-
-        // Core Collections command
-        safeRegisterCommand("collections", new CollectionCommand(this));
-        safeRegisterCommand("collection", new CollectionCommand(this));
-
-        // Player Skills command (MCMMO-like)
-        safeRegisterCommand("skills", new SkillCommand(this));
-        safeRegisterCommand("skill", new SkillCommand(this));
-
-        // Early game / onboarding quests (daily + FIRST island quests)
-        var questsExecutor = (org.bukkit.command.CommandExecutor) (sender, cmd, label, args) -> {
-            if (sender instanceof Player player) {
-                // Use getIslandForPlayer for reliable resolution (current dim with NORMAL fallback)
-                // This ensures /quest from spawn/other dims still opens the player's island quest log ("new gui")
-                com.thenerdcj.island.Island island = getIslandManager().getIslandForPlayer(player);
-                String islandId = (island != null) ? island.getId() : player.getUniqueId().toString();
-                if (questLogGUI != null) {
-                    questLogGUI.open(player, islandId);
-                }
-                if (questManager != null) {
-                    questManager.generateOnboardingQuests(islandId);
+        safeRegisterCommand("accessories", new AccessoryCommand(this));safeRegisterCommand("accessory", new AccessoryCommand(this));safeRegisterCommand("collections", new CollectionCommand(this));safeRegisterCommand("collection", new CollectionCommand(this));safeRegisterCommand("skills", new SkillCommand(this));safeRegisterCommand("skill", new SkillCommand(this));var questsExecutor = (org.bukkit.command.CommandExecutor) (sender, cmd, label, args) -> { if (sender instanceof Player player) { com.thenerdcj.island.Island island = getIslandManager().getIslandForPlayer(player); String islandId = (island != null) ? island.getId() : player.getUniqueId().toString(); if (questLogGUI != null) { questLogGUI.open(player, islandId); } if (questManager != null) { questManager.generateOnboardingQuests(islandId);
                     questManager.generateDailyQuests(islandId);
                     questManager.generateWeeklyQuests(islandId);
                 }
@@ -800,26 +281,7 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("daily", questsExecutor);
         safeRegisterCommand("dailies", questsExecutor);
 
-        // Advanced Overhead Cosmetics command (foundation test)
-        safeRegisterCommand("overhead", new OverheadCosmeticCommand(this));
-
-        // Nametag visibility toggle
-        safeRegisterCommand("nametag", new NametagCommand(this));
-
-        // Staff
-        StaffCommand staffCmd = new StaffCommand(this);
-        safeRegisterCommand("staff", staffCmd);
-        safeRegisterCommand("vanish", staffCmd);
-        safeRegisterCommand("fly", staffCmd);
-        safeRegisterCommand("god", staffCmd);
-        safeRegisterCommand("heal", staffCmd);
-        safeRegisterCommand("speed", staffCmd);
-        safeRegisterCommand("gm", staffCmd);
-        safeRegisterCommand("gamemode", staffCmd);
-        // EssentialsX-style shortcuts for gamemode (staff only)
-        safeRegisterCommand("gmc", staffCmd);
-        safeRegisterCommand("gms", staffCmd);
-        safeRegisterCommand("gma", staffCmd);
+        safeRegisterCommand("overhead", new OverheadCosmeticCommand(this));safeRegisterCommand("nametag", new NametagCommand(this));StaffCommand staffCmd = new StaffCommand(this);safeRegisterCommand("staff", staffCmd);safeRegisterCommand("vanish", staffCmd);safeRegisterCommand("fly", staffCmd);safeRegisterCommand("god", staffCmd);safeRegisterCommand("heal", staffCmd);safeRegisterCommand("speed", staffCmd);safeRegisterCommand("gm", staffCmd);safeRegisterCommand("gamemode", staffCmd);safeRegisterCommand("gmc", staffCmd);safeRegisterCommand("gms", staffCmd);safeRegisterCommand("gma", staffCmd);
         safeRegisterCommand("gmsp", staffCmd);
         safeRegisterCommand("tp", staffCmd);
         safeRegisterCommand("tphere", staffCmd);
@@ -844,14 +306,7 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("setspawn", staffCmd);
         safeRegisterCommand("isadmin", new AdminCommand(this));
 
-        // Bug reporting system (player submit + staff /bug reports)
-        safeRegisterCommand("bug", new BugReportCommand(this));
-        safeRegisterCommand("bugreport", new BugReportCommand(this));
-        safeRegisterCommand("reportbug", new BugReportCommand(this));
-        safeRegisterCommand("reports", new BugReportCommand(this));
-
-        // Trade
-        safeRegisterCommand("trade", (sender, cmd, label, args) -> {
+        safeRegisterCommand("bug", new BugReportCommand(this));safeRegisterCommand("bugreport", new BugReportCommand(this));safeRegisterCommand("reportbug", new BugReportCommand(this));safeRegisterCommand("reports", new BugReportCommand(this));safeRegisterCommand("trade", (sender, cmd, label, args) -> {
             if (sender instanceof Player player) {
                 tradeGUI.openTradeGUI(player);
                 return true;
@@ -876,7 +331,6 @@ public class FoliaSkyblock extends JavaPlugin {
         }
     }
 
-    // ==================== LISTENER REGISTRATION ====================
     private void registerListeners() {
         var pm = getServer().getPluginManager();
 
@@ -915,7 +369,6 @@ public class FoliaSkyblock extends JavaPlugin {
         MessageUtil.info(getLogger(), "§a[FoliaSkyblock] All listeners registered.");
     }
 
-    // ==================== GETTERS ====================
     public DatabaseManager getDatabaseManager() { return databaseManager; }
     public IslandManager getIslandManager() { return islandManager; }
     public EconomyManager getEconomyManager() { return economyManager; }
@@ -962,7 +415,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.gui.QuestDetailGUI getQuestDetailGUI() { return questDetailGUI; }
     public TeleportRequestManager getTeleportRequestManager() { return teleportRequestManager; }
 
-    // GUI Getters
     public SlayerGUI getSlayerGUI() { return slayerGUI; }
     public SlayerLeaderboardGUI getSlayerLeaderboardGUI() { return slayerLeaderboardGUI; }
     public SlayerAchievementGUI getSlayerAchievementGUI() { return slayerAchievementGUI; }
@@ -975,27 +427,16 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandUpgradeGUI getIslandUpgradeGUI() { return islandUpgradeGUI; }
     public TradeGUI getTradeGUI() { return tradeGUI; }
 
-    // NEW: Per-dimension island reset
     public DimensionResetGUI getDimensionResetGUI() { return dimensionResetGUI; }
-
-    // Bug reporting system
     public BugReportManager getBugReportManager() { return bugReportManager; }
     public BugReportListGUI getBugReportListGUI() { return bugReportListGUI; }
 
-    // ==================== HELPERS ====================
     public World getSkyblockWorld(World.Environment environment) {
         if (worldManager == null) return null;
         return worldManager.resolveSkyblockWorld(environment);
     }
 
-    public boolean isFolia() {
-        try {
-            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
-            return true;
-        } catch (ClassNotFoundException e) {
-            return false;
-        }
-    }
+    public boolean isFolia() { return true; } // Folia-only, legacy detection removed
 
     public PunishmentManager getPunishmentManager() { return punishmentManager; }
     public AutoSellerManager getAutoSellerManager() { return autoSellerManager; }
@@ -1004,7 +445,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public AuctionGUI getAuctionGUI() { return auctionGUI; }
     public com.thenerdcj.bazaar.BazaarGUI getBazaarGUI() { return bazaarGUI; }
 
-    // Wardrobe
     public com.thenerdcj.wardrobe.WardrobeManager getWardrobeManager() { return wardrobeManager; }
     public com.thenerdcj.wardrobe.WardrobeGUI getWardrobeGUI() { return wardrobeGUI; }
     public com.thenerdcj.wardrobe.WardrobeSlotOptionsGUI getWardrobeSlotOptionsGUI() { return wardrobeSlotOptionsGUI; }
@@ -1034,7 +474,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public com.thenerdcj.cosmetic.DeathEffectManager getDeathEffectManager() { return deathEffectManager; }
     public com.thenerdcj.cosmetic.DeathEffectGUI getDeathEffectGUI() { return deathEffectGUI; }
 
-    // Death Messages
     public com.thenerdcj.cosmetic.DeathMessageManager getDeathMessageManager() { return deathMessageManager; }
     public com.thenerdcj.cosmetic.DeathMessageGUI getDeathMessageGUI() { return deathMessageGUI; }
 
@@ -1083,27 +522,21 @@ public class FoliaSkyblock extends JavaPlugin {
         return new com.thenerdcj.cosmetic.AccessoryCosmeticGUI(this);
     }
 
-    // Core Collections
     public com.thenerdcj.manager.CollectionManager getCollectionManager() { return collectionManager; }
     public com.thenerdcj.gui.CollectionsGUI getCollectionsGUI() { return collectionsGUI; }
 
     public com.thenerdcj.season.SeasonManager getSeasonManager() { return seasonManager; }
 
-    // Task 4 getters
     public com.thenerdcj.manager.MuseumManager getMuseumManager() { return museumManager; }
     public com.thenerdcj.gui.MuseumGUI getMuseumGUI() { return museumGUI; }
 
-    // Player Skills
     public com.thenerdcj.skills.PlayerSkillManager getPlayerSkillManager() { return playerSkillManager; }
     public SkillGUI getSkillGUI() { return skillGUI; }
     public com.thenerdcj.gui.IslandTopGUI getIslandTopGUI() { return islandTopGUI; }
     public com.thenerdcj.gui.IslandBrowseGUI getIslandBrowseGUI() { return islandBrowseGUI; }
 
-    // ==================== CONFIG VALIDATION ====================
     private void validateConfiguration() {
         boolean hasIssues = false;
-
-        // Detect legacy mis-nesting (party/worth were previously under seasonal:)
         if (getConfig().contains("seasonal.party") || getConfig().contains("seasonal.worth")
                 || getConfig().contains("seasonal.perf") || getConfig().contains("seasonal.upkeep")) {
             MessageUtil.severe(getLogger(),
@@ -1131,15 +564,12 @@ public class FoliaSkyblock extends JavaPlugin {
             hasIssues = true;
         }
 
-        // Reports (new bug reporting system)
         if (getConfig().getInt("reports.cooldown-minutes", 5) < 0) {
             MessageUtil.warning(getLogger(), "§e[Config] reports.cooldown-minutes should be >= 0.");
         }
         if (getConfig().getInt("reports.max-description-length", 500) < 20) {
             MessageUtil.warning(getLogger(), "§e[Config] reports.max-description-length is very low; consider >= 100.");
         }
-
-        // Island reset safety
         if (getConfig().getBoolean("island.reset.enabled", true)) {
             double cost = getConfig().getDouble("island.reset.cost", 5000);
             if (cost < 0) {
@@ -1148,7 +578,6 @@ public class FoliaSkyblock extends JavaPlugin {
             }
         }
 
-        // Worth / economy sanity
         if (getConfig().getDouble("island.worth.level-formula.base", 100) <= 0) {
             MessageUtil.warning(getLogger(), "§e[Config] island.worth.level-formula.base should be > 0.");
         }
@@ -1156,18 +585,10 @@ public class FoliaSkyblock extends JavaPlugin {
         if (upkeepPercent < 0 || upkeepPercent > 10) {
             MessageUtil.warning(getLogger(), "§e[Config] island.upkeep.percent-per-hour looks extreme (" + upkeepPercent + "%).");
         }
-
-        // Perf caps (large server)
         int maxRecalc = getConfig().getInt("island.worth.max-islands-per-recalc-tick", 50);
         if (maxRecalc < 1 || maxRecalc > 500) {
             MessageUtil.warning(getLogger(), "§e[Config] island.worth.max-islands-per-recalc-tick should be reasonable (1-200 for large servers).");
         }
-
-        if (!isFolia()) {
-            MessageUtil.warning(getLogger(), "§e[Config] Running on non-Folia server. Many Folia-specific optimizations (Region/Entity schedulers, etc.) are disabled or fallback.");
-        }
-
-        // New reports system note
         if (!getConfig().getBoolean("reports.enabled", true)) {
             MessageUtil.info(getLogger(), "§e[Config] reports.enabled=false — in-game bug reporting disabled.");
         }
@@ -1179,39 +600,6 @@ public class FoliaSkyblock extends JavaPlugin {
         }
     }
 
-    /**
-     * Sets a clean, informative server header and footer on the tab list.
-     * Called on enable and can be called again on reload if needed.
-     */
-    public void setServerTabHeaderFooter() {
-        Component header = Component.text("FoliaSkyblock", NamedTextColor.GOLD)
-                .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
-                .append(Component.text("Skyblock", NamedTextColor.YELLOW));
-
-        Component footer = Component.text("Play to Win", NamedTextColor.GRAY)
-                .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
-                .append(Component.text("No Pay-to-Win", NamedTextColor.GREEN));
-
-        for (org.bukkit.entity.Player p : Bukkit.getOnlinePlayers()) {
-            p.sendPlayerListHeader(header);
-            p.sendPlayerListFooter(footer);
-        }
-    }
-
-    /**
-     * Sets header/footer for a single player (e.g. on join after plugin enable).
-     */
-    public void setServerTabHeaderFooter(Player player) {
-        if (player == null || !player.isOnline()) return;
-        Component header = Component.text("FoliaSkyblock", NamedTextColor.GOLD)
-                .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
-                .append(Component.text("Skyblock", NamedTextColor.YELLOW));
-
-        Component footer = Component.text("Play to Win", NamedTextColor.GRAY)
-                .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
-                .append(Component.text("No Pay-to-Win", NamedTextColor.GREEN));
-
-        player.sendPlayerListHeader(header);
-        player.sendPlayerListFooter(footer);
-    }
+    public void setServerTabHeaderFooter(){Component header=Component.text("FoliaSkyblock",NamedTextColor.GOLD).append(Component.text(" • ",NamedTextColor.DARK_GRAY)).append(Component.text("Skyblock",NamedTextColor.YELLOW));Component footer=Component.text("Play to Win",NamedTextColor.GRAY).append(Component.text(" • ",NamedTextColor.DARK_GRAY)).append(Component.text("No Pay-to-Win",NamedTextColor.GREEN));for(org.bukkit.entity.Player p:Bukkit.getOnlinePlayers()){p.sendPlayerListHeader(header);p.sendPlayerListFooter(footer);}}
+    public void setServerTabHeaderFooter(Player player){if(player==null||!player.isOnline())return;Component header=Component.text("FoliaSkyblock",NamedTextColor.GOLD).append(Component.text(" • ",NamedTextColor.DARK_GRAY)).append(Component.text("Skyblock",NamedTextColor.YELLOW));Component footer=Component.text("Play to Win",NamedTextColor.GRAY).append(Component.text(" • ",NamedTextColor.DARK_GRAY)).append(Component.text("No Pay-to-Win",NamedTextColor.GREEN));player.sendPlayerListHeader(header);player.sendPlayerListFooter(footer);}
 }

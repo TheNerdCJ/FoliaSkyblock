@@ -1,8 +1,6 @@
 package com.thenerdcj.command;
 
-import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.rank.RankData;
-import org.bukkit.Bukkit;
+import com.thenerdcj.FoliaSkyblock;import com.thenerdcj.rank.RankData;import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -107,8 +105,7 @@ public class RankCommand implements CommandExecutor {
             RankData rankData = plugin.getRankManager().getRankData(rankId);
 
             if (rankData != null) {
-                String prefix = org.bukkit.ChatColor.translateAlternateColorCodes('&', rankData.getPrefix());
-                sender.sendMessage("§7" + playerName + "'s rank: " + prefix + " §7(" + rankId + ")");
+                var ser = LegacyComponentSerializer.legacyAmpersand(); String prefix = ser.serialize(ser.deserialize(rankData.getPrefix())); sender.sendMessage("§7" + playerName + "'s rank: " + prefix + " §7(" + rankId + ")");
 
                 if (rankData.isStaff()) {
                     sender.sendMessage("§7This player is a §cstaff member§7.");
@@ -158,7 +155,7 @@ public class RankCommand implements CommandExecutor {
         sender.sendMessage("");
 
         for (RankData rank : ranks) {
-            String prefix = org.bukkit.ChatColor.translateAlternateColorCodes('&', rank.getPrefix());
+            var ser = LegacyComponentSerializer.legacyAmpersand(); String prefix = ser.serialize(ser.deserialize(rank.getPrefix()));
             StringBuilder info = new StringBuilder();
             info.append(prefix).append(" §7- ").append(rank.getDisplayName());
 

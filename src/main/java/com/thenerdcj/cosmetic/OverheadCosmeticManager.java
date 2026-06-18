@@ -88,22 +88,7 @@ public class OverheadCosmeticManager {
     }
 
     private void spawnOverhead(Player player, OverheadCosmetic cosmetic) {
-        Runnable task = () -> {
-            if (!player.isOnline() || !active.containsKey(player.getUniqueId())) return;
-            updateDisplay(player, cosmetic);
-        };
-
-        if (threadSafety.isFolia() && player.isValid()) {
-            player.getScheduler().runAtFixedRate(plugin, (scheduledTask) -> {
-                if (!player.isOnline() || !active.containsKey(player.getUniqueId())) {
-                    scheduledTask.cancel();
-                    return;
-                }
-                updateDisplay(player, cosmetic);
-            }, null, 1L, 20L);
-        } else {
-            threadSafety.runRepeatingOnMainThread(task, 1L, 20L);
-        }
+        if(player!=null&&player.isValid())player.getScheduler().runAtFixedRate(plugin,(scheduledTask)->{if(!player.isOnline()||!active.containsKey(player.getUniqueId())){scheduledTask.cancel();return;}updateDisplay(player,cosmetic);},null,1L,20L);
     }
 
     private void updateDisplay(Player player, OverheadCosmetic cosmetic) {

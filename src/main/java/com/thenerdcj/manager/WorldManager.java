@@ -56,29 +56,8 @@ public class WorldManager {
         MessageUtil.info(plugin.getLogger(), "§6[WorldManager] Initializing custom void worlds...");
         hubSpawnReady = !isSpawnPlatformGenerationEnabled();
 
-        if (plugin.isFolia()) {
-            initializeWorldsOnFolia();
-            return;
-        }
-
-        CompletableFuture<World> overworldFuture = createVoidWorldAsync(OVERWORLD_NAME, World.Environment.NORMAL);
-        CompletableFuture<World> netherFuture = createVoidWorldAsync(NETHER_NAME, World.Environment.NETHER);
-        CompletableFuture<World> endFuture = createVoidWorldAsync(END_NAME, World.Environment.THE_END);
-
-        CompletableFuture.allOf(overworldFuture, netherFuture, endFuture)
-                .thenRun(() -> {
-                    MessageUtil.info(plugin.getLogger(), "§a[WorldManager] All custom worlds initialized successfully.");
-
-                    overworldFuture.thenAccept(world -> {
-                        if (world != null) {
-                            generateSpawnPlatform(world);
-                        }
-                    });
-                })
-                .exceptionally(ex -> {
-                    MessageUtil.log(plugin.getLogger(), Level.SEVERE, "§c[WorldManager] Failed to initialize worlds!", ex);
-                    return null;
-                });
+        initializeWorldsOnFolia();
+        return;
     }
 
     /**
@@ -267,11 +246,7 @@ public class WorldManager {
                     World world = creator.createWorld();
                     if (world != null) {
                         world.setSpawnLocation(0, SPAWN_Y + 2, 0);
-                        if (plugin.isFolia()) {
-                            world.getChunkAtAsync(0, 0);
-                        } else {
-                            world.getChunkAt(0, 0);
-                        }
+                        world.getChunkAtAsync(0, 0);
                     }
                     worldFuture.complete(world);
                 });
@@ -376,22 +351,9 @@ public class WorldManager {
         int cy = spawnCenterY();
         int cz = spawnCenterZ();
 
-        if (plugin.isFolia()) {
-            // Block reads/writes must run on the owning region thread, not during onEnable on the global server thread.
-            Location anchor = new Location(world, cx, cy, cz);
-            plugin.getThreadSafety().runAtLocation(anchor, () -> generateSpawnPlatformOnRegionThread(world, cx, cy, cz));
-            return;
-        }
-
-        if (plugin.getConfig().getBoolean("spawn-platform.skip-if-built", true) && isSpawnPlatformBuilt(world, cx, cy, cz)) {
-            markSpawnPlatformBuilt(world, cx, cy, cz);
-            completeHubSpawn(world);
-            MessageUtil.info(plugin.getLogger(), "§e[WorldManager] Spawn platform already present — skipping generation.");
-            return;
-        }
-
-        MessageUtil.info(plugin.getLogger(), "§6[WorldManager] Generating detailed spawn platform/island at 0,0...");
-        plugin.getThreadSafety().runAtLocation(new Location(world, cx, cy, cz), () -> buildSpawnStructure(world, cx, cy, cz));
+        // Block reads/writes on region thread (Folia)
+        Location anchor = new Location(world, cx, cy, cz);
+        plugin.getThreadSafety().runAtLocation(anchor, () -> generateSpawnPlatformOnRegionThread(world, cx, cy, cz));
     }
 
     private void generateSpawnPlatformOnRegionThread(World world, int cx, int cy, int cz) {

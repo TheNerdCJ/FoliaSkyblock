@@ -177,32 +177,13 @@ public class IslandMusicManager {
             }
         };
 
-        // Schedule repeating on player's region (use ThreadSafety abstraction for Paper path)
-        if (threadSafety.isFolia() && player.isValid()) {
-            player.getScheduler().runAtFixedRate(plugin, (taskRef) -> {
-                if (player.isOnline()) loop.run();
-            }, null, 20L, 25 * 20L); // every ~25s
-            // Folia: rely on stopSound on change + lambda guard (no store needed)
-        } else {
-            threadSafety.runRepeatingForPlayer(player, loop, 20L, 25 * 20L);
-            // Paper: no taskId tracked; stopLoopForPlayer relies on stopSound which is sufficient to end music
-        }
+        if(player!=null&&player.isValid())player.getScheduler().runAtFixedRate(plugin,(taskRef)->{if(player.isOnline())loop.run();},null,20L,25*20L);
 
         // Play once immediately
         loop.run();
     }
 
-    private void stopLoopForPlayer(Player player) {
-        Integer taskId = activeLoops.remove(player.getUniqueId());
-        if (taskId != null) {
-            // Paper fallback cancel (Folia path relies on stopSound + auto-cancel in player scheduler lambda).
-            Bukkit.getScheduler().cancelTask(taskId);
-        }
-        try {
-            player.stopSound(org.bukkit.SoundCategory.MUSIC);
-            player.stopSound(org.bukkit.SoundCategory.AMBIENT);
-        } catch (Exception ignored) {}
-    }
+    private void stopLoopForPlayer(Player player){activeLoops.remove(player.getUniqueId());try{player.stopSound(org.bukkit.SoundCategory.MUSIC);player.stopSound(org.bukkit.SoundCategory.AMBIENT);}catch(Exception ignored){}}
 
     /**
      * Called when a player enters an island (from Island protection or teleport listeners).

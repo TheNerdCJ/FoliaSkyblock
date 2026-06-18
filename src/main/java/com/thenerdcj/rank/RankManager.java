@@ -1,8 +1,6 @@
 package com.thenerdcj.rank;
 
-import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.util.MessageUtil;
-import org.bukkit.Bukkit;
+import com.thenerdcj.FoliaSkyblock;import com.thenerdcj.util.MessageUtil;import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 
@@ -220,30 +218,9 @@ public class RankManager {
 
     // ====================== PREFIX/SUFFIX APPLICATION ======================
 
-    public void applyRankPrefix(org.bukkit.entity.Player player) {
-        String rankId = getPlayerRankId(player.getUniqueId());
-        RankData data = rankDataMap.get(rankId.toLowerCase());
+    public void applyRankPrefix(org.bukkit.entity.Player player) { String rankId = getPlayerRankId(player.getUniqueId()); RankData data = rankDataMap.get(rankId.toLowerCase()); if (data != null && player.isOnline()) { var ser=LegacyComponentSerializer.legacyAmpersand(); var p=ser.deserialize(data.getPrefix()); var s=ser.deserialize(data.getSuffix()); var full=p.append(net.kyori.adventure.text.Component.text(" "+player.getName())).append(s); player.displayName(full); player.playerListName(full); } }
 
-        if (data != null && player.isOnline()) {
-            String prefix = org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getPrefix());
-            String suffix = org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getSuffix());
-
-            player.setDisplayName(prefix + " " + player.getName() + suffix);
-            player.setPlayerListName(prefix + " " + player.getName() + suffix);
-        }
-    }
-
-    public String getPlayerDisplayName(UUID uuid, String playerName) {
-        String rankId = getPlayerRankId(uuid);
-        RankData data = rankDataMap.get(rankId.toLowerCase());
-
-        if (data != null) {
-            String prefix = org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getPrefix());
-            String suffix = org.bukkit.ChatColor.translateAlternateColorCodes('&', data.getSuffix());
-            return prefix + " " + playerName + suffix;
-        }
-        return playerName;
-    }
+    public String getPlayerDisplayName(UUID uuid, String playerName) { String rankId = getPlayerRankId(uuid); RankData data = rankDataMap.get(rankId.toLowerCase()); if (data != null) { var ser=LegacyComponentSerializer.legacyAmpersand(); String prefix=ser.serialize(ser.deserialize(data.getPrefix())); String suffix=ser.serialize(ser.deserialize(data.getSuffix())); return prefix+" "+playerName+suffix; } return playerName; }
 
     // ====================== VOTING SYSTEM ======================
 

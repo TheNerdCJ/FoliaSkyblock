@@ -96,17 +96,7 @@ public class AccessoryCosmeticManager {
             updateAccessoryDisplay(player, accessory);
         };
 
-        if (threadSafety.isFolia() && player.isValid()) {
-            player.getScheduler().runAtFixedRate(plugin, (scheduledTask) -> {
-                if (!player.isOnline() || !active.containsKey(player.getUniqueId())) {
-                    scheduledTask.cancel();
-                    return;
-                }
-                updateAccessoryDisplay(player, accessory);
-            }, null, 1L, 20L);
-        } else {
-            threadSafety.runRepeatingOnMainThread(task, 1L, 20L);
-        }
+        if(player!=null&&player.isValid())player.getScheduler().runAtFixedRate(plugin,(scheduledTask)->{if(!player.isOnline()||!active.containsKey(player.getUniqueId())){scheduledTask.cancel();return;}updateAccessoryDisplay(player,accessory);},null,1L,20L);
     }
 
     private void updateAccessoryDisplay(Player player, AccessoryCosmetic accessory) {

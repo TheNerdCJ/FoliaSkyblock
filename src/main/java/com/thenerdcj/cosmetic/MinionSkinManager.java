@@ -247,7 +247,7 @@ public class MinionSkinManager {
         };
 
         // Schedule lightly via entity scheduler when possible
-        if (threadSafety.isFolia() && minion.isValid()) {
+        if (minion != null && minion.isValid()) {
             threadSafety.runRepeatingForEntity(minion, particleTask, 20L * 8, 20L * 12);
         } else {
             threadSafety.runRepeatingOnMainThread(particleTask, 20L * 8, 20L * 12);
