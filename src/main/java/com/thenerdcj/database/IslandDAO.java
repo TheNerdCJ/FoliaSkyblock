@@ -811,8 +811,8 @@ public class IslandDAO extends BaseDAO {
                             "INSERT OR REPLACE INTO island_settings " +
                             "(grid_x, grid_z, dimension, pvp_enabled, visitors_allowed, explosions_enabled, " +
                             "fire_spread_enabled, mob_spawning_enabled, crop_trampling_enabled, animal_spawning_enabled, " +
-                            "leaf_decay_enabled, border_color, border_size, border_markers_enabled, warp_enabled, warp_description) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                            "leaf_decay_enabled, border_color, border_size, border_markers_enabled, warp_enabled, warp_description, keep_inventory_enabled) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                         for (var e : batch.settings().entrySet()) {
                             bindIslandSettings(ps, e.getValue());
                             ps.addBatch();
@@ -857,6 +857,7 @@ public class IslandDAO extends BaseDAO {
         ps.setBoolean(14, settings.isBorderMarkersEnabled());
         ps.setBoolean(15, settings.isWarpEnabled());
         ps.setString(16, settings.getWarpDescription());
+        ps.setBoolean(17, settings.isKeepInventoryEnabled());
     }
 
     void writeIslandWorthImmediate(GridPosition pos, double worth, int worthLevel, long lastCalculated) {
@@ -984,6 +985,7 @@ public class IslandDAO extends BaseDAO {
                             s.setBorderMarkersEnabled(rs.getBoolean("border_markers_enabled"));
                             s.setWarpEnabled(rs.getBoolean("warp_enabled"));
                             s.setWarpDescription(rs.getString("warp_description"));
+                            s.setKeepInventoryEnabled(rs.getBoolean("keep_inventory_enabled"));
                             return s;
                         } else {
                             IslandSettings ns = new IslandSettings(pos);
@@ -1024,8 +1026,8 @@ public class IslandDAO extends BaseDAO {
                     "INSERT OR REPLACE INTO island_settings " +
                     "(grid_x, grid_z, dimension, pvp_enabled, visitors_allowed, explosions_enabled, " +
                     "fire_spread_enabled, mob_spawning_enabled, crop_trampling_enabled, animal_spawning_enabled, " +
-                    "leaf_decay_enabled, border_color, border_size, border_markers_enabled, warp_enabled, warp_description) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    "leaf_decay_enabled, border_color, border_size, border_markers_enabled, warp_enabled, warp_description, keep_inventory_enabled) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 bindIslandSettings(ps, settings);
                 ps.executeUpdate();
             } catch (SQLException e) {
@@ -1948,7 +1950,11 @@ public class IslandDAO extends BaseDAO {
                         "island_active_weather", "island_active_music",
                         "island_missions", "island_prestige", "island_shop_purchases",
                         "island_museum", "island_museum_donations",
-                        "minion_skin_assignments"
+                        "minion_skin_assignments",
+                        "island_active_quests", "island_story_progress"
+                        // Full reset of all quests (incl. MAIN_STORY progress) on seasonal wipes, as requested.
+                        // Quests persist only across server restarts via DB load in generate/ensure.
+                        // Prestige (player choice) clears for story replay with power; seasonal is full server reset.
                     };
                     for (String t : keyTables) {
                         try (PreparedStatement ps = conn.prepareStatement("DELETE FROM " + t)) {

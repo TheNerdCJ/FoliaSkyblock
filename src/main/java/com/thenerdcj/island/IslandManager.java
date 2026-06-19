@@ -162,6 +162,17 @@ public class IslandManager {
                                     databaseManager.getIslandDAO().saveIslandMemberCount(pos, 0);
                                 }
 
+                                // Initialize island settings border size for starters to match *current* base size (config driven via upgrade manager).
+                                // This ensures new islands don't start with stale default (e.g. old 100) vs current upgrades.island-size.base-radius (8).
+                                // Size upgrades later overwrite this via the purchase flow.
+                                if (plugin.getIslandSettingsManager() != null && plugin.getIslandUpgradeManager() != null) {
+                                    plugin.getIslandSettingsManager().getSettings(pos).thenAccept(settings -> {
+                                        int initialRadius = plugin.getIslandUpgradeManager().getEffectiveIslandRadius(island);
+                                        settings.setBorderSize(initialRadius);
+                                        plugin.getIslandSettingsManager().saveSettings(settings);
+                                    });
+                                }
+
                                 // Task 1: mark unlocked for this dim now that gate passed (for hasUnlocked* queries + persistence roundtrips)
                                 if (dimension != World.Environment.NORMAL) {
                                     island.unlockDimension(dimension.name());
@@ -180,6 +191,7 @@ public class IslandManager {
                                     plugin.getQuestManager().generateOnboardingQuests(island.getId());
                                     plugin.getQuestManager().generateDailyQuests(island.getId());
                                     plugin.getQuestManager().generateWeeklyQuests(island.getId());
+                                    plugin.getQuestManager().generateStoryQuests(island.getId(), island.getLevel());
                                 }
 
                                 runGenerationOnRegionScheduler(player, island, biome, isDonor);
@@ -217,6 +229,14 @@ public class IslandManager {
                     plugin.getMinionManager().loadMinionDataForIsland(islandKey);
                     plugin.getThreadSafety().runOnMainThread(() ->
                             plugin.getMinionManager().respawnMinionsForIsland(island));
+
+                    // Ensure quests (incl story) loaded from DB for restart persistence
+                    if (plugin.getQuestManager() != null) {
+                        plugin.getQuestManager().generateOnboardingQuests(islandKey);
+                        plugin.getQuestManager().generateDailyQuests(islandKey);
+                        plugin.getQuestManager().generateWeeklyQuests(islandKey);
+                        plugin.getQuestManager().generateStoryQuests(islandKey, island.getLevel());
+                    }
 
                     // Museum persist load for full feature (task continuation)
                     if (plugin.getMuseumManager() != null) {

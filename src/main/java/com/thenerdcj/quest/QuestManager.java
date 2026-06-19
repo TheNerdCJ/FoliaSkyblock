@@ -113,7 +113,7 @@ public class QuestManager implements org.bukkit.event.Listener {
         List<Quest> quests = questsByIsland.get(islandId);
         if (quests == null) return;
         for (Quest q : quests) {
-            if (q.getQuestLine() == Quest.QuestLine.MAIN_STORY && q.getChapter() == 20 && !q.isCompleted()) {
+            if (q.getQuestLine() == Quest.QuestLine.MAIN_STORY && q.getChapter() >= 71 && q.getChapter() <= 80 && !q.isCompleted()) {
                 q.addProgress(q.getTarget() - q.getProgress() + 1); // complete the dragon slayer quest
                 break;
             }
@@ -244,12 +244,15 @@ public class QuestManager implements org.bukkit.event.Listener {
     /**
      * Generate or unlock MAIN_STORY quests based on current island level.
      * STRICTLY LINEAR CHAPTERS: only the single next chapter after the last completed one is ever active.
-     * This creates a guided story arc (small sequential missions) from early game through Nether/End prep,
-     * culminating in killing the Ender Dragon. Dailies & Weeklies run simultaneously (different categories or tabs).
+     * This creates a guided 100-chapter story arc ("The Fractured Veil") from early game through Nether/End prep,
+     * the Ender Dragon, and into Prestige loops. Dailies & Weeklies run simultaneously (different categories or tabs).
      * Called on level up, claim of previous chapter, and initially.
      */
     public void generateStoryQuests(String islandId, int islandLevel) {
         List<Quest> current = questsByIsland.computeIfAbsent(islandId, k -> new ArrayList<>());
+
+        // Ensure persisted active (incl MAIN_STORY) loaded for restart persistence
+        ensureActiveQuestsLoaded(islandId);
 
         // Determine the last completed MAIN_STORY chapter (tracker + any loaded history for safety across restarts)
         int lastCompleted = highestCompletedStoryChapter.getOrDefault(islandId, 0);
@@ -286,104 +289,353 @@ public class QuestManager implements org.bukkit.event.Listener {
             }
 
             current.add(chapterQuest);
+            plugin.getDatabaseManager().saveActiveQuest(islandId, chapterQuest);
         }
     }
 
     private int getMinLevelForChapter(int chapter) {
-        return switch (chapter) {
-            case 6 -> 5;
-            case 7 -> 7;
-            case 8 -> 9;
-            // Overworld mob / boss chapters
-            case 9 -> 10;
-            case 10 -> 11;
-            case 11 -> 12;
-            case 12 -> 13;
-            case 13 -> 14;
-            case 14 -> 15;
-            case 15 -> 16;
-            // Nether gate
-            case 16 -> 18;
-            // Nether mob / boss chapters
-            case 17 -> 20;
-            case 18 -> 22;
-            case 19 -> 24;
-            // Final dragon
-            case 20 -> 28;
-            default -> 100; // future chapters not yet defined
-        };
+        // Scaled for 100 chapters: gradual to encourage long-term play. Max ~150 for chapter 100.
+        return Math.min(150, 1 + (int)(chapter * 1.4));
     }
 
     private Quest createStoryQuestForChapter(int chapter) {
-        // Story is strictly linear chapters (only current one active + progress).
-        // Overworld phase (ch 9-15): defeat every key hostile mob + "bosses" (zombie, skeleton, creeper, spider, witch, enderman, raid/guardian bosses).
-        // Claiming the nether gate chapter (16) sets the nether_access_milestone and unlocks nether dimension access.
-        // Nether phase (17-19): defeat every key nether mob/boss (blaze, wither skeleton, ghast, piglin brute etc).
-        // End + final: the dragon chapter requires the nether complete via linear story. End mob threats (shulkers) are part of final prep descriptions.
-        // Dragon kill (final chapter) gives prestige option.
-        return switch (chapter) {
-            // === FOUNDATIONS (pre-combat) ===
-            case 6 -> createStoryQuest(Quest.QuestCategory.BUILDING, "Solid Foundations",
-                "Place 250 blocks to build a real base. A strong home is the foundation for every adventure that follows — all the way to the End.",
-                250, 180, 450, 6);
-            case 7 -> createStoryQuest(Quest.QuestCategory.MINING, "Resource Rush",
-                "Mine 450 stone and ores. Stockpile the raw materials you will need for serious tools, armor, and the nether portal.",
-                450, 210, 520, 7);
-            case 8 -> createStoryQuest(Quest.QuestCategory.FARMING, "Island Bounty",
-                "Harvest 300 crops. Secure sustainable food and resources so you can focus on exploration and combat.",
-                300, 190, 480, 8);
+        // FULL STORY: "The Fractured Veil" - 100 chapters for deep, continuous gameplay to Prestige.
+        //
+        // Core design (no overwhelm, maximum engagement):
+        // - STRICT LINEAR: only the NEXT chapter after your last completed one is active. Others are hidden until you claim.
+        // - Runs PARALLEL to onboarding (FIRST), dailies, weeklies, challenges, slayers, housing, collections. Play everything together.
+        // - Rich, immersive Elder lore in EVERY description: the Sky Elder tells an ongoing tale of the fraying Veil, corruption from the void, the Skyweavers who came before, the Dragon as final lock, and Prestige as eternal re-weaving.
+        // - Granular + evocative steps: each chapter focuses on 1-2 concrete skyblock actions with flavor (build shelter walls, mine the "bones of old worlds", deploy specific minions, trade at Bazaar, craft Eyes of Ender, shatter crystals with cover, raise prestige monuments, etc.).
+        // - Encourages continuous play: targets are meaningful (not trivial), scale gradually, rewards (XP + island bank money + unlocks) feel significant. Late chapters push advanced automation, grand building, and repeat mastery.
+        // - Interaction: direct hints for /is upgrades, Minions menu, Bazaar, skill menus, island furniture/housing, Slayer quests, Dimension bosses. The Elder Codex (in Quest Log) is a beautiful interactive journal.
+        // - 0-100 journey: Chapter 1 feels like the arrival after a mysterious "call". Chapter 100 is a true capstone that explicitly opens infinite prestige loops with escalating power and legend.
+        //
+        // 10 PHASES (10 chapters each) with distinct identity and rising stakes:
+        // Phase 1 (1-10): The First Tear — Awakening on the speck. Shelter, first resources, minion, basic skills.
+        // Phase 2 (11-20): Heart of the Sky — Overworld Empire. Combat hordes, collections, trade, real housing, first bosses.
+        // Phase 3 (21-30): The Burning Gate — Portal to Nether. Obsidian, first steps in fire, blaze rods.
+        // Phase 4 (31-40): Fortress of Ash — Nether depths. Wither skeletons, fortresses, nether bases, economy.
+        // Phase 5 (41-50): Lords of Flame — Nether mastery. Advanced mobs, Eyes of Ender preparation.
+        // Phase 6 (51-60): Gaze into the Void — End prep. Eyes crafted, End dimension unlocked.
+        // Phase 7 (61-70): Chorus of the Beyond — Outer islands. Shulkers, chorus, edge bases.
+        // Phase 8 (71-80): The Last Lock — Dragon's Fall. Crystals, the great battle, egg, Veil mended.
+        // Phase 9 (81-90): Threads Rewoven — Prestige dawn. Rebirth, multipliers, monuments.
+        // Phase 10 (91-100): Eternal Weaver — Become legend. Massive projects, max power, infinite cycles.
+        //
+        // Major beats: Nether ~30, End ~60, Dragon ~80, full Prestige mastery at 100.
+        // Special handling for Ender Dragon kill. Prestige rebirth clears active story so you can re-experience with power.
+        if (chapter < 1 || chapter > 100) {
+            return createStoryQuest(Quest.QuestCategory.CHALLENGE, "Legendary Trial",
+                "The Elder: 'Your legend continues beyond the known chapters. Master skyblock and ascend.'", 10 + chapter, 100 + chapter * 10, 200 + chapter * 20, chapter);
+        }
 
-            // === OVERWORLD: EVERY HOSTILE MOB + BOSSES (must complete to "enter" nether) ===
-            case 9 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Undead Plague: Zombies",
-                "Defeat 80 Zombies. The most common overworld hostile — master them as the first step toward nether access.",
-                80, 250, 600, 9, "ZOMBIE");
-            case 10 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Bone Collectors: Skeletons",
-                "Defeat 60 Skeletons (all variants). Archers and swordsmen must be eliminated.",
-                60, 240, 580, 10, "SKELETON");
-            case 11 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Creeper Carnage",
-                "Defeat 40 Creepers. Survive the explosions — these are critical overworld threats.",
-                40, 280, 650, 11, "CREEPER");
-            case 12 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Arachnid Ambush: Spiders",
-                "Defeat 50 Spiders. Nighttime and cave terrors — part of full overworld hostile mastery.",
-                50, 230, 570, 12, "SPIDER");
-            case 13 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Witch Hunt",
-                "Defeat 25 Witches. Potion masters of the overworld must be purged.",
-                25, 270, 620, 13, "WITCH");
-            case 14 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Enderman Stalkers (Overworld)",
-                "Defeat 20 Overworld Endermen. These teleporting nightmares are the last major overworld hostile before bosses.",
-                20, 300, 700, 14, "ENDERMAN");
-            case 15 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Overworld Bosses: Raiders & Guardians",
-                "Defeat the major overworld bosses — Vindicators, Evokers, Ravagers, and an Elder Guardian. EVERY overworld boss must fall to unlock the Nether in your story.",
-                12, 380, 950, 15, "VINDICATOR"); // Representative; natural play + other kills will cover the spirit of "every"
+        int phase = (chapter - 1) / 10 + 1;
+        int sub = (chapter - 1) % 10 + 1; // 1-10 within phase
 
-            // === NETHER GATE (claiming this chapter unlocks nether access via milestone + dimension flag) ===
-            case 16 -> createStoryQuest(Quest.QuestCategory.BUILDING, "Nether Portal Mastery",
-                "Build and light a functional nether portal. With all overworld hostiles and bosses defeated, the Nether dimension is now open to your island.",
-                10, 420, 1100, 16);
+        String title = "Veil Eternal " + chapter;
+        String desc = "Elder: 'Beyond the chapters, your skyblock story continues. Prestige, build, conquer.'";
+        Quest.QuestCategory cat = Quest.QuestCategory.CHALLENGE;
+        int target = 8 + chapter * 6;
+        int xp = 120 + chapter * 18;
+        int money = 250 + chapter * 30;
+        String mobType = null;
 
-            // === NETHER: EVERY MOB / BOSS (must complete to enter the End) ===
-            case 17 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Blaze Barrage",
-                "Defeat 30 Blazes deep in the Nether. Their rods are the key to the End — defeat this core nether threat.",
-                30, 320, 780, 17, "BLAZE");
-            case 18 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Withering Depths",
-                "Defeat 25 Wither Skeletons in nether fortresses. Skulls and the fortress itself must be conquered.",
-                25, 340, 820, 18, "WITHER_SKELETON");
-            case 19 -> createStoryQuest(Quest.QuestCategory.COMBAT, "Sky Terrors & Brutes",
-                "Defeat 15 Ghasts (tear their tears) and 15 Piglin Brutes / Hoglins. Every major nether flying and brute force must be broken to unlock the End.",
-                30, 360, 880, 19, "GHAST");
-
-            // === FINAL: ENDER DRAGON (after nether complete via linear gating). End mob threats (shulkers etc.) described as part of final preparation. ===
-            case 20 -> {
-                Quest dragon = createStoryQuest(Quest.QuestCategory.CHALLENGE, "Slay the Ender Dragon",
-                    "You have defeated all overworld hostiles/bosses, all nether mobs/bosses, and prepared for the End. Now enter the End and defeat the Ender Dragon — the final boss. Claiming this completes the Main Story and unlocks the Prestige option for your island.",
-                    1, 1500, 8000, 20);
-                dragon.addExtraReward(new Quest.QuestReward("Prestige eligibility + island level & XP multipliers"));
-                dragon.addExtraReward(new Quest.QuestReward("Cosmetic prestige unlocks + top-island leaderboard glory"));
-                yield dragon;
+        // ========== PHASE 1: AWAKENING (1-10) ==========
+        if (phase == 1) {
+            if (sub <= 3) {
+                cat = Quest.QuestCategory.BUILDING;
+                title = "The First Tear " + sub + ": Anchor in the Void";
+                desc = "Elder: 'Chapter " + chapter + ". Before you arrived there was only the call — a whisper across the fractured sky. You stand upon a speck above the endless void. The Veil between worlds frays — the first tear calls your name. Place blocks to shape a humble shelter (walls, floor, roof). This will be the seed of your sky empire. Visit /is later for upgrades and housing. Every structure you raise mends one thread of the Veil. Tend your dailies and deploy that first minion early — the small continuous acts of a weaver build the habits that will make every prestige run legendary. In your future prestiges, you'll look back on these humble beginnings with fondness and vastly greater power.'";
+                target = 8 + sub * 6;
+            } else if (sub <= 6) {
+                cat = Quest.QuestCategory.MINING;
+                title = "The First Tear " + sub + ": Bones of the Old World";
+                desc = "Elder: 'Chapter " + chapter + ". The stone remembers what the sky has forgotten. Mine stone, ore and the gravel of ages. Level your Mining skill — it will grant power and speed for all future labors. The fragments you gather will become tools, furnaces, and the backbone of your collections. Do not neglect the daily weave; even while mining, a quick daily or bazaar visit keeps the Veil strong and builds prestige power for later chapters.'";
+                target = 24 + sub * 8;
+                if (sub == 6) target = 64;
+            } else {
+                cat = Quest.QuestCategory.FARMING;
+                title = "The First Tear " + sub + ": Roots of the Dream";
+                desc = "Elder: 'Chapter " + chapter + ". Life must take hold or the island starves. Till soil, plant seeds, harvest wheat, carrots and potatoes. Place a simple water source and build a small farm plot. Deploy your first minion soon — it will tend while you grow stronger. Collections will sing your name. The daily rhythm of harvest and care is the quiet mending that prepares you for the grandeur of prestige cycles, where these early farms will bloom in minutes thanks to your past dedication.'";
+                target = 10 + sub * 4;
             }
-            default -> createStoryQuest(Quest.QuestCategory.CHALLENGE, "Legendary Trial",
-                "Complete this chapter of your legend and press on toward the Ender Dragon.", 10, 200, 500, chapter);
-        };
+        }
+        // ========== PHASE 2: OVERWORLD EMPIRE (11-20) ==========
+        else if (phase == 2) {
+            if (sub <= 4) {
+                cat = Quest.QuestCategory.COMBAT;
+                mobType = switch (sub) {
+                    case 1 -> "ZOMBIE";
+                    case 2 -> "SKELETON";
+                    case 3 -> "CREEPER";
+                    default -> "SPIDER";
+                };
+                title = "Heart of the Sky " + sub + ": Purge the Leaking Shadows";
+                desc = "Elder: 'Chapter " + chapter + ". The first tear widens. Corrupted shades pour into our realm. Defeat " + (mobType != null ? mobType.toLowerCase() + "s" : "hordes") + " that wander your island at night. Use a sword, gain combat practice, and consider your first Slayer quest for greater challenges. Your skill in battle protects everything you build. Do not neglect your daily quests and minion checks during these fights — they are the quiet mending that builds the power and habits for prestige returns where combat becomes second nature and you can focus on grander works faster.'";
+                target = 12 + sub * 5;
+            } else if (sub <= 7) {
+                cat = Quest.QuestCategory.BUILDING;
+                title = "Heart of the Sky " + sub + ": Raise the Empire";
+                desc = "Elder: 'Chapter " + chapter + ". A lone hut is not enough. Expand your platform, craft a proper house with storage, a crafting hall, and a farm shelter. Place furniture and decorations from your island menu. Begin using the Island Upgrade menu. Every block laid increases your island's worth and unlocks new /is upgrades. Make this place worthy of legend. These early investments in housing and upgrades will multiply in prestige, letting your empire rise in hours instead of days while you enjoy the creative side sooner.'";
+                target = 25 + sub * 6;
+            } else {
+                cat = Quest.QuestCategory.CHALLENGE;
+                title = "Heart of the Sky " + sub + ": First Minions & Trade";
+                desc = "Elder: 'Chapter " + chapter + ". Hands alone cannot build an empire. Deploy minions from the Minions menu to automate farming and mining. Sell excess crops and cobble at the Bazaar to earn your first real wealth for the island bank. Begin your collection log — every new item you gather strengthens the Veil. Keep the daily and weekly quests going alongside this — the rhythm of small consistent actions is what turns these early foundations into unstoppable prestige power and allows you to reach the beautiful late-game content faster in every cycle.'";
+                target = 3 + sub;
+            }
+        }
+        // ========== PHASE 3: NETHER PORTAL (21-30) ==========
+        else if (phase == 3) {
+            if (sub <= 5) {
+                cat = Quest.QuestCategory.BUILDING;
+                title = "The Burning Gate " + sub + ": Frame the Portal";
+                desc = "Elder: 'Chapter " + chapter + ". The sky alone will not save us. You must reach the realm of fire. Gather obsidian (through careful mining or by trading for it at the Bazaar). Build a 4x5 obsidian frame. Light it with flint and steel. Step through — the Nether awaits. Prepare armor and food; the flames test the unprepared.'";
+                target = 1;
+            } else {
+                cat = Quest.QuestCategory.COMBAT;
+                mobType = "BLAZE";
+                title = "The Burning Gate " + sub + ": Rods of the First Flame";
+                desc = "Elder: 'Chapter " + chapter + ". Within the fortress of netherrack and soul sand, blazes guard the rods needed for eyes of ender. Hunt blazes carefully — their fireballs are deadly. Use minions back home to farm rods while you explore. These rods are the key that will one day open the final gate to the Dragon.'";
+                target = 6 + sub;
+            }
+            if (chapter == 30) {
+                desc += " The Nether dimension is now fully unlocked for your island. The Elder smiles.";
+            }
+        }
+        // ========== PHASE 4: NETHER DEPTHS (31-40) ==========
+        else if (phase == 4) {
+            if (sub % 3 == 1) {
+                cat = Quest.QuestCategory.COMBAT;
+                mobType = "WITHER_SKELETON";
+                title = "Fortress of Ash " + sub + ": Skulls in the Dark";
+                desc = "Elder: 'Chapter " + chapter + ". Deeper in the nether fortresses stalk wither skeletons. Their skulls are required to summon a wither and to complete the End portal frame. Fight them with care and good gear. Slayer quests practiced in the Overworld will serve you here. Bring back skulls and bones for the great work.'";
+                target = 8 + sub;
+            } else if (sub % 3 == 2) {
+                cat = Quest.QuestCategory.BUILDING;
+                title = "Fortress of Ash " + sub + ": Outpost in Hell";
+                desc = "Elder: 'Chapter " + chapter + ". A safe haven in the flames. Using netherrack, basalt, blackstone and your growing resources, construct a small fortified base with chests, a portal room, and even a small farm of nether wart. Your island housing skills now extend across dimensions. Survive the heat by preparing potions and fire protection.'";
+                target = 30 + sub * 2;
+            } else {
+                cat = Quest.QuestCategory.TRADING;
+                title = "Fortress of Ash " + sub + ": Tears & Markets of Fire";
+                desc = "Elder: 'Chapter " + chapter + ". The ghasts that sail the red sky weep tears of value. Hunt them or trade for their tears at the Bazaar. Quartz, glowstone, and magma blocks flow through the markets. Use the economy of the Nether to fund your growing legend. Every coin in the island bank is another thread mended.'";
+                target = 5 + sub;
+            }
+        }
+        // ========== PHASE 5: NETHER MASTERY (41-50) ==========
+        else if (phase == 5) {
+            if (sub <= 4) {
+                cat = Quest.QuestCategory.COMBAT;
+                mobType = (sub == 1 || sub == 2) ? "GHAST" : "MAGMA_CUBE";
+                title = "Lords of Flame " + sub + ": Masters of the Crimson";
+                desc = "Elder: 'Chapter " + chapter + ". The true lords reveal themselves. Ghasts and magma cubes rule these lands. Master their patterns. Collect more tears and magma cream. These resources let you craft powerful items and eyes of ender in bulk. The Veil trembles as your power grows.'";
+                target = 6 + sub * 2;
+            } else if (sub <= 7) {
+                cat = Quest.QuestCategory.CHALLENGE;
+                title = "Lords of Flame " + sub + ": Eye of the Storm";
+                desc = "Elder: 'Chapter " + chapter + ". Combine blaze rods from your fortress farms with ender pearls won from the Overworld. Craft Eyes of Ender. Each one is a small star that will guide you to the final confrontation. Stockpile at least a dozen. The End draws near. Use your island bank wealth to buy any missing pieces at the Bazaar.'";
+                target = 4 + sub;
+            } else {
+                cat = Quest.QuestCategory.BUILDING;
+                title = "Lords of Flame " + sub + ": The Bridge to Eternity";
+                desc = "Elder: 'Chapter " + chapter + ". Build a safe bridge or platform in the nether for future expeditions. Fortify your portal room. Add lighting, storage, and even a small villager trading hall if you can lure them. Your mastery of building now serves you in every dimension. Prepare your best gear for the journey ahead.'";
+                target = 20 + sub * 3;
+            }
+            if (chapter == 50) desc += " All nether threats bow before the one who will face the Dragon.";
+        }
+        // ========== PHASE 6: END PREP (51-60) ==========
+        else if (phase == 6) {
+            if (sub <= 5) {
+                cat = Quest.QuestCategory.CHALLENGE;
+                title = "Gaze into the Void " + sub + ": Stars in Your Hands";
+                desc = "Elder: 'Chapter " + chapter + ". You now hold the means to open the End portal. Craft and collect enough Eyes of Ender. Throw them in the Overworld to locate the stronghold, or use them directly if you have the coordinates from your explorations. The final gate will demand twelve eyes to activate. This is the culmination of everything you have built.'";
+                target = 6 + sub;
+            } else {
+                cat = Quest.QuestCategory.COMBAT;
+                mobType = "ENDERMAN";
+                title = "Gaze into the Void " + sub + ": Pearls from the Void";
+                desc = "Elder: 'Chapter " + chapter + ". Ender pearls are the final component. Hunt endermen at night or in the warped forests of the nether. Be patient and precise — they teleport. Your combat skill from earlier chapters will keep you alive. Gather many; some will be needed for the portal itself and for later shulker hunts.'";
+                target = 10 + sub * 2;
+            }
+            if (chapter == 60) {
+                desc += " The End dimension is now unlocked. The Elder grows quiet with anticipation.";
+            }
+        }
+        // ========== PHASE 7: OUTER END (61-70) ==========
+        else if (phase == 7) {
+            if (sub % 3 == 1) {
+                cat = Quest.QuestCategory.COMBAT;
+                mobType = "SHULKER";
+                title = "Chorus of the Beyond " + sub + ": Shells of the Void";
+                desc = "Elder: 'Chapter " + chapter + ". The outer islands float in silence. Shulkers guard them. Defeat shulkers to claim their shells — these become shulker boxes, the greatest storage a skyblock master can own. Move carefully on the islands; one misstep sends you into the void forever. Bring slow falling or careful bridging.'";
+                target = 5 + sub;
+            } else if (sub % 3 == 2) {
+                cat = Quest.QuestCategory.BUILDING;
+                title = "Chorus of the Beyond " + sub + ": A Home at the Edge";
+                desc = "Elder: 'Chapter " + chapter + ". Establish a small outpost on an outer end island. Use end stone, purpur, and chorus plants for building. Create a safe return portal and storage. Your housing and building expertise now reaches the very edge of existence. This base will serve future dragon fights and exploration.'";
+                target = 15 + sub * 3;
+            } else {
+                cat = Quest.QuestCategory.CHALLENGE;
+                title = "Chorus of the Beyond " + sub + ": The Final Preparations";
+                desc = "Elder: 'Chapter " + chapter + ". Harvest chorus fruit and craft the last gear you will need. Upgrade your tools, enchantments, and armor using everything the dimensions have given you. Visit the island upgrades menu one last time. Speak with the Codex. The Dragon awaits those who are truly ready.'";
+                target = 8 + sub;
+            }
+        }
+        // ========== PHASE 8: DRAGON (71-80) ==========
+        else if (phase == 8) {
+            cat = Quest.QuestCategory.CHALLENGE;
+            if (sub == 1) {
+                title = "The Last Lock 1: The Gateway Opens";
+                desc = "Elder: 'Chapter " + chapter + ". You have arrived at the end of all beginnings. Throw the twelve Eyes of Ender into the portal frame hidden in the stronghold. The air itself screams as the gate opens. Step into the End. The central island of obsidian and black pillars awaits like a throne room for a god that should never have existed. Build a small safe platform if you must — the void is patient. This is the moment every block you ever placed, every minion you ever deployed, every trade you ever made has been preparing you for. The Dragon is not just a boss. It is the heart of the last great tear in the Veil. When it falls, the first true mending begins. Remember your dailies even here — they are the constant that made this possible.'";
+                target = 1;
+            } else if (sub <= 5) {
+                title = "The Last Lock " + sub + ": Shatter the Crystals";
+                desc = "Elder: 'Chapter " + chapter + ". The Dragon draws power from the crystals atop obsidian pillars. Destroy them with arrows, snowballs, or your best ranged attacks. Watch for the dragon's breath attack — it creates lingering clouds of death. Build cover with end stone blocks. Use water carefully. This is a true test of all your skyblock mastery — the minions you built, the gear from nether and end, the skills you leveled, the trades that funded it all. When the last crystal shatters, the beast will know fear. In future prestiges, this moment will come faster, but the triumph will feel just as deep. The continuous play of previous chapters has given you the power and wisdom to succeed.'";
+                target = 4;
+            } else {
+                title = "The Last Lock " + sub + ": Strike the Heart";
+                desc = "Elder: 'Chapter " + chapter + ". The crystals are gone. Now face the beast itself. Dodge, strike the head when it dives low, use beds for burst damage if you dare, or simply wear it down with skill and enchanted weapons. When it falls, the Veil will sing. Claim the egg. The story reaches its first great climax. Prestige will let you relive this glory with multipliers — the ultimate reward for the weaver who never stopped mending.'";
+                target = (sub >= 9) ? 1 : 3;
+            }
+            if (chapter == 80) {
+                desc += " The Dragon has fallen. The Elder weeps with pride. Prestige now opens the path to eternity. Return stronger each time; the tale grows with you.";
+            }
+        }
+        // ========== PHASE 9: PRESTIGE DAWN (81-90) ==========
+        else if (phase == 9) {
+            if (sub % 2 == 0) {
+                cat = Quest.QuestCategory.CHALLENGE;
+                title = "Threads Rewoven " + sub + ": The First Rebirth";
+                desc = "Elder: 'Chapter " + chapter + ". You have slain the Dragon and mended the greatest tear. But the Veil is vast. Open the Prestige menu. Rebirth your island. You will start anew, yet with powerful multipliers on all gains. Your previous empire's knowledge remains in your heart. Rebuild faster. Conquer the story again at greater scale. This is how legends are forged across cycles. Do your dailies immediately upon return — they are the habits that make the multipliers sing from day one and let you reach the beautiful housing, museum, and automation projects much quicker each time.'";
+                target = 1 + (sub / 3);
+            } else {
+                cat = Quest.QuestCategory.BUILDING;
+                title = "Threads Rewoven " + sub + ": Monument to the Eternal";
+                desc = "Elder: 'Chapter " + chapter + ". In your new prestige life, construct a monument that honors the journey — a tower, a dragon memorial, or a grand hall using blocks from every dimension. Place rare furniture and perhaps even display items in a museum wing. Let future visitors (and your own future runs) see the story written in blocks. Housing and building now carry the weight of legend. These monuments and museum pieces become your personal history books — in future prestiges you will stand before them and feel the full weight of the 0-100 tale, motivating even grander continuous creations.'";
+                target = 40 + sub * 4;
+            }
+            xp += 400;
+            money += 600;
+        }
+        // ========== PHASE 10: ETERNAL (91-100) ==========
+        else if (phase == 10) {
+            if (sub <= 4) {
+                cat = Quest.QuestCategory.CHALLENGE;
+                title = "Eternal Weaver " + sub + ": The Cycle Deepens";
+                desc = "Elder: 'Chapter " + chapter + ". Each prestige makes you stronger. Repeat the great works at new heights: command dozens of specialized minions, fill massive farms, complete every collection milestone, push skills and island upgrades to their limit. Defeat prestige-enhanced dimension bosses and higher slayer tiers. The multipliers compound. Your name echoes across islands. The Veil recognizes its champion. Never forget the small continuous stitches — dailies, minion checks, bazaar visits — they are what let the machine run while you dream bigger in each new life.'";
+                target = 6 + sub;
+            } else if (sub <= 7) {
+                cat = Quest.QuestCategory.BUILDING;
+                title = "Eternal Weaver " + sub + ": Cities in the Sky";
+                desc = "Elder: 'Chapter " + chapter + ". Build on a scale you once thought impossible. Create automated factories with dozens of minions across multiple islands. Design beautiful districts, redstone wonders, and public works that future players will admire. Every island upgrade tier reached, every furniture set unlocked, every collection maxed — all of it weaves new strength into the Veil. You are no longer a visitor. You are its guardian. Housing and museum pieces become the living record that makes prestige runs feel like coming home to a story you already wrote.'";
+                target = 80 + sub * 10;
+            } else {
+                cat = Quest.QuestCategory.CHALLENGE;
+                title = "Eternal Weaver " + sub + ": The Veil Remembers";
+                desc = "Elder: 'Chapter " + chapter + ". The final chapters. This is where the story becomes legend instead of memory. Complete the most difficult challenges the skyblock worlds can offer. Max your island level and worth until the top islands speak your name. Raise one last grand monument using blocks, furniture, and memories from every dimension you conquered. Do your dailies and weeklies without fail — they are the daily mending that builds the power for prestige. Use specialized minions, level every skill, trade at the bazaar, decorate your housing, curate the museum. When you claim chapter 100, the story does not end — it becomes eternal. You may prestige again and again. Each time the journey is deeper, faster, and more glorious because you carry the wisdom of every previous cycle and the multipliers that reward continuous play. You are no longer the one who mends the Veil. You are the reason the Veil still exists. The sky itself will remember you.'";
+                target = 3 + (sub - 7);
+            }
+            xp += 800;
+            money += 1200;
+            if (chapter == 100) {
+                desc += " The Fractured Veil is whole because of you. Prestige without end, legend without limit. Every future cycle will remember the weaver who refused to let the sky fall. The daily weave, the grand builds, the slayers — all of it lives on in the eternal loop.";
+                cat = Quest.QuestCategory.CHALLENGE;
+            }
+        }
+
+        // Additional new depth for more chapters to encourage continuous play
+        if (chapter == 15) {
+            desc += " The corrupted are pushed back. 'Your blade sings with the first true power. Collections and trades fuel the empire. Keep the dailies alive — they are the steady mending that makes prestige runs soar. In future lives this phase becomes a joyful warm-up for the grander tale.'";
+        }
+        if (chapter == 35) {
+            desc += " A true nether foothold. 'Build where others fear. The flames forge endurance. Your slayer practice pays here. Trade and survive; continuous economy in hell prepares you for the void. Prestige will let you turn this trial into a profitable, quick base for later conquests.'";
+        }
+        if (chapter == 55) {
+            desc += " The End fully opens. 'Shulkers, chorus, the edge of existence. Build your outpost proudly with furniture and storage. These gifts from the void will transform your entire playstyle. In prestige you will rush here to set up the advanced storage that lets you automate even faster.'";
+        }
+        if (chapter == 85) {
+            desc += " The first monuments of rebirth. 'Use blocks from every dimension to honor what was. The museum wing grows with relics. Continuous play (dailies, housing, museum curation) now feels like the natural heartbeat of the legend. Prestige rewards those who never let a day go un-mended.'";
+        }
+        if (chapter == 4) {
+            desc += " Your first real tools emerge. 'The crafting table and furnace turn raw stone into purpose. Mining skill levels grant speed and fortune that compound across every prestige. These foundational choices echo in faster builds and richer yields every cycle.'";
+        }
+        if (chapter == 7) {
+            desc += " Automation begins its song. 'The first minion toils while you dream of empires. Deploy specialized ones early — they free you for skills, exploration, and the grand story. In prestige these loyal workers multiply your output from hour one.'";
+        }
+        if (chapter == 13) {
+            desc += " Shadows test your growing light. 'Combat and slayers forge the blade needed for dimensions ahead. Pair every fight with daily mends and minion checks — the rhythm of continuous play turns early battles into the power that makes late-game prestige runs feel godlike.'";
+        }
+        if (chapter == 17) {
+            desc += " Empire takes root. 'Collections and trades weave wealth and purpose. Bazaar visits and upgrades become ritual. These small consistent acts build the foundation that prestige multipliers will explode into massive early advantages and beautiful late-game creations.'";
+        }
+        if (chapter == 22) {
+            desc += " Obsidian's promise. 'The portal frame rises from careful gathering or wise trades. The Nether's fire will temper you. Keep home systems running — dailies and minions are your anchor while you brave the flames and return wiser each prestige cycle.'";
+        }
+        if (chapter == 27) {
+            desc += " Blaze rods crackle with destiny. 'Harvested from fire, these keys open the End. Minions farm while you push. Balance adventure with daily mending — this harmony is the weaver's art, rewarded with faster conquests and more time for legacy in every rebirth.'";
+        }
+        if (chapter == 32) {
+            desc += " Fortress depths yield grim keys. 'Wither skulls for the End, lessons in power and patience. Slayer experience pays dividends. In prestige these trials become efficient steps, letting you focus on the beautiful outposts and monuments that define your legend.'";
+        }
+        if (chapter == 38) {
+            desc += " Nether outpost thrives. 'A bastion of storage and trade in the flames. Your building skills now span dimensions. Continuous economy here funds the final push. Prestige turns this endurance into a quick, profitable base for grander works.'";
+        }
+        if (chapter == 43) {
+            desc += " Eyes of Ender take form. 'Blaze and pearl become stars that pierce the final veil. Stockpile with bank wealth and minion help. Every prior chapter converges here — prestige will let you craft these keys faster and savor the drama of the End.'";
+        }
+        if (chapter == 48) {
+            desc += " Stronghold found. 'The portal frame awaits in darkness. The final dimension cracks open. Prepare with full arsenal from 48 chapters. Continuous play has built this moment; rebirths make it come sooner for even greater legacies.'";
+        }
+        if (chapter == 53) {
+            desc += " Shulkers fall, shells claimed. 'Storage transcendent, mobility divine. Build your void outpost with furniture and chorus farms. These gifts from the edge change how you carry the world. Prestige makes these advanced setups your early-game edge.'";
+        }
+        if (chapter == 58) {
+            desc += " Chorus mastery at the edge. 'The void's fruit harvested, outposts rise where few dare. Place a bed even here — the edge of existence can feel like home. Mastery here echoes in every cycle, freeing time for the Dragon and eternal prestige glory.'";
+        }
+        if (chapter == 63) {
+            desc += " End outpost rises. 'A true home among the stars. Shulker boxes revolutionize storage. Place furniture, farm chorus, defend against the void. Continuous exploration here builds the courage and infrastructure that make prestige End runs breathtakingly fast.'";
+        }
+        if (chapter == 68) {
+            desc += " Final preparations before the lock. 'Upgrade, enchant, brew, gather the last pearls. Minions toil faithfully at home. Every system touched across 68 chapters has led to this moment of truth. Prestige will let you arrive here with godlike power.'";
+        }
+        if (chapter == 73) {
+            desc += " Crystals shatter under will. 'The beast weakens with each ranged strike. Build cover, respect the breath. This victory frees the egg and opens prestige's door. Your continuous daily play has prepared the multipliers for glory in every retelling.'";
+        }
+        if (chapter == 78) {
+            desc += " The Dragon falls. 'The egg is yours, the veil mended. Prestige now — return stronger with the power of this triumph. The story is eternal only because weavers like you choose to re-weave it with ever-greater wisdom and might.'";
+        }
+        if (chapter == 83) {
+            desc += " Monuments rise in the new life. 'Blocks from every dimension tell the full journey. Add rare furniture and museum wings so the tale lives in stone. Future cycles will stand before them and feel the weight — inspiring even grander continuous creations.'";
+        }
+        if (chapter == 88) {
+            desc += " Your second life strengthens. 'Automation and beauty in harmony. While minions labor you chase slayers, complete collections, design districts. Continuous play (dailies to grand builds) is now your nature. Prestige lets you conduct this symphony from the first hour.'";
+        }
+        if (chapter == 92) {
+            desc += " The weaver commands legions. 'Dozens of specialized minions, capped skills, thriving bank. Focus on the beautiful and the eternal. Never skip the daily mending — it is the secret that multiplies everything in prestige and turns the 0-100 tale into living legend.'";
+        }
+        if (chapter == 98) {
+            desc += " The legend is sealed. 'All systems in harmony. Dailies, minions, housing, museum, bazaar, slayers, upgrades — the island itself sings your story. Claim the end and rebirth. Prestige is the reward for the continuous weaver who never let the sky fall.'";
+        }
+
+        if (chapter == 64) {
+            desc += " Daily rituals become sacred. 'The small acts between chapters — harvests, trades, minion checks — are the power source. Prestige turns the consistent weaver into a force of nature from the first day.'";
+        }
+        if (chapter == 69) {
+            desc += " Void mastery. 'Shulker boxes let you carry empires. Build outposts that feel home. Continuous exploration builds courage for the Dragon. Prestige makes these tools available early for godlike automation.'";
+        }
+        if (chapter == 72) {
+            desc += " The final test begins. 'Pillars and breath teach respect. All prior chapters converge. Continuous play prepared this moment — prestige will make the victory a celebration of the full tale.'";
+        }
+        if (chapter == 76) {
+            desc += " Legacy monuments. 'Build for those who follow and your future self. Housing and museum preserve the story. These choices compound in prestige, letting you start with wisdom and beauty from day one.'";
+        }
+        if (chapter == 79) {
+            desc += " Power peaks. 'Skills and systems sing. The island is ready. Continuous daily mending has built the foundation for eternal prestige glory.'";
+        }
+
+        // Return built chapter quest. (All depth added via phase descriptions and ~25 unique milestone if(chapter) blocks above.)
+        return createStoryQuest(cat, title, desc, target, xp, money, chapter, mobType);
     }
 
     private Quest createFirstQuest(Quest.QuestCategory category, String title, String description,
@@ -416,7 +668,7 @@ public class QuestManager implements org.bukkit.event.Listener {
                                    String requiredMobType) {
         long farFuture = System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000);
         List<String> prereqs = new ArrayList<>();
-        if (chapter > 6) {
+        if (chapter > 1) {
             prereqs.add("Complete Story Chapter " + (chapter - 1));
         }
         return new Quest(
@@ -478,6 +730,71 @@ public class QuestManager implements org.bukkit.event.Listener {
                 player.sendMessage("§a§lQuest Completed! §r§a+" + xp + " XP  §e+$" + money);
                 player.sendMessage("§7Thank you for completing: §f" + quest.getTitle());
 
+                // Elder flavor for story chapters - adds depth & encourages next steps without overwhelming
+                if (quest.getQuestLine() == Quest.QuestLine.MAIN_STORY) {
+                    switch (quest.getChapter()) {
+                        case 1 -> {
+                            player.sendMessage("§5The Elder: 'The first tear opens. Build your shelter and listen to the sky. You are the one who will mend the Veil.'");
+                            player.sendMessage("§7§oBefore the call there was only silence. Now the story begins with you.");
+                        }
+                        case 2 -> player.sendMessage("§5Elder: 'The first blocks feel solid. The void notices. Keep building — every wall is a prayer against the fracture. In prestige, this memory returns with new power.'");
+                        case 5 -> player.sendMessage("§5The Elder whispers: 'Good. Minions free your hands for greater works — skills, trade, the Nether awaits. Daily harvests now feel like part of the eternal weave.'");
+                        case 6 -> player.sendMessage("§5Elder: 'The first minion awakens. Automation is the key to continuous legend. Let it work while you push the story forward.'");
+                        case 8 -> player.sendMessage("§5Elder: 'A home takes shape. These comforts will guide you in every future cycle. Build with heart.'");
+                        case 9 -> player.sendMessage("§5Elder: 'The island gains a heartbeat. Upgrades are investments in eternity. Each level strengthens your future prestiges.'");
+                        case 10 -> player.sendMessage("§5Elder: 'Empire's first breath. Collections and trades weave the story. Continuous play mends the Veil in quiet rhythm.'");
+                        case 13 -> player.sendMessage("§5Elder: 'Shadows test your resolve. Slayer paths open — they prepare you for what the dimensions will throw at you.'");
+                        case 16 -> player.sendMessage("§5Elder: 'Trade fuels the empire. The Bazaar is your ally. Small consistent efforts build the legend.'");
+                        case 21 -> player.sendMessage("§5§lThe Burning Gate opens. §7Elder: 'Obsidian and courage. The Nether will forge you or break you. Return with rods and wisdom.'");
+                        case 22 -> player.sendMessage("§5Elder: 'The gate is lit. Step with purpose. The flames will test and teach endurance.'");
+                        case 26 -> player.sendMessage("§5Elder: 'First steps in fire. The heat forges more than tools — it forges the will needed for the stars.'");
+                        case 27 -> player.sendMessage("§5Elder: 'Rods secured. Minions farm while you push. Layer the tale with survival.'");
+                        case 29 -> player.sendMessage("§5Elder: 'Blaze rods in hand. The path to the End is clearer. Balance toil and adventure.'");
+                        case 15 -> player.sendMessage("§5Elder: 'You have tamed the land. The corrupted now fear your blade. Soon the gate of fire will be yours to open.'");
+                        case 20 -> player.sendMessage("§5The Elder nods: 'Collections bloom. The Bazaar sings your name. The first true step toward other worlds is near.'");
+
+
+
+
+
+
+
+
+                        case 25 -> player.sendMessage("§5§lThe Gate draws close. §7Elder: 'Gather obsidian and courage. The Nether will burn away weakness.'");
+                        case 30 -> player.sendMessage("§5§lNether is yours! §7Elder: 'Conquer its bosses and prepare for the End. The Veil thins.'");
+                        case 31 -> player.sendMessage("§5Elder: 'The fortress looms. Skulls for the End. Slayer practice pays off.'");
+                        case 35 -> player.sendMessage("§5Elder: 'The fortresses whisper your name in fear. Wither skulls are the currency of the final gate.'");
+                        case 36 -> player.sendMessage("§5Elder: 'A bastion in the blaze. Trade and survive; the flames forge the will.'");
+                        case 39 -> player.sendMessage("§5Elder: 'Ghast tears fuel the story's progress. The nether's gifts are many.'");
+                        case 40 -> player.sendMessage("§5Elder: 'Fortresses have fallen before you. Skulls and tears fill your vaults. You are becoming legend.'");
+                        case 45 -> player.sendMessage("§5The Elder: 'The stars of the End are nearly in your grasp. Use the economy and your minions to finish the eyes.'");
+                        case 50 -> player.sendMessage("§5The Elder: 'The Lords of Flame bow. Eyes of Ender wait for your hand. The final veil parts soon.'");
+                        case 55 -> player.sendMessage("§5§lEnder eyes complete. §7Elder: 'Throw them. Find the portal. The Dragon sleeps, but not for long.'");
+                        case 60 -> player.sendMessage("§5§lThe End opens! §7Elder: 'Gather eyes, defeat shulkers, face the Dragon. This is the heart of it all.'");
+                        case 65 -> player.sendMessage("§5Elder: 'The silence of the outer islands is broken by your footsteps. Shulker boxes will let you carry the world.'");
+                        case 70 -> player.sendMessage("§5Elder: 'The outer islands are tamed. Shulker shells and chorus fruit mark your mastery. The Last Lock remains.'");
+                        case 75 -> player.sendMessage("§6§lThe pillars await. §eElder: 'Shatter every crystal. Leave the beast no power but its own breath.'");
+                        case 80 -> player.sendMessage("§6§lThe Dragon falls! §eElder: 'Now Prestige to continue the eternal legend. The Veil sings your name.'");
+                        case 82 -> player.sendMessage("§6Elder: 'The egg is yours. The first rebirth calls. Open the Prestige menu and begin the cycle anew, stronger.'");
+                        case 85 -> player.sendMessage("§6Elder: 'The first rebirth is complete. Multipliers flow through you. Rebuild the empire swifter and grander.'");
+                        case 88 -> player.sendMessage("§6The Elder: 'Your monument rises. Future runs will look upon it and know a legend walked here.'");
+                        case 90 -> player.sendMessage("§6Elder: 'Monuments rise from your first rebirth. The dailies and small systems you tended now bear fruit with power. Build even greater — the museum and housing will carry your legacy into the next cycle.'");
+                        case 93 -> player.sendMessage("§6Elder: 'Dozens of minions serve you now. The sky itself bends to your will. Prepare the final chapters. Level your skills and build grander than before.'");
+                        case 95 -> player.sendMessage("§6§lNearly eternal. §eElder: 'One final weave. Max your power. The Veil will remember this forever. Use the museum to display your journey.'");
+                        case 97 -> player.sendMessage("§6Elder: 'The final weaves tighten. Your name is woven into the Veil. Ch.100 is the crown, but prestige lets you wear it again with new glory.'");
+                        case 98 -> player.sendMessage("§6Elder: 'Legends are forged in the last steps. Your monuments stand tall. The story is yours. Claim the end and rebirth. All systems harmony from daily mends to grand builds.'");
+                        case 99 -> player.sendMessage("§6The Elder’s voice is proud: 'One chapter remains. When it is claimed, you will have lived the full tale. Then you will live it again — better. The story encourages you to use every system the server offers. Continuous play leads to eternal prestige glory.'");
+                        case 100 -> player.sendMessage("§6§lThe Veil is eternal! §eYou are the master of skyblock. Every daily, minion, trade, and build wove this. Prestige repeatedly — each telling deeper because of the wisdom and power you carry. Thank you for answering the call. The sky remembers you forever.'");
+                        case 0 -> player.sendMessage("§5Elder: 'The call echoes still. This is where it all begins — the quiet before the first block. In prestige you will hear it again, and know the full weight of the journey ahead.'");
+                        case 64 -> player.sendMessage("§5Elder: 'The daily weave deepens. Quick dailies and minion checks are the power source. Prestige turns consistency into godlike force from day one.'");
+                        case 69 -> player.sendMessage("§5Elder: 'Void mastery. Shulker boxes and outposts change everything. Continuous exploration builds courage. Prestige makes these tools early advantages.'");
+                        case 72 -> player.sendMessage("§6Elder: 'The final test. Pillars teach respect. Continuous play prepared this. Prestige makes victory a celebration of the tale.'");
+                        case 76 -> player.sendMessage("§6Elder: 'Legacy monuments. Build for future self. Housing preserves the story. These compound in prestige for wisdom from the start.'");
+                        case 79 -> player.sendMessage("§6Elder: 'Power peaks. Skills aligned. Continuous mending built the foundation for eternal prestige glory.'");
+                        // Additional unique Elder messages for depth (see quest descriptions)
+                    }
+                }
+
                 // Award Island XP (uses IslandManager which applies party-size balancing automatically)
                 plugin.getIslandManager().addIslandXp(player, xp);
 
@@ -512,8 +829,8 @@ public class QuestManager implements org.bukkit.event.Listener {
                 }
 
                 // Prestige encouragement: Dragon kill (final story chapter) is the gateway to prestige and top islands
-                if (quest.getQuestLine() == Quest.QuestLine.MAIN_STORY && quest.getChapter() == 20) {
-                    player.sendMessage("§6§lCONGRATULATIONS! §eYou have completed the full story arc and slain the Ender Dragon!");
+                if (quest.getQuestLine() == Quest.QuestLine.MAIN_STORY && quest.getChapter() >= 91) {
+                    player.sendMessage("§6§lCONGRATULATIONS! §eYou have completed the full 100-chapter Fractured Veil story and slain the Ender Dragon!");
                     player.sendMessage("§aThis positions your island perfectly for Prestige - the path to the absolute top islands and leaderboards.");
                     if (plugin.getPrestigeManager() != null) {
                         Island islandForPrestige = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
@@ -536,18 +853,18 @@ public class QuestManager implements org.bukkit.event.Listener {
                     int lvl = (isl != null) ? isl.getLevel() : 1;
                     generateStoryQuests(islandId, lvl);
 
-                    // Story-based dimension gates: claiming the dedicated gate chapters sets the existing milestone + unlock flag.
-                    // This enforces "defeat all overworld hostiles/bosses before you can enter the nether", etc.
+                    // Story-based dimension gates: claiming key chapters unlocks dimensions.
+                    // This enforces the narrative: master Overworld before Nether, Nether before End.
                     if (isl != null) {
-                        if (quest.getChapter() == 16) { // Nether gate chapter (after all overworld mobs + bosses)
+                        if (quest.getChapter() == 30) { // After nether entry phase
                             isl.completeMilestone("nether_access_milestone", 800);
                             isl.unlockDimension("nether");
                             player.sendMessage("§a§lNether Unlocked! §7Your island may now access the Nether dimension.");
                         }
-                        if (quest.getChapter() == 19) { // After all nether mobs/bosses — end is next (dragon is final)
+                        if (quest.getChapter() == 60) { // After end prep phase
                             isl.completeMilestone("end_access_milestone", 1200);
                             isl.unlockDimension("end");
-                            player.sendMessage("§a§lThe End Unlocked! §7Your island may now access the End dimension (prepare for the final bosses).");
+                            player.sendMessage("§a§lThe End Unlocked! §7Your island may now access the End (prepare for the Dragon).");
                         }
                     }
                 }
@@ -635,6 +952,7 @@ public class QuestManager implements org.bukkit.event.Listener {
                 // Persist progress for MAIN_STORY chapters so partial mob kills survive server restarts
                 if (quest.getQuestLine() == Quest.QuestLine.MAIN_STORY) {
                     plugin.getDatabaseManager().saveStoryChapterProgress(islandId, quest.getChapter(), quest.getProgress());
+                    plugin.getDatabaseManager().saveActiveQuest(islandId, quest);  // persist full story quest for restarts
                 }
 
                 // Persist progress for daily/weekly + FIRST (onboarding) so they survive restarts

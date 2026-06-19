@@ -46,12 +46,19 @@ public final class GUIUtils {
 
     /**
      * Creates a navigation button with embedded PDC action.
+     * Now includes standard lore for easier navigation understanding across all GUIs.
      */
     public static ItemStack createNavButton(Material mat, String name, NamespacedKey actionKey, String actionValue) {
         ItemStack item = new ItemStack(mat);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.setDisplayName(name);
+            java.util.List<String> lore = new java.util.ArrayList<>();
+            lore.add("§7Click to navigate");
+            if ("PREV".equals(actionValue)) lore.add("§8Go to previous page");
+            else if ("NEXT".equals(actionValue)) lore.add("§8Go to next page");
+            else if ("CLOSE".equals(actionValue)) lore.add("§8Exit this menu");
+            meta.setLore(lore);
             if (actionKey != null && actionValue != null) {
                 PersistentDataContainer pdc = meta.getPersistentDataContainer();
                 pdc.set(actionKey, PersistentDataType.STRING, actionValue);

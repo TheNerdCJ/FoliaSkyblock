@@ -120,23 +120,74 @@ public class PlayerTagManager {
     /**
      * Returns the full cosmetic display string for a player (Rank + Active Tag + Name).
      * Used by chat, /list, and display name updates.
+     * Now includes island prestige/level prefix for desired chat format: <P{prestige}/L{level}> [Rank] (Tag) name
      */
     public String getComposedDisplayName(UUID uuid, String playerName) {
         if (plugin.getRankManager() == null) {
             PlayerTag tag = getActiveTag(uuid);
-            return (tag.isNone() ? "" : tag.getFormattedTag() + " ") + playerName;
+            String base = (tag.isNone() ? "" : tag.getFormattedTag() + " ") + playerName;
+            return prependIslandPrefix(uuid, base);
         }
 
         String rankDisplay = plugin.getRankManager().getPlayerDisplayName(uuid, playerName);
 
         PlayerTag tag = getActiveTag(uuid);
+        String base;
         if (tag.isNone() || tag.getTagText().isEmpty()) {
-            return rankDisplay;
+            base = rankDisplay;
+        } else {
+            // Place tag after rank prefix, before name (common cosmetic pattern)
+            // Example: [Rank] ★Legend PlayerName
+            base = rankDisplay.replace(playerName, tag.getTagText() + "§r " + playerName);
         }
 
-        // Place tag after rank prefix, before name (common cosmetic pattern)
-        // Example: [Rank] ★Legend PlayerName
-        return rankDisplay.replace(playerName, tag.getTagText() + "§r " + playerName);
+        // Apply wardrobe name color cosmetic to the player name portion only (default white, rank from config)
+        base = applyNameColor(uuid, playerName, base);
+
+        return prependIslandPrefix(uuid, base);
+    }
+
+    /**
+     * Prepends <P{prestige}/L{level}> using island data (prefers current world, falls back to overworld).
+     */
+    private String prependIslandPrefix(UUID uuid, String baseDisplay) {
+        if (plugin.getIslandManager() == null) {
+            return baseDisplay;
+        }
+        Player p = Bukkit.getPlayer(uuid);
+        if (p == null || !p.isOnline()) {
+            // Offline: omit or default 0/1; for chat usually online anyway
+            return baseDisplay;
+        }
+        Island island = plugin.getIslandManager().getIslandForPlayer(p);
+        int prestige = 0;
+        int level = 1;
+        if (island != null) {
+            level = island.getLevel();
+            if (plugin.getPrestigeManager() != null) {
+                prestige = plugin.getPrestigeManager().getPrestigeLevel(island);
+            }
+        }
+        String prestigePrefix = "§8<§dP" + prestige + "§8/§aL§b" + level + "§8>§r ";
+        return prestigePrefix + baseDisplay;
+    }
+
+    /**
+     * Applies active name color from wardrobe cosmetic to the player name part.
+     * Keeps rank portion colors exactly as configured in ranks.yml.
+     */
+    private String applyNameColor(UUID uuid, String playerName, String composed) {
+        if (plugin.getNameColorManager() == null || playerName == null || playerName.isEmpty()) {
+            return composed;
+        }
+        com.thenerdcj.cosmetic.NameColor nc = plugin.getNameColorManager().getActiveNameColor(uuid);
+        if (nc == null || nc.isNone()) {
+            // ensure white
+            return composed.replace(playerName, "§f" + playerName);
+        }
+        String code = nc.getColorCode();
+        // Replace the name occurrence (handles after rank/tag)
+        return composed.replace(playerName, code + playerName + "§r");
     }
 
     /**
@@ -150,7 +201,11 @@ public class PlayerTagManager {
 
         threadSafety.runOnMainThread(() -> {
             player.setDisplayName(composed);
-            player.setPlayerListName(composed);
+            // Do not set playerListName here; tab list is managed by IslandWorthManager to include cosmetics + worth/level suffix
+            // Re-apply tab to ensure latest cosmetics + worth after name/tag/rank change
+            if (plugin.getIslandWorthManager() != null) {
+                plugin.getIslandWorthManager().updatePlayerTabList(player);
+            }
         });
     }
 

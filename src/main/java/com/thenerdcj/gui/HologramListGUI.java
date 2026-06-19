@@ -64,13 +64,13 @@ public class HologramListGUI implements InventoryHolder, Listener {
                 lore.add("§7Refresh: §f" + data.getUpdateInterval() + "s");
             }
             lore.add("");
-            lore.add("§eLeft Click §7→ Teleport to hologram");
-            lore.add("§6Shift+Left §7→ Move hologram here");
+            lore.add("§aLeft Click §7→ Edit lines (GUI)");
+            lore.add("§eShift+Left §7→ Teleport to hologram");
             lore.add("§cRight Click §7→ Delete");
             if (data.isDynamic()) {
                 lore.add("§bShift+Right §7→ Force refresh (dynamic)");
             }
-            lore.add("§7Use /holo commands for editing lines");
+            lore.add("§7/holo movehere <name> to move");
 
             ItemStack item = GUIUtils.createItem(Material.NAME_TAG, "§e" + data.getName(), lore);
             attachHologramPDC(item, data.getName());
@@ -152,21 +152,10 @@ public class HologramListGUI implements InventoryHolder, Listener {
 
         if (event.isLeftClick()) {
             if (event.isShiftClick()) {
-                final String nameForMsg = holoName;
-                hologramManager.moveHologram(data.getId(), player.getLocation())
-                        .thenAccept(success -> {
-                            if (success) {
-                                player.sendMessage("§aHologram '" + nameForMsg + "' moved to your location.");
-                                plugin.getThreadSafety().runOnMainThread(() -> new HologramListGUI(plugin).open(player));
-                            } else {
-                                player.sendMessage("§cFailed to move hologram.");
-                            }
-                        });
-            } else {
+                // Shift+Left = Teleport (Folia async)
                 World w = Bukkit.getWorld(data.getWorldName());
                 if (w != null) {
                     Location tpLoc = new Location(w, data.getX(), data.getY() + 0.5, data.getZ());
-                    // Folia-safe: use teleportAsync from click handler (region thread)
                     final String tpName = holoName;
                     player.teleportAsync(tpLoc).thenAccept(success -> {
                         if (success) {
@@ -178,6 +167,9 @@ public class HologramListGUI implements InventoryHolder, Listener {
                 } else {
                     player.sendMessage("§cHologram world '" + data.getWorldName() + "' is not loaded.");
                 }
+            } else {
+                // Primary left click: open the dedicated line editor GUI (two-column)
+                plugin.getHologramEditorGUI().open(player, holoName);
             }
         } else if (event.isRightClick()) {
             if (event.isShiftClick() && data.isDynamic()) {

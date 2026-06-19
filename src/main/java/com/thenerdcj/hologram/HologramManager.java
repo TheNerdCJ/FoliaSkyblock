@@ -194,6 +194,8 @@ public class HologramManager {
                                 }
                                 entity.text(MessageUtil.legacy(processed));
                                 entity.setBillboard(Display.Billboard.valueOf(data.getBillboard().toUpperCase()));
+                                entity.setAlignment(TextDisplay.TextAlignment.CENTER);
+                                entity.setLineWidth(1000); // High width so long lines don't auto-wrap inside a single TextDisplay (prevents "extra line" effect)
                                 entity.setSeeThrough(data.isSeeThrough());
                                 entity.setShadowed(data.isShadow());
                                 entity.setBrightness(new Display.Brightness(15, 15));
@@ -483,7 +485,16 @@ public class HologramManager {
             int hz = (int) Math.floor(data.getZ()) >> 4;
             if (hx == cx && hz == cz) {
                 Hologram active = activeHolograms.get(data.getId());
-                if (active == null || active.getDisplays().isEmpty()) {
+                boolean needsRespawn = (active == null);
+                if (active != null) {
+                    // Remove any stale/invalid Display refs that were auto-removed by server (due to persistent=false + chunk unload)
+                    // This was causing holograms to "despawn eventually" and never reappear on subsequent chunk loads.
+                    active.getDisplays().removeIf(d -> d == null || !d.isValid());
+                    if (active.getDisplays().isEmpty()) {
+                        needsRespawn = true;
+                    }
+                }
+                if (needsRespawn) {
                     plugin.getLogger().info("[HOLO-DEBUG] Re-spawning hologram id=" + data.getId() + " name='" + data.getName() + "' on chunk load " + cx + "," + cz);
                     spawnHologram(data);
                 }

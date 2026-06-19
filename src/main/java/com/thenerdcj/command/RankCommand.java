@@ -16,8 +16,9 @@ import java.util.UUID;
  * Commands:
  * /rank - Shows your current rank
  * /rank <player> - Shows another player's rank
- * /rank set <player> <rank> - Sets a player's rank (admin)
- * /rank list - Lists all available ranks
+ * /rank set <player> <rank> - Sets a player's rank (staff/admin)
+ * /rank list - Lists all available ranks (staff see detailed view)
+ * /rank info <rank> - Deep dive detailed information on a specific rank (ideal for staff)
  * /rank reload - Reloads ranks from config (admin)
  * /rank vote <player> - Votes for a player (community voting system)
  */
@@ -46,7 +47,7 @@ public class RankCommand implements CommandExecutor {
 
         switch (subCommand) {
             case "set":
-                if (!sender.hasPermission("folia.rank.set")) {
+                if (!sender.hasPermission("folia.rank.set") && !sender.hasPermission("foliasb.staff")) {
                     sender.sendMessage("§cYou don't have permission to set ranks.");
                     return true;
                 }
@@ -59,6 +60,18 @@ public class RankCommand implements CommandExecutor {
 
             case "list":
                 listAllRanks(sender);
+                return true;
+
+            case "info":
+            case "details":
+            case "view":
+            case "show":
+                if (args.length < 2) {
+                    sender.sendMessage("§cUsage: /rank info <rank>");
+                    sender.sendMessage("§7Example: /rank info vip");
+                    return true;
+                }
+                showRankInfo(sender, args[1]);
                 return true;
 
             case "reload":
@@ -122,7 +135,7 @@ public class RankCommand implements CommandExecutor {
     private void setPlayerRank(CommandSender sender, String targetName, String rankId) {
         if (!plugin.getRankManager().rankExists(rankId)) {
             sender.sendMessage("§cRank not found: " + rankId);
-            sender.sendMessage("§7Use /rank list to see available ranks.");
+            sender.sendMessage("§7Use /rank list (staff get details) or /rank info <rank> to deep dive.");
             return;
         }
 
@@ -150,8 +163,13 @@ public class RankCommand implements CommandExecutor {
     private void listAllRanks(CommandSender sender) {
         List<RankData> ranks = plugin.getRankManager().getAllRanksSorted();
 
+        boolean isStaff = sender.hasPermission("foliasb.staff") || sender.hasPermission("folia.rank.set");
+
         sender.sendMessage("§6§lAvailable Ranks:");
         sender.sendMessage("§7Total ranks: §e" + ranks.size());
+        if (isStaff) {
+            sender.sendMessage("§7§o(Staff view - showing detailed information)");
+        }
         sender.sendMessage("");
 
         for (RankData rank : ranks) {
@@ -171,8 +189,86 @@ public class RankCommand implements CommandExecutor {
 
             sender.sendMessage(info.toString());
 
-            // Show permissions count
-            sender.sendMessage("  §7Permissions: §e" + rank.getPermissions().size());
+            // Always show priority
+            sender.sendMessage("  §7Priority: §e" + rank.getPriority());
+
+            // Suffix if present
+            String suffix = rank.getSuffix();
+            if (suffix != null && !suffix.isEmpty()) {
+                String shownSuffix = ser.serialize(ser.deserialize(suffix));
+                sender.sendMessage("  §7Suffix: " + shownSuffix);
+            }
+
+            // Parent if present
+            if (rank.getParent() != null && !rank.getParent().isEmpty()) {
+                sender.sendMessage("  §7Inherits from: §e" + rank.getParent());
+            }
+
+            if (isStaff) {
+                // Staff deep list: full permissions
+                List<String> perms = rank.getPermissions();
+                sender.sendMessage("  §7Permissions (§e" + perms.size() + "§7):");
+                if (perms.isEmpty()) {
+                    sender.sendMessage("    §7(none)");
+                } else {
+                    for (String perm : perms) {
+                        sender.sendMessage("    §f- §b" + perm);
+                    }
+                }
+            } else {
+                // Regular view: just the count
+                sender.sendMessage("  §7Permissions: §e" + rank.getPermissions().size());
+            }
+        }
+
+        if (isStaff) {
+            sender.sendMessage("");
+            sender.sendMessage("§7Deep dive a rank with: §e/rank info <rank>");
+            sender.sendMessage("§7E.g. /rank info moderator");
+        }
+    }
+
+    /**
+     * Deep dive for a specific rank. Staff (and players) can use this for full details on one rank.
+     */
+    private void showRankInfo(CommandSender sender, String rankId) {
+        RankData rank = plugin.getRankManager().getRankData(rankId);
+        if (rank == null) {
+            sender.sendMessage("§cRank not found: " + rankId);
+            sender.sendMessage("§7Use /rank list (staff get details) or /rank info <rank> to deep dive.");
+            return;
+        }
+
+        var ser = LegacyComponentSerializer.legacyAmpersand();
+        String prefix = ser.serialize(ser.deserialize(rank.getPrefix()));
+        String suffix = (rank.getSuffix() != null && !rank.getSuffix().isEmpty())
+                ? ser.serialize(ser.deserialize(rank.getSuffix())) : "§7(none)";
+
+        sender.sendMessage("§6§lRank Details: " + rank.getDisplayName() + " §7(" + rank.getRankId() + ")");
+        sender.sendMessage("§7Prefix: " + prefix);
+        sender.sendMessage("§7Suffix: " + suffix);
+        sender.sendMessage("§7Priority: §e" + rank.getPriority());
+        sender.sendMessage("§7Default: " + (rank.isDefault() ? "§aYes" : "§cNo"));
+        sender.sendMessage("§7Staff: " + (rank.isStaff() ? "§cYes" : "§7No"));
+        sender.sendMessage("§7Donor: " + (rank.isDonor() ? "§6Yes" : "§7No"));
+        if (rank.getParent() != null && !rank.getParent().isEmpty()) {
+            sender.sendMessage("§7Inherits from: §e" + rank.getParent());
+        }
+
+        List<String> perms = rank.getPermissions();
+        sender.sendMessage("§7Permissions (§e" + perms.size() + "§7):");
+        if (perms.isEmpty()) {
+            sender.sendMessage("  §7(none)");
+        } else {
+            for (String p : perms) {
+                sender.sendMessage("  §f- §b" + p);
+            }
+        }
+
+        // Extra staff notes
+        if (sender.hasPermission("foliasb.staff") || sender.hasPermission("folia.rank.set")) {
+            sender.sendMessage("");
+            sender.sendMessage("§7Use §e/setrank <player> " + rank.getRankId() + " §7to assign this rank.");
         }
     }
 

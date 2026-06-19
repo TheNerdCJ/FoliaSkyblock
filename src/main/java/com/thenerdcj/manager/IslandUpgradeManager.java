@@ -226,7 +226,7 @@ public class IslandUpgradeManager {
     }
 
     /**
-     * Returns the effective island radius (base 8 + upgrade bonus for small compact starting islands).
+     * Returns the effective island radius (base + upgrade bonus for small compact starting islands).
      */
     public int getEffectiveIslandRadius(Island island) {
         int base = plugin.getConfig().getInt("upgrades.island-size.base-radius", 8);

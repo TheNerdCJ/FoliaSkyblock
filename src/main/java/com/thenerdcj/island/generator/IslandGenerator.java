@@ -17,12 +17,12 @@ import java.util.*;
  * <p>
  * Design goals (no schematics):
  * - Compact starting islands matching typical small PlanetMinecraft skyblock starter references
- *   (tiny platforms with 1-3 trees, minimal pond/rock features, chest — now ~6-16 block diameter land).
+ *   (tiny platforms with 1-3 trees, minimal pond/rock features, chest — now ~4-10 block diameter land for all biomes).
  * - Every island of the same biome still feels distinct ("unique generation") via archetypes.
  * - Strong use of seeded deterministic randomness so the same island always regenerates identically (important for resets).
  * - Multiple "Archetypes" per biome group that dramatically change terrain shape... (see below)
  * - All block work done via Folia RegionScheduler.
- * - BiomeTemplate min/maxRadius now control the smaller per-biome footprints (shrunk for all templates).
+ * - BiomeTemplate min/maxRadius control the smaller per-biome footprints (set small and consistent for all biomes).
  * <p>
  * Features and densities automatically scale down with the smaller base radii.
  */
@@ -230,7 +230,7 @@ public class IslandGenerator {
 
         int radius = getRandomizedRadius(template, seed);
         // Task batch: size upgrade also affects gen radius (expands terrain for upgraded islands on reset/gen)
-        // Reduced multiplier for compact bases (PMC-style); high levels still grow but not explode.
+        // Reduced multiplier for compact bases (PMC-style tiny starters); high levels still grow but not explode.
         if (sizeLevel > 0) {
             radius = (int) Math.min(radius * (1.0 + sizeLevel * 0.05), 128);
         }
@@ -1018,6 +1018,8 @@ public class IslandGenerator {
     }
 
     // ==================== STARTER CHEST (fixed location, balanced Play-to-Win loot) ====================
+    // Chest is placed on solid ground near center using multiple offset attempts.
+    // Always has clear air above (visible, not buried) and never floats. Works for tiny PMC-style islands.
 
     private void placeStarterChest(Location center, Biome biome, Player player, long seed) {
         Random rand = new Random(seed ^ 0xDEADBEEFL); // stable but varied minor contents
@@ -1026,22 +1028,64 @@ public class IslandGenerator {
         int cy = center.getBlockY();
         int cz = center.getBlockZ();
 
-        // Fixed relative position (now +2 for compact small islands; was +3)
-        // Keeps chest safely on the smaller generated platform (PMC-style compact starters)
-        int chestX = cx + 2;
+        // Find a safe, visible spot for the chest near the center.
+        // Tries several close offsets (prioritizing easy to spot locations) and uses robust
+        // downward scan to guarantee it sits on solid ground (no floating) with clear air above (no buried).
+        // Works reliably for the new smaller PMC-style island radii (2-5).
+        int[][] offsets = {{1, 1}, {2, 0}, {1, 2}, {0, 1}, {0, 2}, {1, 0}};
+        int chestX = cx;
         int chestZ = cz;
-        int surfaceY = cy + 2; // approximate, adjust if needed in real
+        int solidY = -9999;
 
-        // Find actual surface
-        for (int y = cy + 6; y > cy - 2; y--) {
-            if (center.getWorld().getBlockAt(chestX, y, chestZ).getType().isSolid()) {
-                surfaceY = y + 1;
+        for (int[] off : offsets) {
+            int tx = cx + off[0];
+            int tz = cz + off[1];
+            int found = -9999;
+
+            for (int y = cy + 12; y >= cy - 8; y--) {
+                Material type = center.getWorld().getBlockAt(tx, y, tz).getType();
+                if (type.isSolid() && !type.isAir()) {
+                    found = y;
+                    break;
+                }
+            }
+
+            if (found > cy - 5) {  // reasonable height on the island
+                chestX = tx;
+                chestZ = tz;
+                solidY = found;
                 break;
             }
         }
 
-        Block chestBlock = center.getWorld().getBlockAt(chestX, surfaceY, chestZ);
+        if (solidY == -9999) {
+            // last resort
+            chestX = cx + 1;
+            chestZ = cz;
+            solidY = cy;
+        }
+
+        int chestY = solidY + 1;
+
+        Block chestBlock = center.getWorld().getBlockAt(chestX, chestY, chestZ);
         chestBlock.setType(Material.CHEST);
+
+        // Face the chest toward the island center for better visibility when player arrives.
+        if (chestBlock.getBlockData() instanceof org.bukkit.block.data.Directional dir) {
+            int dx = cx - chestX;
+            int dz = cz - chestZ;
+            if (Math.abs(dx) > Math.abs(dz)) {
+                dir.setFacing(dx > 0 ? org.bukkit.block.BlockFace.EAST : org.bukkit.block.BlockFace.WEST);
+            } else {
+                dir.setFacing(dz > 0 ? org.bukkit.block.BlockFace.SOUTH : org.bukkit.block.BlockFace.NORTH);
+            }
+            chestBlock.setBlockData(dir);
+        }
+
+        // Explicitly clear space directly above the chest.
+        // Ensures the chest is not buried under terrain/features and is easily visible/spottable.
+        center.getWorld().getBlockAt(chestX, chestY + 1, chestZ).setType(Material.AIR);
+        center.getWorld().getBlockAt(chestX, chestY + 2, chestZ).setType(Material.AIR);
 
         if (chestBlock.getState() instanceof Chest chestState) {
             Inventory inv = chestState.getInventory();
@@ -1055,6 +1099,7 @@ public class IslandGenerator {
             inv.addItem(new ItemStack(Material.STONE_PICKAXE, 1));
             inv.addItem(new ItemStack(Material.STONE_AXE, 1));
             inv.addItem(new ItemStack(Material.STONE_HOE, 1));
+            inv.addItem(new ItemStack(Material.STONE_SHOVEL, 1));
             inv.addItem(new ItemStack(Material.STONE_SWORD, 1));
             inv.addItem(new ItemStack(Material.WHEAT_SEEDS, 12 + rand.nextInt(8)));
             inv.addItem(new ItemStack(Material.POTATO, 6 + rand.nextInt(4)));
@@ -1072,9 +1117,10 @@ public class IslandGenerator {
             if (guide.getItemMeta() instanceof org.bukkit.inventory.meta.BookMeta bookMeta) {
                 bookMeta.setTitle("FoliaSkyblock Beginner's Guide");
                 bookMeta.setAuthor("Island Elder");
-                bookMeta.addPage("Welcome to your new island!\n\n§6Key Commands:\n§f/is or /island - Main menu\n/quests or /daily - First tasks\n/skills - Personal MCMMO skills\n/collections - Discover & unlock\n/wardrobe - Earned cosmetics");
-                bookMeta.addPage("§aEarly Game Tips:\n\nStart by breaking blocks and planting seeds.\nComplete 'First' quests for a free cosmetic trail!\nLevel skills for abilities.\nMinions automate farming/mining.\nEverything is Play-to-Win - no pay advantages.");
-                bookMeta.addPage("§eProgression:\n\nIsland XP from actions/quests.\nFollow the Story chapters (linear) to the End.\nUnlock dimensions at levels.\nComplete the story by slaying the Dragon - then Prestige for multipliers and top island competition.\nTrade at /bazaar /ah for missing items.\n\nHave fun and play fair!");
+                bookMeta.setDisplayName("§8FoliaSkyblock Beginner's Guide");
+                bookMeta.addPage("Welcome to your new island!\n\n§2Key Commands:\n§0/is or /island - Main menu\n/quests or /daily - First tasks\n/skills - Personal MCMMO skills\n/collections - Discover & unlock\n/wardrobe - Earned cosmetics");
+                bookMeta.addPage("§2Early Game Tips:\n\n§0Start by breaking blocks and planting seeds.\nComplete 'First' quests for a free cosmetic trail!\nLevel skills for abilities.\nMinions automate farming/mining.\nEverything is Play-to-Win - no pay advantages.");
+                bookMeta.addPage("§2Progression:\n\n§0Island XP from actions/quests.\nFollow the Story chapters (linear) to the End.\nUnlock dimensions at levels.\nComplete the story by slaying the Dragon - then Prestige for multipliers and top island competition.\nTrade at /bazaar /ah for missing items.\n\nHave fun and play fair!");
                 bookMeta.setGeneration(org.bukkit.inventory.meta.BookMeta.Generation.ORIGINAL);
                 guide.setItemMeta(bookMeta);
             }

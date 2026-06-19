@@ -9,6 +9,7 @@ import org.bukkit.Location;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.*;
 import org.bukkit.event.entity.*;
@@ -468,6 +469,26 @@ public class IslandProtectionListener implements Listener {
         pendingCrystalDragonHome = null;
     }
 
+    /**
+     * Respect per-island "Keep Inventory" setting.
+     * When enabled on the island where the player dies, keep their inventory and clear drops (standard skyblock friendly behavior).
+     * Uses cached settings for hot path safety.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerDeath(PlayerDeathEvent e) {
+        Player player = e.getEntity();
+        if (player == null) return;
+        org.bukkit.Location loc = player.getLocation();
+        Island island = islandManager.getIslandAt(loc);
+        if (island != null && plugin.getIslandSettingsManager() != null) {
+            if (plugin.getIslandSettingsManager().isSettingEnabled(island.getGridPosition(), "KEEP_INVENTORY")) {
+                e.setKeepInventory(true);
+                e.getDrops().clear();
+                // Keep XP level optional (keep false to avoid free XP on death; players can toggle if desired later)
+            }
+        }
+    }
+
     // ==================== FOLIA WORLD UNLOAD HOOK (edge case cleanup for large servers) ====================
 
     @EventHandler
@@ -510,6 +531,56 @@ public class IslandProtectionListener implements Listener {
 
         if (isSpawnProtected(loc)) {
             if (!e.getPlayer().hasPermission("foliasb.admin.bypass")) {
+                e.setCancelled(true);
+            }
+        }
+    }
+
+    /**
+     * Prevent all damage to players while inside the spawn protection zone (0,0 area).
+     * Admin bypass allowed via foliasb.admin.bypass permission.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onSpawnDamage(EntityDamageEvent e) {
+        if (!(e.getEntity() instanceof Player player)) {
+            return;
+        }
+        if (isSpawnProtected(player.getLocation())) {
+            if (!player.hasPermission("foliasb.admin.bypass")) {
+                e.setCancelled(true);
+            }
+        }
+    }
+
+    /**
+     * Prevent food level decrease and saturation loss while in spawn.
+     * Keeps players at full hunger/saturation inside protected spawn area.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onSpawnFoodChange(FoodLevelChangeEvent e) {
+        if (!(e.getEntity() instanceof Player player)) {
+            return;
+        }
+        if (isSpawnProtected(player.getLocation())) {
+            if (!player.hasPermission("foliasb.admin.bypass")) {
+                if (e.getFoodLevel() < player.getFoodLevel()) {
+                    e.setCancelled(true);
+                    // Restore to full to prevent starvation/saturation drain
+                    player.setFoodLevel(20);
+                    player.setSaturation(20.0f);
+                }
+            }
+        }
+    }
+
+    /**
+     * Cancel exhaustion (the root cause of saturation and hunger drain over time)
+     * while the player is inside spawn protection.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onSpawnExhaustion(org.bukkit.event.entity.EntityExhaustionEvent e) {
+        if (e.getEntity() instanceof Player player) {
+            if (isSpawnProtected(player.getLocation()) && !player.hasPermission("foliasb.admin.bypass")) {
                 e.setCancelled(true);
             }
         }

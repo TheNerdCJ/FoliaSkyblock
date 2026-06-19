@@ -82,7 +82,7 @@ public class IslandSettingsManager {
         IslandSettings settings = settingsCache.get(pos);
         if (settings != null) return settings.getSetting(settingName);
         return switch (settingName.toUpperCase()) {
-            case "PVP", "EXPLOSIONS", "FIRE", "WARP", "BORDER_MARKERS" -> false;  // Borders (markers + global visuals) disabled by default for islands
+            case "PVP", "EXPLOSIONS", "FIRE", "WARP", "BORDER_MARKERS", "KEEP_INVENTORY" -> false;  // KEEP_INVENTORY off by default (opt-in for skyblock risk/reward)
             default -> true;
         };
     }

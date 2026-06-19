@@ -128,8 +128,10 @@ public class QuestDetailGUI implements Listener {
                 String streak = plugin.getQuestManager().getStreakInfo(ok);
                 if (!streak.isEmpty()) why.add("§7" + streak);
             } else if (q.getQuestLine() == Quest.QuestLine.MAIN_STORY) {
-                why.add("§b" + q.getQuestLineDisplay() + " §7- Chapter " + q.getChapter());
-                why.add("§7Follow the story to unlock new features and rewards.");
+                why.add("§b" + q.getQuestLineDisplay() + " §7- Chapter " + q.getChapter() + " of the Fractured Veil");
+                why.add("§7The Sky Elder chose you when the old weavers fell silent. This chapter is one stitch in a 100-chapter tapestry that spans the Overworld, the Nether, the End, the Dragon, and infinite Prestige cycles.");
+                why.add("§7Every minion, every trade, every upgrade, every boss you defeat re-weaves the threads. Dailies and weeklies keep the song alive between grand moments. Housing, museum, and slayers add the personal touches.");
+                why.add("§7Complete it and the Codex will remember. The story between 0 and 100 is yours to live — then live it again, stronger, faster, grander with each prestige. Open the Codex often for hints, echoes, and why every system matters for the eternal loop.");
             } else {
                 why.add("§7Foundational onboarding / story - guided progression.");
             }
@@ -138,6 +140,15 @@ public class QuestDetailGUI implements Listener {
                 why.add("§cRequires prior story steps to be completed.");
             }
             gui.setItem(40, GUIUtils.createItem(Material.BOOK, "§6§lWhy this quest?", why.toArray(new String[0])));
+
+            // Story interaction hint for MAIN_STORY
+            if (q.getQuestLine() == Quest.QuestLine.MAIN_STORY) {
+                gui.setItem(42, GUIUtils.createItem(Material.ENCHANTED_BOOK, "§d§lHear the Full Tale",
+                    "§7Open Elder Codex (in Quest Log) for 12 scrollable pages",
+                    "§7of deep immersive lore, dynamic whispers, phase stories,",
+                    "§7and clickable hints for dailies, minions, slayers, housing, bazaar, museum, upgrades & prestige loops.",
+                    "§7Continuous play + Codex depth leads to Dragon & eternal prestige glory. Optional & friendly."));
+            }
 
             // Action buttons
             boolean canClaim = q.isCompleted() && !q.isClaimed() && !q.isExpired();

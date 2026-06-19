@@ -18,10 +18,11 @@ public class IslandSettings {
     private boolean animalSpawningEnabled = true;
     private boolean leafDecayEnabled = true;
     private String borderColor = "BLUE";
-    private int borderSize = 100;
+    private int borderSize = 8;
     private boolean borderMarkersEnabled = false;  // Persistent hologram markers at corners
     private boolean warpEnabled = false;
     private String warpDescription = "";
+    private boolean keepInventoryEnabled = false;
 
     public IslandSettings(GridPosition gridPosition) {
         this.gridPosition = gridPosition;
@@ -56,6 +57,8 @@ public class IslandSettings {
     public void setBorderMarkersEnabled(boolean enabled) { this.borderMarkersEnabled = enabled; }
     public void setWarpEnabled(boolean enabled) { this.warpEnabled = enabled; }
     public void setWarpDescription(String description) { this.warpDescription = description; }
+    public boolean isKeepInventoryEnabled() { return keepInventoryEnabled; }
+    public void setKeepInventoryEnabled(boolean enabled) { this.keepInventoryEnabled = enabled; }
 
     public boolean toggleSetting(String settingName) {
         switch (settingName.toUpperCase()) {
@@ -69,6 +72,7 @@ public class IslandSettings {
             case "LEAVES": this.leafDecayEnabled = !this.leafDecayEnabled; return this.leafDecayEnabled;
             case "WARP": this.warpEnabled = !this.warpEnabled; return this.warpEnabled;
             case "BORDER_MARKERS": this.borderMarkersEnabled = !this.borderMarkersEnabled; return this.borderMarkersEnabled;
+            case "KEEP_INVENTORY": this.keepInventoryEnabled = !this.keepInventoryEnabled; return this.keepInventoryEnabled;
             default: return false;
         }
     }
@@ -85,6 +89,7 @@ public class IslandSettings {
             case "LEAVES" -> leafDecayEnabled;
             case "WARP" -> warpEnabled;
             case "BORDER_MARKERS" -> borderMarkersEnabled;
+            case "KEEP_INVENTORY" -> keepInventoryEnabled;
             default -> false;
         };
     }

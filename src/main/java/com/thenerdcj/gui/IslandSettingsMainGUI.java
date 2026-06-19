@@ -127,6 +127,9 @@ public class IslandSettingsMainGUI extends BaseGUI {
         gui.setItem(34, GUIUtils.createItem(Material.WRITABLE_BOOK, "§dWarp Description",
                 "§7" + (settings.getWarpDescription().isEmpty() ? "No description set" : settings.getWarpDescription())));
 
+        gui.setItem(36, toggleButton(Material.CHEST, "§bKeep Inventory",
+                "§7Keep your items on death while on this island", settings.isKeepInventoryEnabled(), "TOGGLE_KEEP_INVENTORY"));
+
         gui.setItem(49, GUIUtils.createItem(Material.BOOK, "§eHow Settings Work",
                 "§7• Green = Setting is enabled", "§7• Red = Setting is disabled"));
     }
@@ -215,6 +218,7 @@ public class IslandSettingsMainGUI extends BaseGUI {
             case "LEAVES" -> "Leaf Decay";
             case "WARP" -> "Island Warp";
             case "BORDER_MARKERS" -> "Border Markers (hologram corners)";
+            case "KEEP_INVENTORY" -> "Keep Inventory";
             default -> key;
         };
     }

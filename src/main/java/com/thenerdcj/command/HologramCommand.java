@@ -103,7 +103,22 @@ public class HologramCommand implements CommandExecutor {
                 break;
 
             case "list":
-                listHolograms(player);
+                // Open the list GUI (easy access to editor from there)
+                new com.thenerdcj.gui.HologramListGUI(plugin).open(player);
+                break;
+            case "edit":
+            case "gui":
+            case "lines":
+                if (args.length < 2) {
+                    player.sendMessage("§cUsage: /holo edit <name>");
+                    return true;
+                }
+                Hologram target = hologramManager.getHologramByName(args[1]);
+                if (target == null) {
+                    player.sendMessage("§cHologram not found: " + args[1]);
+                    return true;
+                }
+                plugin.getHologramEditorGUI().open(player, args[1]);
                 break;
 
             case "movehere":
@@ -135,7 +150,8 @@ public class HologramCommand implements CommandExecutor {
         player.sendMessage("§e/holo setline <name> <index> <text>");
         player.sendMessage("§e/holo remline <name> <index>");
         player.sendMessage("§e/holo delete <name>");
-        player.sendMessage("§e/holo list");
+        player.sendMessage("§e/holo list §7- Open hologram list GUI");
+        player.sendMessage("§e/holo edit <name> §7- Open line editor GUI (two-column, chat edit/remove + auto re-stack)");
         player.sendMessage("§e/holo movehere <name> §7- Move to your location");
         player.sendMessage("§e/holo reload §7- Respawn all from DB");
     }
@@ -279,14 +295,7 @@ public class HologramCommand implements CommandExecutor {
                 .thenAccept(success -> player.sendMessage(success ? "§aHologram deleted." : "§cDelete failed."));
     }
 
-    private void listHolograms(Player player) {
-        player.sendMessage("§6Active Holograms:");
-        hologramManager.getActiveHolograms().values().forEach(h -> {
-            HologramData d = h.getData();
-            player.sendMessage("§e- " + d.getName() + " §7(" + d.getWorldName() + " @ " + 
-                String.format("%.1f,%.1f,%.1f", d.getX(), d.getY(), d.getZ()) + ") Lines: " + d.getLines().size());
-        });
-    }
+    // listHolograms text printer removed - /holo list now opens the GUI (which leads to per-holo editor)
 
     private void moveHere(Player player, String name) {
         Hologram holo = hologramManager.getHologramByName(name);

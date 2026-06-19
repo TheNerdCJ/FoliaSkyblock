@@ -2,11 +2,13 @@ package com.thenerdcj.command;
 
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.Punishment;
+import com.thenerdcj.rank.RankData;
 import com.thenerdcj.util.MessageUtil;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -229,7 +231,7 @@ public class StaffCommand implements CommandExecutor {
                     player.sendMessage("§cUsage: /sc <message>");
                     return true;
                 }
-                String scMsg = "§c[Staff] §e" + player.getName() + "§7: §f" + String.join(" ", args);
+                String scMsg = "§c[Staff] " + plugin.getChatManager().getRichDisplayName(player) + "§7: §f" + String.join(" ", args);
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     if (p.hasPermission("foliasb.staff")) p.sendMessage(scMsg);
                 }
@@ -263,6 +265,10 @@ public class StaffCommand implements CommandExecutor {
                 break;
             case "night":
                 setWorldTime(player, 13000L, "night");
+                break;
+
+            case "setrank":
+                handleSetRank(player, args);
                 break;
 
             default:
@@ -425,5 +431,45 @@ public class StaffCommand implements CommandExecutor {
             world.setTime(ticks);
             MessageUtil.sendMessage(staff, "§aTime set to §e" + label + "§a in §b" + world.getName() + "§a.");
         });
+    }
+
+    /**
+     * Staff command: /setrank <player> <rankId>
+     * Uses the dynamic RankManager, supports offline players, notifies target, applies prefix.
+     */
+    private void handleSetRank(Player staff, String[] args) {
+        if (args.length < 2) {
+            staff.sendMessage("§cUsage: /setrank <player> <rank>");
+            staff.sendMessage("§7Use /rank list (detailed for staff) or /rank info <rank> to deep dive.");
+            return;
+        }
+
+        String targetName = args[0];
+        String rankId = args[1];
+
+        if (!plugin.getRankManager().rankExists(rankId)) {
+            staff.sendMessage("§cRank not found: " + rankId);
+            staff.sendMessage("§7Use /rank list (detailed for staff) or /rank info <rank> to deep dive.");
+            return;
+        }
+
+        OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
+        if (target == null || !target.hasPlayedBefore()) {
+            staff.sendMessage("§cPlayer not found or has never joined: " + targetName);
+            return;
+        }
+
+        plugin.getRankManager().setPlayerRank(target.getUniqueId(), rankId);
+
+        RankData rankData = plugin.getRankManager().getRankData(rankId);
+        String displayName = (rankData != null) ? rankData.getDisplayName() : rankId;
+
+        staff.sendMessage("§aSet " + targetName + "'s rank to §e" + displayName + "§a!");
+
+        if (target.isOnline()) {
+            Player onlineTarget = target.getPlayer();
+            onlineTarget.sendMessage("§aYour rank has been set to §e" + displayName + "§a by staff.");
+            plugin.getRankManager().applyRankPrefix(onlineTarget);
+        }
     }
 }

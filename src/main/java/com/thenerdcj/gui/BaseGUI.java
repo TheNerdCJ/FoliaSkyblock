@@ -70,7 +70,8 @@ public abstract class BaseGUI implements Listener {
     }
 
     protected String formatTitle(Player player, int page) {
-        return getTitlePrefix() + " §7(Page " + (page + 1) + ")";
+        int total = getTotalPages(player);
+        return getTitlePrefix() + " §8- §7Page §e" + (page + 1) + "§7/" + total + " §8| §7Use arrows or click items";
     }
 
     public void open(Player player, int page) {
@@ -98,11 +99,16 @@ public abstract class BaseGUI implements Listener {
 
     protected void addStandardNavigation(Inventory gui, int page, int totalPages) {
         if (page > 0) {
-            gui.setItem(PREV_SLOT, GUIUtils.createNavButton(Material.ARROW, "§a§lPrevious Page", ACTION_KEY, "PREV"));
+            gui.setItem(PREV_SLOT, GUIUtils.createNavButton(Material.ARROW, "§a§l« Previous Page", ACTION_KEY, "PREV"));
         }
-        gui.setItem(CLOSE_SLOT, GUIUtils.createNavButton(Material.BARRIER, "§c§lClose", ACTION_KEY, "CLOSE"));
+        gui.setItem(CLOSE_SLOT, GUIUtils.createNavButton(Material.BARRIER, "§c§l✕ Close", ACTION_KEY, "CLOSE"));
         if (page < totalPages - 1) {
-            gui.setItem(NEXT_SLOT, GUIUtils.createNavButton(Material.ARROW, "§a§lNext Page", ACTION_KEY, "NEXT"));
+            gui.setItem(NEXT_SLOT, GUIUtils.createNavButton(Material.ARROW, "§a§lNext Page »", ACTION_KEY, "NEXT"));
+        }
+        // Always visible hint for navigation ease (overridable)
+        if (gui.getItem(4) == null) {
+            gui.setItem(4, GUIUtils.createItem(Material.PAPER, "§6§lNavigation Tip",
+                "§7Arrows = page", "§7Barrier = close", "§7Click items for actions"));
         }
     }
 

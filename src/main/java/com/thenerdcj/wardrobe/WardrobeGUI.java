@@ -59,7 +59,7 @@ public class WardrobeGUI implements Listener {
     private final Map<UUID, PetState> petStates = new ConcurrentHashMap<>();
 
     // View modes
-    public enum View { ARMOR, EQUIPMENT, COSMETICS, PETS, TAGS, WINGS, RUNES, HELMET_SKINS, DEATH_EFFECTS, DEATH_MESSAGES, BACKPACK_SKINS, POWER_ORB_SKINS, MINION_SKINS, FURNITURE, MUSIC, OVERHEAD, EMOTES, STRUCTURES, CHAT_BUBBLES, WEATHER, ACCESSORIES }
+    public enum View { ARMOR, EQUIPMENT, COSMETICS, PETS, TAGS, WINGS, RUNES, HELMET_SKINS, DEATH_EFFECTS, DEATH_MESSAGES, BACKPACK_SKINS, POWER_ORB_SKINS, MINION_SKINS, FURNITURE, MUSIC, OVERHEAD, EMOTES, STRUCTURES, CHAT_BUBBLES, WEATHER, ACCESSORIES, NAME_COLORS }
 
     public WardrobeGUI(FoliaSkyblock plugin) {
         this(plugin, true);
@@ -101,6 +101,7 @@ public class WardrobeGUI implements Listener {
             case CHAT_BUBBLES -> "§dChat Bubbles";
             case WEATHER -> "§3Island Weather";
             case ACCESSORIES -> "§6Accessories";
+            case NAME_COLORS -> "§dName Colors";
         };
         Inventory inv = Bukkit.createInventory(null, 54, "§6§lWardrobe §8- " + viewName);
 
@@ -116,14 +117,14 @@ public class WardrobeGUI implements Listener {
         ItemMeta tm = title.getItemMeta();
         tm.setDisplayName("§6§lWardrobe");
         tm.setLore(Arrays.asList(
-            "§7Save and quickly swap gear loadouts",
-            "§7Supports both §bArmor §7and §dEquipment",
+            "§7Your hub for gear, cosmetics & more!",
+            "§bArmor §7& §dEquipment §7presets for fast swaps",
+            "§5Cosmetics, pets, tags, colors & more tabs ↑",
             "",
-            "§eLeft-click §7a set to equip",
-            "§7Shift+Left §7= Save current gear to slot",
-            "§7Right-click §7= More options",
-            "",
-            "§8Collect unique equipment for Island XP"
+            "§eLeft-click §7= equip / preview",
+            "§7Shift+Left §7= overwrite preset",
+            "§7Right-click §7= options (rename etc)",
+            "§8Bottom row: nav & help. Collect for XP!"
         ));
         title.setItemMeta(tm);
         inv.setItem(4, title);
@@ -150,29 +151,30 @@ public class WardrobeGUI implements Listener {
         ItemStack chatBubblesTab = createTabItem("§d§lChat Bubbles", view == View.CHAT_BUBBLES, "VIEW_CHAT_BUBBLES");
         ItemStack weatherTab = createTabItem("§3§lIsland Weather", view == View.WEATHER, "VIEW_WEATHER");
         ItemStack accessoriesTab = createTabItem("§6§lAccessories", view == View.ACCESSORIES, "VIEW_ACCESSORIES");
+        ItemStack nameColorsTab = createTabItem("§d§lName Colors", view == View.NAME_COLORS, "VIEW_NAME_COLORS");
+
+        // Clean top-row tabs (0-8) for easy navigation - no clutter, most-used first
         inv.setItem(0, armorTab);
         inv.setItem(1, equipTab);
         inv.setItem(2, cosmeticsTab);
         inv.setItem(3, petsTab);
-        inv.setItem(5, tagsTab);  // small offset so it doesn't overlap too much
-        inv.setItem(6, wingsTab);
-        inv.setItem(7, runesTab);
+        inv.setItem(4, tagsTab);
+        inv.setItem(5, wingsTab);
+        inv.setItem(6, runesTab);
+        inv.setItem(7, nameColorsTab);
         inv.setItem(8, helmetSkinsTab);
-        inv.setItem(9, deathEffectsTab);
-        inv.setItem(10, deathMessagesTab);
-        inv.setItem(11, backpackSkinsTab);
-        inv.setItem(11, powerOrbSkinsTab);
-        inv.setItem(12, minionSkinsTab);
-        inv.setItem(13, furnitureTab);
-        inv.setItem(14, musicTab);
-        inv.setItem(15, overheadTab);
-        inv.setItem(16, emotesTab);
-        inv.setItem(17, structuresTab);
-        inv.setItem(18, chatBubblesTab);
-        inv.setItem(19, weatherTab);
-        inv.setItem(20, accessoriesTab);
 
-        int[] slotPositions = {19, 20, 21, 22, 23, 24, 25, 28, 29}; // nice 3x3-ish layout
+        // Global easy navigation at bottom row - user friendly standard
+        // Close always available, back home, help
+        inv.setItem(45, GUIUtils.createNavButton(Material.ARROW, "§e§lBack Home (Armor)", ACTION_KEY, "VIEW_ARMOR"));
+        inv.setItem(49, GUIUtils.createNavButton(Material.BARRIER, "§c§lClose", ACTION_KEY, "CLOSE_WARDROBE"));
+        inv.setItem(53, GUIUtils.createItem(Material.BOOK, "§6§lNavigation Help",
+            "§7Click colored tabs above to switch sections",
+            "§7Left-click items = equip / preview",
+            "§7Right-click = options where available",
+            "§7Bottom arrows / close for pages & exit",
+            "§8Collect gear & cosmetics for perks!"));
+
 
         if (view == View.COSMETICS) {
             // === IMPROVED TRAIL PREVIEW WITH PAGINATION + FILTERING ===
@@ -182,6 +184,8 @@ public class WardrobeGUI implements Listener {
             renderPetsPreview(player, inv);
         } else if (view == View.TAGS) {
             renderTagsPreview(player, inv);
+        } else if (view == View.NAME_COLORS) {
+            renderNameColorsPreview(player, inv);
         } else if (view == View.WINGS) {
             renderWingsPreview(player, inv);
         } else if (view == View.RUNES) {
@@ -221,6 +225,8 @@ public class WardrobeGUI implements Listener {
                     : wardrobeManager.getEquipmentPresets(player.getUniqueId());
 
             int maxSlots = wardrobeManager.getMaxSlots(player);
+
+            int[] slotPositions = {19, 20, 21, 22, 23, 24, 25, 28, 29}; // 3x3 for armor/equip slots (kept for legacy view)
 
             for (int i = 0; i < WardrobeManager.DEFAULT_MAX_SLOTS; i++) {
                 int pos = slotPositions[i];
@@ -320,7 +326,11 @@ public class WardrobeGUI implements Listener {
     private ItemStack createTabItem(String name, boolean selected, String action) {
         ItemStack item = new ItemStack(selected ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE);
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
+        meta.setDisplayName(name + (selected ? " §a§l★" : ""));
+        meta.setLore(Arrays.asList(
+            "§7Click to switch to this section",
+            "§8Active sections highlighted lime"
+        ));
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(ACTION_KEY, PersistentDataType.STRING, action);
         item.setItemMeta(meta);
@@ -1452,6 +1462,49 @@ public class WardrobeGUI implements Listener {
         }
     }
 
+    private void renderNameColorsPreview(Player player, Inventory inv) {
+        com.thenerdcj.cosmetic.NameColorManager mgr = plugin.getNameColorManager();
+        if (mgr == null) {
+            inv.setItem(22, GUIUtils.createItem(Material.BARRIER, "§cName Colors system not loaded"));
+            return;
+        }
+
+        ItemStack title = GUIUtils.createItem(Material.NAME_TAG, "§d§lChat Name Colors",
+                "§7Colors the player name portion in chat",
+                "§7Rank colors always come from config",
+                "§7Click a color to apply");
+        inv.setItem(4, title);
+
+        com.thenerdcj.cosmetic.NameColor active = mgr.getActiveNameColor(player);
+        ItemStack current = GUIUtils.createItem(Material.PAPER, "§e§lActive Name Color",
+                active == null || active.isNone() ? "§fWhite (default)" : active.getColorCode() + active.getDisplayName());
+        inv.setItem(8, current);
+
+        // Grid of colors (slots 10-43 area, simple 4x4-ish)
+        com.thenerdcj.cosmetic.NameColor[] colors = com.thenerdcj.cosmetic.NameColor.values();
+        int slot = 10;
+        for (com.thenerdcj.cosmetic.NameColor nc : colors) {
+            if (slot > 43) break;
+            String loreColor = nc.isNone() ? "§7" : nc.getColorCode();
+            ItemStack item = GUIUtils.createItem(Material.WRITABLE_BOOK,
+                loreColor + nc.getDisplayName(),
+                "§7Code: " + nc.getColorCode(),
+                "§7" + nc.getDescription(),
+                "§eClick to equip");
+            // Action
+            var pdc = item.getItemMeta().getPersistentDataContainer();
+            pdc.set(ACTION_KEY, PersistentDataType.STRING, "SET_NAME_COLOR_" + nc.name());
+            item.setItemMeta(item.getItemMeta());
+            inv.setItem(slot++, item);
+        }
+
+        // Reset / none
+        ItemStack reset = GUIUtils.createItem(Material.BARRIER, "§c§lReset to White");
+        reset.getItemMeta().getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "SET_NAME_COLOR_NONE");
+        reset.setItemMeta(reset.getItemMeta());
+        inv.setItem(49, reset);
+    }
+
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
@@ -1487,6 +1540,14 @@ public class WardrobeGUI implements Listener {
             }
             if (action.equals("VIEW_TAGS")) {
                 openWardrobe(player, View.TAGS);
+                return;
+            }
+            if (action.equals("VIEW_NAME_COLORS")) {
+                openWardrobe(player, View.NAME_COLORS);
+                return;
+            }
+            if (action.equals("CLOSE_WARDROBE")) {
+                player.closeInventory();
                 return;
             }
             if (action.equals("VIEW_WINGS")) {
@@ -1838,6 +1899,25 @@ public class WardrobeGUI implements Listener {
                 PetState ps = petStates.computeIfAbsent(player.getUniqueId(), k -> new PetState());
                 ps.page++;
                 openWardrobe(player, View.TAGS);
+                return;
+            }
+
+            // === NAME COLORS (chat name color cosmetic from wardrobe) ===
+            if (action.startsWith("SET_NAME_COLOR_")) {
+                String colorName = action.substring("SET_NAME_COLOR_".length());
+                try {
+                    com.thenerdcj.cosmetic.NameColor nc = com.thenerdcj.cosmetic.NameColor.valueOf(colorName);
+                    var ncm = plugin.getNameColorManager();
+                    if (ncm != null) {
+                        ncm.setActiveNameColor(player, nc);
+                    }
+                    if (plugin.getPlayerTagManager() != null) {
+                        plugin.getPlayerTagManager().refreshPlayerDisplay(player);
+                    }
+                    openWardrobe(player, View.NAME_COLORS);
+                } catch (Exception ignored) {
+                    player.sendMessage("§cInvalid name color.");
+                }
                 return;
             }
 

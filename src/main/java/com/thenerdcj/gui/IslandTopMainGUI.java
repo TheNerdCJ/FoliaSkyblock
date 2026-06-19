@@ -105,12 +105,20 @@ public class IslandTopMainGUI extends BaseGUI {
 
     private void addTopNavigation(Inventory gui, int page) {
         if (page > 0) {
-            gui.setItem(45, GUIUtils.createNavButton(Material.ARROW, "§aPrevious", ACTION_KEY, "PREV"));
+            gui.setItem(45, GUIUtils.createNavButton(Material.ARROW, "§a§l« Previous", ACTION_KEY, "PREV"));
         }
-        gui.setItem(49, GUIUtils.createNavButton(Material.GOLD_INGOT, "§eWorth", ACTION_KEY, "CAT_WORTH"));
-        gui.setItem(50, GUIUtils.createNavButton(Material.EXPERIENCE_BOTTLE, "§eLevel", ACTION_KEY, "CAT_LEVEL"));
-        gui.setItem(51, GUIUtils.createNavButton(Material.PLAYER_HEAD, "§eMembers", ACTION_KEY, "CAT_MEMBERS"));
-        gui.setItem(53, GUIUtils.createNavButton(Material.ARROW, "§aNext", ACTION_KEY, "NEXT"));
+        gui.setItem(49, GUIUtils.createNavButton(Material.GOLD_INGOT, "§e§lWorth", ACTION_KEY, "CAT_WORTH"));
+        gui.setItem(50, GUIUtils.createNavButton(Material.EXPERIENCE_BOTTLE, "§e§lLevel", ACTION_KEY, "CAT_LEVEL"));
+        gui.setItem(51, GUIUtils.createNavButton(Material.PLAYER_HEAD, "§e§lMembers", ACTION_KEY, "CAT_MEMBERS"));
+        // Show next always (dynamic pages); users can navigate easily
+        gui.setItem(53, GUIUtils.createNavButton(Material.ARROW, "§a§lNext »", ACTION_KEY, "NEXT"));
+
+        // Help info for easier navigation (common best practice)
+        gui.setItem(4, GUIUtils.createItem(Material.BOOK, "§6§lIsland Leaderboards",
+            "§7Top islands by Worth / Level / Members",
+            "§7Click the category buttons to switch",
+            "§7Arrows to page, barrier to close",
+            "§eClear & simple navigation"));
     }
 
     @Override

@@ -164,6 +164,11 @@ public class MinionsGUI implements Listener {
                 "§7• Fuel persists across restarts (polished)");
         inv.setItem(49, info);
 
+        // Close for easy exit - user friendly
+        inv.setItem(53, GUIUtils.createItem(Material.BARRIER, "§c§lClose",
+            "§7Exit minion management",
+            "§eUse /minions to reopen"));
+
         // Active minions section header - modernized
         ItemStack activeHeader = GUIUtils.createItem(Material.ARMOR_STAND, "§e§lYour Minions (click to remove 1)",
                 "§7Total: §f" + placed + " §7/ §f" + maxSlots);
@@ -246,6 +251,12 @@ public class MinionsGUI implements Listener {
         if (clicked == null || clicked.getType() == Material.AIR) return;
 
         int slot = event.getRawSlot();
+
+        // Easy close for user friendly navigation
+        if (slot == 53 && clicked.getType() == Material.BARRIER) {
+            player.closeInventory();
+            return;
+        }
 
         // Handle minion type placement (dynamic from MinionType enum)
         int maxPlaceSlots = 18 + Math.min(7, com.thenerdcj.manager.MinionType.values().length);

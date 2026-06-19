@@ -6,6 +6,7 @@ import com.thenerdcj.island.Island;
 import com.thenerdcj.island.IslandUpgrade;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -394,22 +395,21 @@ public class IslandWorthManager {
         if (player == null || !player.isOnline()) return;
 
         plugin.getThreadSafety().runOnMainThread(() -> {
+            // Use the full composed display name (similar to chat fixes): includes <P/L> prestige/level prefix, [Rank] from config, (Cosmetic Tag), name color (white unless cosmetic)
+            String composed = player.getName();
+            if (plugin.getPlayerTagManager() != null) {
+                composed = plugin.getPlayerTagManager().getComposedDisplayName(player.getUniqueId(), player.getName());
+            }
+            Component base = LegacyComponentSerializer.legacySection().deserialize(composed);
+
             Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
             if (island == null) {
-                player.playerListName(Component.text(player.getName(), NamedTextColor.WHITE));
+                player.playerListName(base);
                 return;
             }
 
             double worth = getCachedWorth(island);
             int level = getCachedWorthLevel(island);
-            int prestige = (plugin.getPrestigeManager() != null) 
-                    ? plugin.getPrestigeManager().getPrestigeLevel(island) : 0;
-
-            Component name = Component.text(player.getName(), NamedTextColor.WHITE);
-
-            Component prestigeComp = prestige > 0 
-                    ? Component.text("[" + prestige + "] ", NamedTextColor.GOLD)
-                    : Component.empty();
 
             Component worthComp = Component.text(" [W:", NamedTextColor.GRAY)
                     .append(Component.text(String.format("%,.0f", worth), NamedTextColor.GOLD))
@@ -417,7 +417,7 @@ public class IslandWorthManager {
                     .append(Component.text(level, NamedTextColor.AQUA))
                     .append(Component.text("]", NamedTextColor.GRAY));
 
-            player.playerListName(prestigeComp.append(name).append(worthComp));
+            player.playerListName(base.append(worthComp));
         });
     }
 

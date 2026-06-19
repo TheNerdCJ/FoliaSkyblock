@@ -70,7 +70,7 @@ AuctionGUI implements Listener {
         Map<String, Auction> auctions = auctionManager.getActiveAuctions();
         List<Auction> auctionList = new ArrayList<>(auctions.values());
 
-        int itemsPerPage = 45;
+        int itemsPerPage = 36; // leave space for header at top for better UX
         int totalPages = (int) Math.ceil((double) auctionList.size() / itemsPerPage);
         if (page < 0) page = 0;
         if (page >= totalPages && totalPages > 0) page = totalPages - 1;
@@ -78,23 +78,44 @@ AuctionGUI implements Listener {
         Inventory gui = Bukkit.createInventory(
                 new AuctionGUIHolder(page, "browse", null),
                 54,
-                MessageUtil.legacy("§6§lAuction House §7(Page " + (page + 1) + "/" + Math.max(1, totalPages) + ")")
+                MessageUtil.legacy("§6§lAuction House §7- Page " + (page + 1) + "/" + Math.max(1, totalPages) + " | Use arrows to browse, click to bid")
         );
+
+        // Header info always visible for user friendly design
+        gui.setItem(4, GUIUtils.createItem(Material.BOOK, "§6§lHow to Use Auction House",
+            "§7Browse player auctions",
+            "§eLeft-click item = place bid",
+            "§7Use arrows for pages",
+            "§7Create your own with /auction create"));
 
         int start = page * itemsPerPage;
         int end = Math.min(start + itemsPerPage, auctionList.size());
 
-        for (int i = start; i < end; i++) {
-            addAuctionItem(gui, i - start, auctionList.get(i));
+        // Place items starting after header (slot 9+) for clean header + list UX
+        int slot = 9;
+        for (int i = start; i < end && slot < 45; i++) {
+            addAuctionItem(gui, slot, auctionList.get(i));
+            slot++;
+            if (slot % 9 == 0) slot += 0; // continue row
         }
 
-        for (int i = end - start; i < 45; i++) {
-            gui.setItem(i, createGlassPane());
+        // Fill remaining content slots (9-44) with glass
+        for (int i = 9; i < 45; i++) {
+            if (gui.getItem(i) == null) {
+                gui.setItem(i, createGlassPane());
+            }
         }
 
-        if (page > 0) gui.setItem(45, createNavButton("§a§l« Previous", "prev", page));
-        if (page < totalPages - 1) gui.setItem(53, createNavButton("§a§lNext »", "next", page));
+        if (page > 0) gui.setItem(45, createNavButton("§a§l« Previous Page", "prev", page));
+        if (page < totalPages - 1) gui.setItem(53, createNavButton("§a§lNext Page »", "next", page));
         gui.setItem(49, createCloseButton());
+
+        // Info/help for user friendly navigation (best practice from popular GUIs)
+        gui.setItem(4, GUIUtils.createItem(Material.BOOK, "§6§lHow to Use Auction House",
+            "§7Browse player auctions",
+            "§eLeft-click item = place bid",
+            "§7Use arrows for pages",
+            "§7Create your own with /auction create"));
 
         player.openInventory(gui);
         openGUIs.put(player.getUniqueId(), (AuctionGUIHolder) gui.getHolder());
@@ -149,6 +170,7 @@ AuctionGUI implements Listener {
         if (meta != null) {
             GUIUtils.setPDCString(meta, ACTION_KEY, action);
             meta.getPersistentDataContainer().set(PAGE_KEY, PersistentDataType.INTEGER, currentPage);
+            meta.setLore(Arrays.asList("§7Click to change page", "§8Current page in title"));
             item.setItemMeta(meta);
         }
         return item;
@@ -163,6 +185,11 @@ AuctionGUI implements Listener {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             GUIUtils.setPDCString(meta, ACTION_KEY, "close");
+            meta.setLore(Arrays.asList(
+                "§7Close the auction browser",
+                "§eCreate auctions with /auction create",
+                "§7Bid by left-clicking items"
+            ));
             item.setItemMeta(meta);
         }
         return item;

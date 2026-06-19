@@ -4,6 +4,7 @@ import com.thenerdcj.FoliaSkyblock;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.inventory.ItemStack;
@@ -63,7 +64,7 @@ public class PetGUI implements Listener {
         plugin.getThreadSafety().runOnMainThreadLater(preview::remove, 20L * 8);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();

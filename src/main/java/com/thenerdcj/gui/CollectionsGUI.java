@@ -45,7 +45,7 @@ public class CollectionsGUI implements Listener {
         int total = cm.getCollectionCount(islandKey);
         int known = cm.getAllKnownKeys().size();
 
-        Inventory inv = Bukkit.createInventory(null, 54, "§6§lIsland Collections §8- " + (total + "/" + known));
+        Inventory inv = Bukkit.createInventory(null, 54, "§6§lIsland Collections §8- " + (total + "/" + known) + " | Click to view category");
 
         // Fillers (GUIUtils for consistency)
         ItemStack filler = GUIUtils.createItem(Material.BLACK_STAINED_GLASS_PANE, "§8 ");
@@ -103,7 +103,8 @@ public class CollectionsGUI implements Listener {
                 "§7Break blocks, harvest crops, kill mobs, fish",
                 "§7on your island to log unique discoveries.",
                 "§7Milestones give Island XP + Slayer Tokens.",
-                "§7High totals unlock special cosmetic rewards.");
+                "§7High totals unlock special cosmetic rewards.",
+                "§eEasy to browse — click categories. Collect more = stronger island!");
         inv.setItem(49, help);
 
         // Close

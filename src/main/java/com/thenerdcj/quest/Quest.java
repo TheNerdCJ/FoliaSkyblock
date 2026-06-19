@@ -203,7 +203,7 @@ public class Quest {
         if (!prerequisites.isEmpty()) {
             return new ArrayList<>(prerequisites);
         }
-        // Fallback computed for legacy story chapters
+        // Fallback for 25-chapter MAIN_STORY (linear progression)
         List<String> prereqs = new ArrayList<>();
         if (questLine == QuestLine.MAIN_STORY && chapter > 1) {
             prereqs.add("Complete Chapter " + (chapter - 1));

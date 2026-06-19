@@ -109,24 +109,33 @@ public class BazaarGUI implements Listener {
         Map<String, BazaarItem> items = bazaarManager.getAllBazaarItems();
         List<BazaarItem> itemList = new ArrayList<>(items.values());
 
-        int itemsPerPage = 45;
+        int itemsPerPage = 36;
         int totalPages = (int) Math.ceil((double) itemList.size() / itemsPerPage);
         if (page < 0) page = 0;
         if (page >= totalPages && totalPages > 0) page = totalPages - 1;
 
         Inventory gui = Bukkit.createInventory(
                 new BazaarGUIHolder("main", null, page, null, null),
-                54, MessageUtil.legacy("§6§lBazaar"));
+                54, MessageUtil.legacy("§6§lBazaar §7- Page " + (page + 1) + "/" + Math.max(1, totalPages) + " | Click items to buy/sell"));
+
+        // Header for user friendly navigation (inspired by ShopGUI+ and Hypixel bazaar)
+        gui.setItem(4, GUIUtils.createItem(Material.BOOK, "§6§lHow to Use Bazaar",
+            "§7Buy or sell items instantly or orders",
+            "§eLeft-click = buy options",
+            "§7Right-click = sell options",
+            "§7Arrows = change pages"));
 
         int start = page * itemsPerPage;
         int end = Math.min(start + itemsPerPage, itemList.size());
 
-        for (int i = start; i < end; i++) {
-            addBazaarItemToGUI(gui, i - start, itemList.get(i));
+        int slot = 9;
+        for (int i = start; i < end && slot < 45; i++) {
+            addBazaarItemToGUI(gui, slot, itemList.get(i));
+            slot++;
         }
 
-        for (int i = end - start; i < 45; i++) {
-            gui.setItem(i, createGlassPane());
+        for (int i = 9; i < 45; i++) {
+            if (gui.getItem(i) == null) gui.setItem(i, createGlassPane());
         }
 
         if (page > 0) gui.setItem(45, createBazaarNavItem(Material.ARROW, "§a§l« Previous", "prev", page));
@@ -703,7 +712,17 @@ public class BazaarGUI implements Listener {
     }
 
     private ItemStack createCloseButton() {
-        return createBazaarActionItem(Material.BARRIER, "§c§lClose", "close", null);
+        ItemStack item = createBazaarActionItem(Material.BARRIER, "§c§lClose", "close", null);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setLore(Arrays.asList(
+                "§7Close the bazaar",
+                "§eBuy/Sell orders via left/right click on items",
+                "§7Use arrows to browse pages"
+            ));
+            item.setItemMeta(meta);
+        }
+        return item;
     }
 
     private boolean isBuyOrdersFromContext(BazaarGUIHolder holder) {

@@ -93,7 +93,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.40, 0.09,
-            4, 7,   // smaller starting island (compact PMC-style skyblock starters)
+            3, 5,   // smaller starting island (compact PMC-style skyblock starters)
             0.65, 0.25, 0.15, 0.10, 1.0);
 
     public static final BiomeTemplate FOREST = new BiomeTemplate(
@@ -102,7 +102,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE, Material.GOLD_ORE),
             0.70, 0.11,
-            5, 8,   // smaller starting island (compact PMC-style skyblock starters)
+            3, 5,   // smaller starting island (compact PMC-style skyblock starters)
             0.55, 0.20, 0.18, 0.08, 1.1);
 
     public static final BiomeTemplate DESERT = new BiomeTemplate(
@@ -111,7 +111,7 @@ public class BiomeTemplate {
             Material.GOLD_ORE, null, null,
             Material.SAND, List.of(Material.GOLD_ORE, Material.IRON_ORE),
             0.05, 0.13,
-            4, 6,   // smaller starting island (compact PMC-style skyblock starters)
+            2, 4,   // smaller starting island (compact PMC-style skyblock starters)
             0.15, 0.05, 0.35, 0.12, 0.9);  // low veg, some rocks, special wells?
 
     public static final BiomeTemplate TAIGA = new BiomeTemplate(
@@ -120,7 +120,7 @@ public class BiomeTemplate {
             Material.IRON_ORE, Material.SPRUCE_LOG, Material.SPRUCE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.IRON_ORE, Material.COAL_ORE),
             0.60, 0.10,
-            4, 7,   // smaller starting island (compact PMC-style skyblock starters)
+            3, 5,   // smaller starting island (compact PMC-style skyblock starters)
             0.50, 0.15, 0.22, 0.07, 1.0);
 
     public static final BiomeTemplate JUNGLE = new BiomeTemplate(
@@ -129,7 +129,7 @@ public class BiomeTemplate {
             Material.EMERALD_ORE, Material.JUNGLE_LOG, Material.JUNGLE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.EMERALD_ORE, Material.DIAMOND_ORE),
             0.85, 0.08,
-            5, 8,   // smaller starting island (compact PMC-style skyblock starters)
+            3, 5,   // smaller starting island (compact PMC-style skyblock starters)
             0.75, 0.30, 0.12, 0.15, 1.2);  // dense, ponds, special (vines, melons)
 
     // Expanded overworld biomes (donor selection)
@@ -139,7 +139,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.ACACIA_LOG, Material.ACACIA_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.30, 0.10,
-            4, 7,
+            3, 5,
             0.40, 0.10, 0.25, 0.08, 1.0);
 
     public static final BiomeTemplate BIRCH_FOREST = new BiomeTemplate(
@@ -148,7 +148,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.BIRCH_LOG, Material.BIRCH_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.60, 0.09,
-            5, 8,
+            3, 5,
             0.55, 0.15, 0.15, 0.07, 1.0);
 
     public static final BiomeTemplate CHERRY_GROVE = new BiomeTemplate(
@@ -157,7 +157,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.CHERRY_LOG, Material.CHERRY_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.45, 0.08,
-            4, 7,
+            3, 5,
             0.65, 0.12, 0.10, 0.10, 1.1);
 
     public static final BiomeTemplate FLOWER_FOREST = new BiomeTemplate(
@@ -166,7 +166,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.55, 0.09,
-            5, 8,
+            3, 5,
             0.80, 0.18, 0.12, 0.08, 1.0);
 
     public static final BiomeTemplate MEADOW = new BiomeTemplate(
@@ -175,7 +175,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.25, 0.08,
-            4, 7,
+            3, 5,
             0.70, 0.15, 0.10, 0.09, 1.0);
 
     // Further expanded overworld biomes for selection
@@ -185,7 +185,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.DARK_OAK_LOG, Material.DARK_OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.75, 0.10,
-            5, 8,
+            3, 5,
             0.50, 0.20, 0.15, 0.12, 1.0);
 
     public static final BiomeTemplate SWAMP = new BiomeTemplate(
@@ -194,7 +194,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.40, 0.12,
-            4, 7,
+            3, 5,
             0.45, 0.35, 0.10, 0.15, 1.0);
 
     public static final BiomeTemplate MANGROVE_SWAMP = new BiomeTemplate(
@@ -203,7 +203,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.MANGROVE_LOG, Material.MANGROVE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.50, 0.10,
-            4, 7,
+            3, 5,
             0.55, 0.40, 0.08, 0.18, 1.0);
 
     public static final BiomeTemplate BADLANDS = new BiomeTemplate(
@@ -212,7 +212,7 @@ public class BiomeTemplate {
             Material.GOLD_ORE, null, null,
             Material.RED_SAND, List.of(Material.GOLD_ORE, Material.IRON_ORE),
             0.05, 0.15,
-            4, 6,
+            2, 4,
             0.10, 0.05, 0.30, 0.10, 0.9);
 
     // Further expansion of overworld biomes
@@ -222,7 +222,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.SPRUCE_LOG, Material.SPRUCE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.40, 0.09,
-            4, 7,
+            3, 5,
             0.50, 0.15, 0.12, 0.08, 1.0);
 
     public static final BiomeTemplate SNOWY_PLAINS = new BiomeTemplate(
@@ -231,7 +231,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.SPRUCE_LOG, Material.SPRUCE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.15, 0.08,
-            4, 7,
+            3, 5,
             0.30, 0.10, 0.10, 0.05, 1.0);
 
     public static final BiomeTemplate SNOWY_TAIGA = new BiomeTemplate(
@@ -240,7 +240,7 @@ public class BiomeTemplate {
             Material.IRON_ORE, Material.SPRUCE_LOG, Material.SPRUCE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.IRON_ORE, Material.COAL_ORE),
             0.50, 0.09,
-            4, 7,
+            3, 5,
             0.45, 0.12, 0.15, 0.06, 1.0);
 
     public static final BiomeTemplate MUSHROOM_FIELDS = new BiomeTemplate(
@@ -249,7 +249,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, null, null,
             Material.MYCELIUM, List.of(Material.COAL_ORE),
             0.0, 0.05,
-            4, 7,
+            3, 5,
             0.80, 0.20, 0.10, 0.15, 0.8);
 
     // Even further expansion
@@ -259,7 +259,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.SPRUCE_LOG, Material.SPRUCE_LEAVES,
             Material.PODZOL, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.80, 0.10,
-            5, 8,
+            3, 5,
             0.40, 0.15, 0.20, 0.10, 1.0);
 
     public static final BiomeTemplate OLD_GROWTH_SPRUCE_TAIGA = new BiomeTemplate(
@@ -268,7 +268,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.SPRUCE_LOG, Material.SPRUCE_LEAVES,
             Material.PODZOL, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.75, 0.10,
-            5, 8,
+            3, 5,
             0.45, 0.12, 0.18, 0.09, 1.0);
 
     public static final BiomeTemplate WINDSWEPT_FOREST = new BiomeTemplate(
@@ -277,7 +277,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.35, 0.10,
-            4, 7,
+            3, 5,
             0.35, 0.10, 0.25, 0.08, 1.0);
 
     public static final BiomeTemplate BAMBOO_JUNGLE = new BiomeTemplate(
@@ -286,7 +286,7 @@ public class BiomeTemplate {
             Material.EMERALD_ORE, Material.JUNGLE_LOG, Material.JUNGLE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.EMERALD_ORE, Material.DIAMOND_ORE),
             0.60, 0.08,
-            5, 8,
+            3, 5,
             0.65, 0.25, 0.12, 0.12, 1.1);
 
     // Further expansion of overworld biomes
@@ -296,7 +296,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.20, 0.12,
-            4, 7,
+            3, 5,
             0.25, 0.08, 0.35, 0.06, 1.0);
 
     public static final BiomeTemplate STONY_SHORE = new BiomeTemplate(
@@ -305,7 +305,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, null, null,
             Material.STONE, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.0, 0.10,
-            4, 6,
+            2, 4,
             0.05, 0.05, 0.40, 0.05, 1.0);
 
     public static final BiomeTemplate BEACH = new BiomeTemplate(
@@ -314,7 +314,7 @@ public class BiomeTemplate {
             Material.GOLD_ORE, null, null,
             Material.SAND, List.of(Material.GOLD_ORE, Material.IRON_ORE),
             0.0, 0.08,
-            4, 6,
+            2, 4,
             0.05, 0.05, 0.20, 0.04, 0.9);
 
     public static final BiomeTemplate SNOWY_BEACH = new BiomeTemplate(
@@ -323,7 +323,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, null, null,
             Material.SAND, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.0, 0.08,
-            4, 6,
+            2, 4,
             0.05, 0.05, 0.15, 0.04, 0.9);
 
     // Further expansion of overworld biomes for selection
@@ -333,7 +333,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, null, null,
             Material.STONE, List.of(Material.COAL_ORE, Material.IRON_ORE, Material.GOLD_ORE),
             0.0, 0.12,
-            4, 6,
+            2, 4,
             0.05, 0.03, 0.50, 0.05, 1.0);
 
     public static final BiomeTemplate JAGGED_PEAKS = new BiomeTemplate(
@@ -342,7 +342,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, null, null,
             Material.STONE, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.0, 0.10,
-            4, 6,
+            2, 4,
             0.05, 0.03, 0.45, 0.04, 1.0);
 
     public static final BiomeTemplate FROZEN_PEAKS = new BiomeTemplate(
@@ -351,7 +351,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, null, null,
             Material.STONE, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.0, 0.10,
-            4, 6,
+            2, 4,
             0.05, 0.03, 0.40, 0.04, 1.0);
 
     public static final BiomeTemplate SNOWY_SLOPES = new BiomeTemplate(
@@ -360,7 +360,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.SPRUCE_LOG, Material.SPRUCE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.20, 0.08,
-            4, 7,
+            3, 5,
             0.30, 0.08, 0.20, 0.05, 1.0);
 
     // Even further expansion of overworld biomes for selection
@@ -370,7 +370,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.BIRCH_LOG, Material.BIRCH_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.70, 0.09,
-            5, 8,
+            3, 5,
             0.55, 0.15, 0.15, 0.07, 1.0);
 
     public static final BiomeTemplate SPARSE_JUNGLE = new BiomeTemplate(
@@ -379,7 +379,7 @@ public class BiomeTemplate {
             Material.EMERALD_ORE, Material.JUNGLE_LOG, Material.JUNGLE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.EMERALD_ORE, Material.DIAMOND_ORE),
             0.50, 0.08,
-            5, 8,
+            3, 5,
             0.50, 0.20, 0.10, 0.10, 1.1);
 
     public static final BiomeTemplate ICE_SPIKES = new BiomeTemplate(
@@ -388,7 +388,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.SPRUCE_LOG, Material.SPRUCE_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.10, 0.08,
-            4, 7,
+            3, 5,
             0.15, 0.10, 0.10, 0.08, 1.0);
 
     public static final BiomeTemplate SUNFLOWER_PLAINS = new BiomeTemplate(
@@ -397,7 +397,7 @@ public class BiomeTemplate {
             Material.COAL_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.GRASS_BLOCK, List.of(Material.COAL_ORE, Material.IRON_ORE),
             0.30, 0.08,
-            4, 7,
+            3, 5,
             0.70, 0.20, 0.10, 0.06, 1.0);
 
     public static final BiomeTemplate WOODED_BADLANDS = new BiomeTemplate(
@@ -406,7 +406,7 @@ public class BiomeTemplate {
             Material.GOLD_ORE, Material.OAK_LOG, Material.OAK_LEAVES,
             Material.RED_SAND, List.of(Material.GOLD_ORE, Material.IRON_ORE),
             0.25, 0.12,
-            4, 6,
+            2, 4,
             0.20, 0.05, 0.25, 0.08, 0.9);
 
     // Nether & End (limited trees)
@@ -416,7 +416,7 @@ public class BiomeTemplate {
             Material.NETHER_QUARTZ_ORE, null, null,
             Material.SOUL_SAND, List.of(Material.NETHER_QUARTZ_ORE, Material.NETHER_GOLD_ORE, Material.ANCIENT_DEBRIS),
             0.0, 0.18,
-            4, 6,   // smaller starting island (compact PMC-style skyblock starters)
+            2, 4,   // smaller starting island (compact PMC-style skyblock starters)
             0.10, 0.25, 0.20, 0.18, 1.0);  // lava ponds, rocks, special fire/glowstone
 
     public static final BiomeTemplate END = new BiomeTemplate(
@@ -425,7 +425,7 @@ public class BiomeTemplate {
             Material.OBSIDIAN, null, null,
             Material.END_STONE, List.of(Material.OBSIDIAN),
             0.0, 0.06,
-            3, 5,   // smaller starting island (compact PMC-style skyblock starters)
+            2, 3,   // smaller starting island (compact PMC-style skyblock starters)
             0.05, 0.08, 0.10, 0.22, 0.8);  // chorus, obsidian pillars small, low density
 
     // ----- registry -----

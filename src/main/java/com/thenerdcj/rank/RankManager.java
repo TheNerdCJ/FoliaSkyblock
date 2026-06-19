@@ -218,9 +218,46 @@ public class RankManager {
 
     // ====================== PREFIX/SUFFIX APPLICATION ======================
 
-    public void applyRankPrefix(org.bukkit.entity.Player player) { String rankId = getPlayerRankId(player.getUniqueId()); RankData data = rankDataMap.get(rankId.toLowerCase()); if (data != null && player.isOnline()) { var ser=LegacyComponentSerializer.legacyAmpersand(); var p=ser.deserialize(data.getPrefix()); var s=ser.deserialize(data.getSuffix()); var full=p.append(net.kyori.adventure.text.Component.text(" "+player.getName())).append(s); player.displayName(full); player.playerListName(full); } }
+    public void applyRankPrefix(org.bukkit.entity.Player player) {
+        String rankId = getPlayerRankId(player.getUniqueId());
+        RankData data = rankDataMap.get(rankId.toLowerCase());
+        if (data != null && player.isOnline()) {
+            if (plugin.getPlayerTagManager() != null) {
+                // Use full composed for displayName (includes prestige, rank, tag, name color) similar to other fixes
+                String composed = plugin.getPlayerTagManager().getComposedDisplayName(player.getUniqueId(), player.getName());
+                player.setDisplayName(composed);
+            } else {
+                var ampSer = LegacyComponentSerializer.legacyAmpersand();
+                var secSer = LegacyComponentSerializer.legacySection();
+                var p = ampSer.deserialize(data.getPrefix());
+                var s = ampSer.deserialize(data.getSuffix());
+                // Force player name to white (cosmetic can override later); rank config controls only [Rank] portion
+                var namePart = net.kyori.adventure.text.Component.text(player.getName(), net.kyori.adventure.text.format.NamedTextColor.WHITE);
+                var full = p.append(net.kyori.adventure.text.Component.text(" ")).append(namePart).append(s);
+                player.displayName(full);
+                player.playerListName(full);
+            }
+            // Re-apply tab list to include full cosmetics + worth (similar tab fix)
+            if (plugin.getIslandWorthManager() != null) {
+                plugin.getIslandWorthManager().updatePlayerTabList(player);
+            }
+        }
+    }
 
-    public String getPlayerDisplayName(UUID uuid, String playerName) { String rankId = getPlayerRankId(uuid); RankData data = rankDataMap.get(rankId.toLowerCase()); if (data != null) { var ser=LegacyComponentSerializer.legacyAmpersand(); String prefix=ser.serialize(ser.deserialize(data.getPrefix())); String suffix=ser.serialize(ser.deserialize(data.getSuffix())); return prefix+" "+playerName+suffix; } return playerName; }
+    public String getPlayerDisplayName(UUID uuid, String playerName) {
+        String rankId = getPlayerRankId(uuid);
+        RankData data = rankDataMap.get(rankId.toLowerCase());
+        if (data != null) {
+            var ampSer = LegacyComponentSerializer.legacyAmpersand();
+            var secSer = LegacyComponentSerializer.legacySection();
+            // Convert & codes (from ranks.yml) to § codes for proper legacy string use in chat/display
+            String prefix = secSer.serialize(ampSer.deserialize(data.getPrefix()));
+            String suffix = secSer.serialize(ampSer.deserialize(data.getSuffix()));
+            // Rank config controls only the rank portion colors. Player name is always white by default (wardrobe cosmetic can override)
+            return prefix + "§r§f " + playerName + suffix;
+        }
+        return playerName;
+    }
 
     // ====================== VOTING SYSTEM ======================
 
@@ -269,6 +306,25 @@ public class RankManager {
      */
     public void removePlayer(UUID uuid) {
         playerRankIds.remove(uuid);
+    }
+
+    /**
+     * Loads the player's rank from DB into cache synchronously (for join messages etc).
+     * Falls back to default on failure.
+     */
+    public String loadPlayerRankSync(UUID uuid) {
+        try {
+            String rankId = getCurrentRankId(uuid).get(3, java.util.concurrent.TimeUnit.SECONDS);
+            if (rankExists(rankId)) {
+                playerRankIds.put(uuid, rankId.toLowerCase());
+                return rankId;
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("[Rank] Failed to load rank sync for " + uuid + ": " + e.getMessage());
+        }
+        String def = getDefaultRankId();
+        playerRankIds.put(uuid, def.toLowerCase());
+        return def;
     }
 
     // Optional alias (for compatibility with earlier suggestions)

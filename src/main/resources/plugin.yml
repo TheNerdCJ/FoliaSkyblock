@@ -20,8 +20,9 @@ commands:
     aliases: [balance, money, coins]
 
   rank:
-    description: Check your player rank and voting
-    usage: /<command> [vote|top]
+    description: Check your player rank, list ranks, and vote (staff can deep-dive details with /rank info)
+    usage: /<command> [list|info <rank>|set <player> <rank>|vote <player>|reload]
+    aliases: [ranks]
 
   mute:
     description: Mute a player (staff only)
@@ -38,6 +39,11 @@ commands:
     usage: /<command>
     permission: foliasb.admin.setspawn
     aliases: [spawnset]
+
+  setrank:
+    description: Set a player's rank (staff only). Use with /rank list or /rank info <rank> for details.
+    usage: /<command> <player> <rank>
+    permission: foliasb.staff
 
   spawn:
     description: Teleport to the default unclaimable spawn (0,0)
@@ -89,6 +95,16 @@ commands:
     description: Reply to your last private message
     usage: /<command> <message>
     aliases: [reply]
+
+  ic:
+    description: Toggle island chat mode (messages go only to island members)
+    usage: /<command>
+    aliases: [islandchat]
+
+  discord:
+    description: Get the link to join our Discord server (clickable fancy message)
+    usage: /<command>
+    aliases: [dc, disc, discordlink]
 
   # === List & Help ===
   list:
@@ -417,6 +433,12 @@ commands:
     usage: /<command>
     aliases: [hologram]
 
+  suggest:
+    description: Submit or vote on player feature suggestions (community poll)
+    permission: foliasb.suggest
+    usage: /<command> <idea text> | list | vote <id>
+    aliases: [suggestion, idea, feedback]
+
 permissions:
   folia.skyblock.wardrobe:
     description: Allows use of the /wardrobe command
@@ -443,6 +465,10 @@ permissions:
 
   foliasb.balance:
     description: Access to player and island balances
+    default: true
+
+  foliasb.suggest:
+    description: Allows using /suggest to submit and vote on ideas
     default: true
 
   foliasb.rank:

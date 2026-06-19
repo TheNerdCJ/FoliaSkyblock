@@ -10,6 +10,17 @@ island:
     require-confirmation: true
   base-y: 80
   spawn-protection-radius: 150
+
+social:
+  discord:
+    # The invite link players will receive (clickable)
+    link: "https://discord.gg/UdpSpPhEp5"
+    # The main message shown with the fancy clickable link
+    message: "&fJoin our official Discord for support, events, giveaways, and community chats!"
+    # Hover text when hovering the clickable part
+    hover: "&eClick to open the Discord invite in your browser"
+    # Prefix for the fancy message
+    prefix: "&6&l[Discord] &r"
   dimension_requirements:
     nether: 15
     end: 30
@@ -382,7 +393,7 @@ upgrades:
     bonus-per-level: 0.35               # Weight multiplier for better ores
   island-size:
     radius-per-level: 2                 # Extra blocks radius per level (even smaller compact PMC-style starters)
-    base-radius: 8                      # Starting protected/build radius (before any upgrades) - very small compact base for new islands
+    base-radius: 8                      # Starting protected/build radius (before any upgrades) - protection extends a bit beyond the tiny PMC-style generated terrain (3-5 radius)
     max-radius: 128                     # Hard cap (kept modest for compact feel even at high levels/prestige)
     prestige-bonus:
       enabled: true
@@ -469,3 +480,16 @@ wardrobe:
     enabled: true
     amount: 15.0          # Island XP per new unique equipment material collected via wardrobe
     # Note: This is intentionally light / optional. Only triggers on the *first* save of each material.
+
+# ================================================
+# Player Suggestions / Feature Poll System
+# ================================================
+suggestions:
+  enabled: true
+  cooldown-minutes: 10          # Per-player cooldown between submitting new ideas
+  min-length: 10                # Minimum characters for a suggestion
+  max-length: 250               # Max length (longer ones are truncated)
+
+  # All data is stored in:
+  #   plugins/FoliaSkyblock/suggestions.json   (structured, easily parsed by Grok)
+  #   plugins/FoliaSkyblock/suggestions.md     (human + AI friendly markdown log + current polls)

@@ -73,12 +73,13 @@ public class SlayerShopGUI implements Listener {
     }
 
     public void open(Player player, Island island) {
-        Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lSlayer Shop - Spend Tokens"));
+        Inventory gui = Bukkit.createInventory(null, 54, MessageUtil.legacy("§6§lSlayer Shop - Spend Tokens §7| Click categories, use nav arrows"));
 
-        // Header - modernized
+        // Header - modernized with navigation tip
         gui.setItem(4, createItem(Material.NETHER_STAR, "§6§lSlayer Shop",
                 "§7Earn Slayer Tokens from quests & island bosses",
-                "§7Spend them here for exclusive rewards!"));
+                "§7Spend them here for exclusive rewards!",
+                "§eBrowse tabs for different cosmetics | Close at bottom"));
 
         // === SLAYER GEAR & KEYS (existing) ===
         gui.setItem(19, createShopItem("§cRevenant Scythe", Material.DIAMOND_SWORD, 150,
@@ -278,6 +279,17 @@ public class SlayerShopGUI implements Listener {
         gui.setItem(49, createItem(Material.GOLD_NUGGET, "§eYour Slayer Tokens",
                 "§7Current: §6" + tokens,
                 "§7Tokens are consumed from your inventory"));
+
+        // Easy navigation: close button
+        ItemStack closeBtn = GUIUtils.createItem(Material.BARRIER, "§c§lClose Shop",
+            "§7Click to exit",
+            "§eEarn more tokens from /slayer quests");
+        ItemMeta cMeta = closeBtn.getItemMeta();
+        if (cMeta != null) {
+            cMeta.getPersistentDataContainer().set(ACTION_KEY, PersistentDataType.STRING, "CLOSE");
+            closeBtn.setItemMeta(cMeta);
+        }
+        gui.setItem(53, closeBtn);
 
         player.openInventory(gui);
     }
@@ -795,6 +807,10 @@ public class SlayerShopGUI implements Listener {
         if (meta != null) {
             PersistentDataContainer pdc = meta.getPersistentDataContainer();
             String action = pdc.get(ACTION_KEY, PersistentDataType.STRING);
+            if ("CLOSE".equals(action) || name.contains("Close Shop")) {
+                player.closeInventory();
+                return;
+            }
             if ("BUY_TRAIL".equals(action)) {
                 String trailName = pdc.get(TRAIL_KEY, PersistentDataType.STRING);
                 if (trailName != null && plugin.getParticleTrailManager() != null) {

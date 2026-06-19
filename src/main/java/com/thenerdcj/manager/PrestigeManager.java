@@ -264,6 +264,9 @@ public class PrestigeManager {
         }
         if (plugin.getPlayerTagManager() != null) {
             plugin.getPlayerTagManager().grantPrestigeTagUnlocks(performer, newLevel);
+            if (plugin.getNameColorManager() != null) {
+                plugin.getNameColorManager().grantPrestigeNameColorUnlocks(performer, newLevel);
+            }
         }
         if (plugin.getElytraWingManager() != null) {
             plugin.getElytraWingManager().grantPrestigeWingUnlocks(performer, newLevel);

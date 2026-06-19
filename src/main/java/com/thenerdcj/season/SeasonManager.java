@@ -262,6 +262,10 @@ public class SeasonManager {
         // Final cache invalidation (in case)
         invalidateAllCaches();
 
+        // Quests fully reset via DB wipe in IslandDAO (island_active_quests + story_progress deleted).
+        // New islands on /is create will start fresh MAIN_STORY from ch.1 via generate.
+        // In-memory cleared naturally as islands gone.
+
         // Reset grid tracking (now empty)
         if (plugin.getGridManager() != null) {
             plugin.getGridManager().resetForNewSeason();

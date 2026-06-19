@@ -28,8 +28,18 @@ public class PlayerQuitListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
-        // Restore working colored join/quit messages (rich § format, default for all)
-        event.setQuitMessage("§8[§c-§8] §7" + player.getName());
+        // Load cosmetics for quit message (rank etc should be cached)
+        if (plugin.getJoinLeaveMessageManager() != null) {
+            plugin.getJoinLeaveMessageManager().loadPlayer(player.getUniqueId());
+            plugin.getJoinLeaveMessageManager().savePlayer(player.getUniqueId());
+        }
+
+        String quitMsg = buildJoinQuitMessage(player, false);
+        if (quitMsg != null) {
+            event.setQuitMessage(quitMsg);
+        } else {
+            event.setQuitMessage("§8[§c-§8] §7" + player.getName());
+        }
 
         if (plugin.getChatManager() != null) {
             plugin.getChatManager().onPlayerQuit(player);
@@ -58,6 +68,9 @@ public class PlayerQuitListener implements Listener {
 
         if (plugin.getPlayerTagManager() != null) {
             plugin.getPlayerTagManager().onPlayerQuit(player);
+        }
+        if (plugin.getNameColorManager() != null) {
+            plugin.getNameColorManager().onPlayerQuit(player);
         }
 
         if (plugin.getPlayerNametagManager() != null) {
@@ -143,8 +156,25 @@ public class PlayerQuitListener implements Listener {
             plugin.setServerTabHeaderFooter(player);
         }
 
-        // Restore working colored join/quit messages (rich § format, default for all)
-        event.setJoinMessage("§8[§a+§8] §7" + player.getName());
+        // Load rank for persistence (fixes reset to member on join)
+        if (plugin.getRankManager() != null) {
+            plugin.getRankManager().loadPlayerRankSync(player.getUniqueId());
+            plugin.getRankManager().applyRankPrefix(player);
+        }
+
+        // Load join/leave cosmetic for custom messages
+        if (plugin.getJoinLeaveMessageManager() != null) {
+            plugin.getJoinLeaveMessageManager().loadPlayer(player.getUniqueId());
+        }
+
+        // Set join message using cosmetics: rank, prestige/level, custom tag/name color etc.
+        String joinMsg = buildJoinQuitMessage(player, true);
+        if (joinMsg != null) {
+            event.setJoinMessage(joinMsg);
+        } else {
+            // fallback
+            event.setJoinMessage("§8[§a+§8] §7" + player.getName());
+        }
 
         // Disable all vanilla Minecraft advancements/achievements (irrelevant for skyblock, prevents spam toasts and chat messages)
         // Revoke all existing ones on join for clean slate
@@ -183,6 +213,9 @@ public class PlayerQuitListener implements Listener {
                     plugin.getPlayerTagManager().refreshPlayerDisplay(player);
                 }
             }, 5L);
+            if (plugin.getNameColorManager() != null) {
+                plugin.getNameColorManager().onPlayerJoin(player);
+            }
         }
 
         if (plugin.getPlayerNametagManager() != null) {
@@ -305,5 +338,40 @@ public class PlayerQuitListener implements Listener {
     public void onPlayerAdvancementDone(PlayerAdvancementDoneEvent event) {
         // Suppress the advancement popup and chat message
         event.message(null);
+    }
+
+    /**
+     * Builds join or quit message using cosmetics: rank, prestige/level prefix, tags, name colors, custom join/leave templates.
+     */
+    private String buildJoinQuitMessage(Player player, boolean isJoin) {
+        String display = getRichDisplayForMessage(player);
+        if (plugin.getJoinLeaveMessageManager() != null) {
+            com.thenerdcj.cosmetic.JoinLeaveMessageCosmetic active = plugin.getJoinLeaveMessageManager().getActiveJoinLeaveMessage(player.getUniqueId());
+            if (active != null && !active.isNone()) {
+                String template = isJoin ? active.getJoinFormat() : active.getLeaveFormat();
+                String formatted = plugin.getJoinLeaveMessageManager().formatMessage(template, player);
+                if (formatted != null && !formatted.isEmpty()) {
+                    return formatted;
+                }
+            }
+        }
+        // default with rich cosmetics
+        String prefix = isJoin ? "§8[§a+§8] " : "§8[§c-§8] ";
+        return prefix + display;
+    }
+
+    private String getRichDisplayForMessage(Player player) {
+        if (plugin.getJoinLeaveMessageManager() != null) {
+            // reuse the rich display logic
+            return plugin.getJoinLeaveMessageManager().formatMessage("%player%", player); // but it will use internal getRich
+        }
+        // fallback
+        if (plugin.getPlayerTagManager() != null) {
+            return plugin.getPlayerTagManager().getComposedDisplayName(player.getUniqueId(), player.getName());
+        }
+        if (plugin.getRankManager() != null) {
+            return plugin.getRankManager().getPlayerDisplayName(player.getUniqueId(), player.getName());
+        }
+        return player.getName();
     }
 }

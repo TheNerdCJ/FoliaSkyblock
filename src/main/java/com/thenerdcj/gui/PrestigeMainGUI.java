@@ -152,7 +152,8 @@ public class PrestigeMainGUI extends BaseGUI {
                 "§7Prestige is the ultimate endgame",
                 "§7progression for dedicated players.",
                 "§7Each level gives stacking multipliers",
-                "§7that make future progress much faster."));
+                "§7that make future progress much faster.",
+                "§eClick buttons or use Close at bottom to navigate."));
 
         gui.setItem(CLOSE_SLOT, GUIUtils.createNavButton(Material.BARRIER, "§c§lClose", ACTION_KEY, "CLOSE"));
         player.openInventory(gui);

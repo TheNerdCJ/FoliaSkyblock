@@ -424,6 +424,6 @@ public class Island {
     }
 
     public int getEffectiveIslandRadius() {
-        return 8 + getExtraBuildRadius();  // very small PMC-style starting base
+        return 8 + getExtraBuildRadius();  // match current upgrades.island-size.base-radius for starters
     }
 }

@@ -60,8 +60,10 @@ public class ChatManager {
 
     /**
      * Returns a rich display name including rank prefix + active cosmetic tag.
+     * (Island prestige/level prefix is included via PlayerTagManager composed name for chat/tab.)
+     * Public for use in staff chat and other places that need the full formatted name.
      */
-    private String getRichDisplayName(Player player) {
+    public String getRichDisplayName(Player player) {
         if (plugin.getPlayerTagManager() != null) {
             return plugin.getPlayerTagManager().getComposedDisplayName(
                     player.getUniqueId(), player.getName());

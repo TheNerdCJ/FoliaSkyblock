@@ -483,7 +483,7 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS hologram_lines (holo_id INTEGER, line_index INTEGER, text TEXT, PRIMARY KEY(holo_id, line_index))",
 
                 // Island feature tables (centralized from Island*Manager classes)
-                "CREATE TABLE IF NOT EXISTS island_settings (grid_x INTEGER, grid_z INTEGER, dimension TEXT, pvp_enabled BOOLEAN DEFAULT 0, visitors_allowed BOOLEAN DEFAULT 1, explosions_enabled BOOLEAN DEFAULT 0, fire_spread_enabled BOOLEAN DEFAULT 0, mob_spawning_enabled BOOLEAN DEFAULT 1, crop_trampling_enabled BOOLEAN DEFAULT 1, animal_spawning_enabled BOOLEAN DEFAULT 1, leaf_decay_enabled BOOLEAN DEFAULT 1, border_color TEXT DEFAULT 'BLUE', border_size INTEGER DEFAULT 100, border_markers_enabled BOOLEAN DEFAULT 0, warp_enabled BOOLEAN DEFAULT 0, warp_description TEXT DEFAULT '', PRIMARY KEY (grid_x, grid_z, dimension))",
+                "CREATE TABLE IF NOT EXISTS island_settings (grid_x INTEGER, grid_z INTEGER, dimension TEXT, pvp_enabled BOOLEAN DEFAULT 0, visitors_allowed BOOLEAN DEFAULT 1, explosions_enabled BOOLEAN DEFAULT 0, fire_spread_enabled BOOLEAN DEFAULT 0, mob_spawning_enabled BOOLEAN DEFAULT 1, crop_trampling_enabled BOOLEAN DEFAULT 1, animal_spawning_enabled BOOLEAN DEFAULT 1, leaf_decay_enabled BOOLEAN DEFAULT 1, border_color TEXT DEFAULT 'BLUE', border_size INTEGER DEFAULT 8, border_markers_enabled BOOLEAN DEFAULT 0, warp_enabled BOOLEAN DEFAULT 0, warp_description TEXT DEFAULT '', keep_inventory_enabled BOOLEAN DEFAULT 0, PRIMARY KEY (grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS island_banks (grid_x INTEGER, grid_z INTEGER, dimension TEXT, balance REAL DEFAULT 0.0, PRIMARY KEY (grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS island_worth (grid_x INTEGER, grid_z INTEGER, dimension TEXT, worth REAL DEFAULT 0.0, worth_level INTEGER DEFAULT 1, last_calculated INTEGER DEFAULT 0, last_worth_rank INTEGER DEFAULT 0, last_level_rank INTEGER DEFAULT 0, member_count INTEGER DEFAULT 0, prestige_level INTEGER DEFAULT 0, PRIMARY KEY (grid_x, grid_z, dimension))",
                 "CREATE TABLE IF NOT EXISTS island_ratings (grid_x INTEGER, grid_z INTEGER, dimension TEXT, player_uuid TEXT, rating INTEGER, timestamp INTEGER, PRIMARY KEY (grid_x, grid_z, dimension, player_uuid))",
@@ -510,6 +510,9 @@ public class DatabaseManager {
                 "CREATE TABLE IF NOT EXISTS player_tags (uuid TEXT, tag_id TEXT, variant TEXT DEFAULT 'NONE', PRIMARY KEY (uuid, tag_id))",
                 "CREATE TABLE IF NOT EXISTS player_active_tag (uuid TEXT PRIMARY KEY, tag_id TEXT, variant TEXT DEFAULT 'NONE')",
                 "CREATE TABLE IF NOT EXISTS player_tag_collection (uuid TEXT, tag_id TEXT, PRIMARY KEY (uuid, tag_id))",
+
+                // Name Color cosmetics (wardrobe chat name colors)
+                "CREATE TABLE IF NOT EXISTS player_name_colors (uuid TEXT PRIMARY KEY, color_code TEXT)",
 
                 // Elytra Wing Cosmetics (new advanced visual system for gliding)
                 "CREATE TABLE IF NOT EXISTS player_elytra_wings (uuid TEXT, wing_id TEXT, PRIMARY KEY (uuid, wing_id))",
@@ -577,6 +580,10 @@ public class DatabaseManager {
                 // Cosmetic Death Messages (new system - text on kill/death)
                 "CREATE TABLE IF NOT EXISTS player_death_messages (uuid TEXT, message_id TEXT, PRIMARY KEY (uuid, message_id))",
 
+                // Cosmetic Join/Leave Messages (player join and quit cosmetics using %player% with rank/prestige etc)
+                "CREATE TABLE IF NOT EXISTS player_join_leave_messages (uuid TEXT, message_id TEXT, PRIMARY KEY (uuid, message_id))",
+                "CREATE TABLE IF NOT EXISTS player_active_join_leave (uuid TEXT PRIMARY KEY, message_id TEXT)",
+
                 // Player Skill System (MCMMO-like per-player skills: Mining, Woodcutting, etc. with levels/XP/abilities)
                 "CREATE TABLE IF NOT EXISTS player_skills (uuid TEXT, skill TEXT, xp DOUBLE DEFAULT 0, level INTEGER DEFAULT 1, PRIMARY KEY (uuid, skill))",
                 // Seasonal resets (Option B): current season tracking + history + cosmetic grant audit for event/donor releases.
@@ -598,6 +605,7 @@ public class DatabaseManager {
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auctions_active ON auctions(sold, end_time)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_island_collections_key ON island_collections(island_key)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_death_messages ON player_death_messages(uuid)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_join_leave_messages ON player_join_leave_messages(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_player_skills_uuid ON player_skills(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_wardrobe_collection ON player_wardrobe_collection(uuid)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pet_collection ON player_pet_collection(uuid)");
@@ -647,6 +655,11 @@ public class DatabaseManager {
 
             // Border markers flag
             try { stmt.executeUpdate("ALTER TABLE island_settings ADD COLUMN border_markers_enabled BOOLEAN DEFAULT 0"); } catch (SQLException ignored) {}
+            // Keep inventory island setting
+            try { stmt.executeUpdate("ALTER TABLE island_settings ADD COLUMN keep_inventory_enabled BOOLEAN DEFAULT 0"); } catch (SQLException ignored) {}
+            // Align starter border size default to current base-radius (8) for new and legacy starters
+            try { stmt.executeUpdate("ALTER TABLE island_settings ADD COLUMN border_size INTEGER DEFAULT 8"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("UPDATE island_settings SET border_size = 8 WHERE border_size = 100 OR border_size = 0"); } catch (SQLException ignored) {}
 
             // Persisted rank snapshots for O(1) my-rank (compression/persistence for large servers + frequent PAPI/command access)
             // Added after the live COUNT my-rank implementation.
@@ -1066,6 +1079,39 @@ public class DatabaseManager {
     public Set<String> loadPlayerTagCollection(UUID uuid) {
         if (cosmeticDAO != null) return cosmeticDAO.loadPlayerTagCollection(uuid);
         return java.util.Collections.emptySet();
+    }
+
+    // ==================== NAME COLOR (Wardrobe chat name color) PERSISTENCE ====================
+
+    public void savePlayerNameColor(UUID uuid, String colorCode) {
+        if (uuid == null) return;
+        String code = (colorCode == null || colorCode.isEmpty()) ? "§f" : colorCode;
+        try (java.sql.Connection conn = getConnection();
+             java.sql.PreparedStatement ps = conn.prepareStatement(
+                 "INSERT OR REPLACE INTO player_name_colors (uuid, color_code) VALUES (?, ?)")) {
+            ps.setString(1, uuid.toString());
+            ps.setString(2, code);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            plugin.getLogger().severe("[DatabaseManager] savePlayerNameColor failed: " + e.getMessage());
+        }
+    }
+
+    public String loadPlayerNameColor(UUID uuid) {
+        if (uuid == null) return "§f";
+        try (java.sql.Connection conn = getConnection();
+             java.sql.PreparedStatement ps = conn.prepareStatement(
+                 "SELECT color_code FROM player_name_colors WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString(1);
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().severe("[DatabaseManager] loadPlayerNameColor failed: " + e.getMessage());
+        }
+        return "§f";
     }
 
     // ==================== ELYTRA WING PERSISTENCE ====================
@@ -1862,11 +1908,62 @@ public class DatabaseManager {
         return java.util.Collections.emptySet();
     }
 
-    // STUBS for JoinLeaveMessageManager (join/quit message cosmetics) to make it compile
-    public java.util.Set<String> loadPlayerJoinLeaveMessages(java.util.UUID uuid) { return new java.util.HashSet<>(); }
-    public String loadActiveJoinLeaveMessage(java.util.UUID uuid) { return null; }
-    public void savePlayerJoinLeaveMessages(java.util.UUID uuid, java.util.Set<String> messages) {}
-    public void saveActiveJoinLeaveMessage(java.util.UUID uuid, String message) {}
+    // Join/Leave Message Cosmetics persistence
+    public java.util.Set<String> loadPlayerJoinLeaveMessages(java.util.UUID uuid) {
+        java.util.Set<String> ids = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT message_id FROM player_join_leave_messages WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                ids.add(rs.getString("message_id"));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[JoinLeave] Failed to load join/leave messages for " + uuid + ": " + e.getMessage());
+        }
+        return ids;
+    }
+
+    public String loadActiveJoinLeaveMessage(java.util.UUID uuid) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT message_id FROM player_active_join_leave WHERE uuid = ?")) {
+            ps.setString(1, uuid.toString());
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("message_id");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[JoinLeave] Failed to load active join/leave for " + uuid + ": " + e.getMessage());
+        }
+        return null;
+    }
+
+    public void savePlayerJoinLeaveMessages(java.util.UUID uuid, java.util.Set<String> messageIds) {
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement("DELETE FROM player_join_leave_messages WHERE uuid = ?");
+             PreparedStatement ins = conn.prepareStatement("INSERT OR IGNORE INTO player_join_leave_messages (uuid, message_id) VALUES (?, ?)")) {
+            del.setString(1, uuid.toString());
+            del.executeUpdate();
+            for (String id : messageIds) {
+                ins.setString(1, uuid.toString());
+                ins.setString(2, id);
+                ins.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[JoinLeave] Failed to save join/leave messages for " + uuid + ": " + e.getMessage());
+        }
+    }
+
+    public void saveActiveJoinLeaveMessage(java.util.UUID uuid, String messageId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO player_active_join_leave (uuid, message_id) VALUES (?, ?)")) {
+            ps.setString(1, uuid.toString());
+            ps.setString(2, messageId != null ? messageId : "");
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[JoinLeave] Failed to save active join/leave for " + uuid + ": " + e.getMessage());
+        }
+    }
 
     // ==================== ISLAND XP / LEVEL ====================
     public CompletableFuture<Boolean> updateIslandLevel(UUID ownerUuid, World.Environment dimension, int newLevel, double xp) {

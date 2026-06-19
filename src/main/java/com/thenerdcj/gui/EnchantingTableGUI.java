@@ -56,7 +56,8 @@ public class EnchantingTableGUI implements Listener {
                 "§7Enchant your items with powerful magic!",
                 "§7No level limits - Up to X enchantments!",
                 "",
-                "§eClick an enchantment to apply it"));
+                "§eClick an enchantment to apply it",
+                "§7Navigation: Click options or Close button below."));
 
         // Item to enchant display
         gui.setItem(22, itemToEnchant.clone());

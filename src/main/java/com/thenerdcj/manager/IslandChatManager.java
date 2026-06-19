@@ -45,7 +45,8 @@ public class IslandChatManager {
             return;
         }
 
-        String formattedMessage = "§b[Island] §e" + sender.getName() + "§7: §f" + message;
+        String display = (plugin.getChatManager() != null) ? plugin.getChatManager().getRichDisplayName(sender) : sender.getName();
+        String formattedMessage = "§b[Island] " + display + "§7: §f" + message;
 
         // Send to all online island members
         for (UUID memberId : island.getMembers().keySet()) {
