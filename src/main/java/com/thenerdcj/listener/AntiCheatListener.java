@@ -126,13 +126,9 @@ public class AntiCheatListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerPickupItem(PlayerPickupItemEvent e) {
-        ItemStack item = e.getItem().getItemStack();
-        antiCheatManager.recordItemTransaction(e.getPlayer(), item.getAmount(), item.getType());
-
-        if (antiCheatManager.scanForIllegalItem(e.getPlayer(), item)) {
-            e.setCancelled(true);
-            e.getItem().remove();
-        }
+        // Pickup check feature DISABLED
+        // No longer records item transactions or scans for illegal items on pickup.
+        return;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

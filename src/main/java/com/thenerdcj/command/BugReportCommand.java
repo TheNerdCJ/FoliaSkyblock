@@ -50,8 +50,15 @@ public class BugReportCommand implements CommandExecutor, TabCompleter {
         boolean isReportsCmd = "reports".equals(cmdName);
 
         if (isReportsCmd) {
-            // Direct /reports command - staff only
-            if (!player.hasPermission("foliasb.staff") && !player.hasPermission("foliasb.admin")) {
+            // Direct /reports command - staff only (respects foliasb.staff, admin, owner rank with *, and custom staff: true ranks)
+            boolean canView = player.hasPermission("foliasb.staff") || player.hasPermission("foliasb.admin");
+            if (!canView && plugin.getRankManager() != null) {
+                String rankId = plugin.getRankManager().getPlayerRankId(player.getUniqueId());
+                if (plugin.getRankManager().isStaffRank(rankId)) {
+                    canView = true;
+                }
+            }
+            if (!canView) {
                 MessageUtil.sendMessage(player, "§cYou do not have permission to view bug reports.");
                 return true;
             }
@@ -70,10 +77,18 @@ public class BugReportCommand implements CommandExecutor, TabCompleter {
 
         // Staff shortcut inside /bug reports etc.
         String first = args[0].toLowerCase();
-        if ((first.equals("reports") || first.equals("list") || first.equals("view")) &&
-            (player.hasPermission("foliasb.staff") || player.hasPermission("foliasb.admin"))) {
-            plugin.getBugReportListGUI().open(player);
-            return true;
+        if ((first.equals("reports") || first.equals("list") || first.equals("view"))) {
+            boolean canView = player.hasPermission("foliasb.staff") || player.hasPermission("foliasb.admin");
+            if (!canView && plugin.getRankManager() != null) {
+                String rankId = plugin.getRankManager().getPlayerRankId(player.getUniqueId());
+                if (plugin.getRankManager().isStaffRank(rankId)) {
+                    canView = true;
+                }
+            }
+            if (canView) {
+                plugin.getBugReportListGUI().open(player);
+                return true;
+            }
         }
 
         // Staff: attach note to a selected report from the GUI (used with "Add Note" button)

@@ -54,6 +54,10 @@ commands:
     description: Teleport to your island home
     usage: /<command>
 
+  afk:
+    description: Toggle your AFK status
+    usage: /<command>
+
   # === Expanded TPA System ===
   tpa:
     description: Request to teleport to another player (with cooldown)

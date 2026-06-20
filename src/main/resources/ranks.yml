@@ -55,6 +55,7 @@ ranks:
       - "folia.moderation.kick"
       - "folia.moderation.mute"
       - "folia.moderation.warn"
+      - "foliasb.staff"
 
   moderator:
     display-name: "Moderator"
@@ -72,6 +73,7 @@ ranks:
       - "folia.moderation.kick"
       - "folia.moderation.mute"
       - "folia.moderation.warn"
+      - "foliasb.staff"
       - "folia.moderation.ban"
       - "folia.moderation.unban"
       - "folia.moderation.freeze"

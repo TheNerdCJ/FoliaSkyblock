@@ -11,16 +11,6 @@ island:
   base-y: 80
   spawn-protection-radius: 150
 
-social:
-  discord:
-    # The invite link players will receive (clickable)
-    link: "https://discord.gg/UdpSpPhEp5"
-    # The main message shown with the fancy clickable link
-    message: "&fJoin our official Discord for support, events, giveaways, and community chats!"
-    # Hover text when hovering the clickable part
-    hover: "&eClick to open the Discord invite in your browser"
-    # Prefix for the fancy message
-    prefix: "&6&l[Discord] &r"
   dimension_requirements:
     nether: 15
     end: 30
@@ -208,6 +198,17 @@ social:
         money: 2000000
         items:
           - "NETHERITE_BLOCK:16"
+
+social:
+  discord:
+    # The invite link players will receive (clickable)
+    link: "https://discord.gg/UdpSpPhEp5"
+    # The main message shown with the fancy clickable link
+    message: "&fJoin our official Discord for support, events, giveaways, and community chats!"
+    # Hover text when hovering the clickable part
+    hover: "&eClick to open the Discord invite in your browser"
+    # Prefix for the fancy message
+    prefix: "&6&l[Discord] &r"
 
 # World resolution (26.1+ / Folia): nether & end live under level-name/dimensions/, not separate folders.
 # worlds.overworld MUST match server.properties level-name (e.g. skyblock).

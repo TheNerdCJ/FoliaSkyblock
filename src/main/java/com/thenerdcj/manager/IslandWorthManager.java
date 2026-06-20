@@ -129,6 +129,22 @@ public class IslandWorthManager {
             }
         }
 
+        if (blockWorth.isEmpty()) {
+            // Safety fallback: ensures worth progression works even if config merge failed.
+            // These match the documented defaults in config.yml
+            blockWorth.put(Material.STONE, 1.0);
+            blockWorth.put(Material.COBBLESTONE, 1.0);
+            blockWorth.put(Material.DIRT, 0.5);
+            blockWorth.put(Material.GRASS_BLOCK, 0.8);
+            blockWorth.put(Material.OAK_LOG, 3.0);
+            blockWorth.put(Material.DIAMOND_ORE, 150.0);
+            blockWorth.put(Material.DIAMOND_BLOCK, 1350.0);
+            blockWorth.put(Material.EMERALD_BLOCK, 1200.0);
+            blockWorth.put(Material.NETHERITE_BLOCK, 4500.0);
+            blockWorth.put(Material.SPAWNER, 800.0);
+            blockWorth.put(Material.BEACON, 2500.0);
+        }
+
         // Level formula - more configurable
         ConfigurationSection formula = worthSection.getConfigurationSection("level-formula");
         if (formula != null) {
@@ -396,28 +412,19 @@ public class IslandWorthManager {
 
         plugin.getThreadSafety().runOnMainThread(() -> {
             // Use the full composed display name (similar to chat fixes): includes <P/L> prestige/level prefix, [Rank] from config, (Cosmetic Tag), name color (white unless cosmetic)
+            // Worth and level suffix removed from tab menu per request.
             String composed = player.getName();
             if (plugin.getPlayerTagManager() != null) {
                 composed = plugin.getPlayerTagManager().getComposedDisplayName(player.getUniqueId(), player.getName());
             }
             Component base = LegacyComponentSerializer.legacySection().deserialize(composed);
 
-            Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-            if (island == null) {
-                player.playerListName(base);
-                return;
+            // Insert AFK indicator next to name in tab list when player is AFK (manual or auto after 15min no move)
+            if (plugin.getAfkManager() != null && plugin.getAfkManager().isAFK(player.getUniqueId())) {
+                base = base.append(Component.text(" §7[AFK]", NamedTextColor.GRAY));
             }
 
-            double worth = getCachedWorth(island);
-            int level = getCachedWorthLevel(island);
-
-            Component worthComp = Component.text(" [W:", NamedTextColor.GRAY)
-                    .append(Component.text(String.format("%,.0f", worth), NamedTextColor.GOLD))
-                    .append(Component.text(" L:", NamedTextColor.GRAY))
-                    .append(Component.text(level, NamedTextColor.AQUA))
-                    .append(Component.text("]", NamedTextColor.GRAY));
-
-            player.playerListName(base.append(worthComp));
+            player.playerListName(base);
         });
     }
 

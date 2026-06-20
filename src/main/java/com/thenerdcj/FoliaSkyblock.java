@@ -44,10 +44,16 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import com.thenerdcj.island.generator.VoidChunkGenerator;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
+
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import org.jetbrains.annotations.Nullable;
 
 public class FoliaSkyblock extends JavaPlugin {
@@ -61,12 +67,14 @@ public class FoliaSkyblock extends JavaPlugin {
 
     private IslandWorthManager islandWorthManager;private MissionManager missionManager;private BoosterManager boosterManager;private BoosterGUI boosterGUI;private IslandShopManager islandShopManager;private IslandShopGUI islandShopGUI;private IslandBankGUI islandBankGUI;private IslandSettingsGUI islandSettingsGUI;private PrestigeManager prestigeManager;private PrestigeGUI prestigeGUI;private BorderVisualManager borderVisualManager;private CrateManager crateManager;private CrateGUI crateGUI;private ParticleTrailManager particleTrailManager;private ParticleTrailGUI particleTrailGUI;private GeneratorGUI generatorGUI;private AdminIslandInspectGUI adminIslandInspectGUI;private SpawnEditGUI spawnEditGUI;private WardrobeManager wardrobeManager;private WardrobeGUI wardrobeGUI;private WardrobeSlotOptionsGUI wardrobeSlotOptionsGUI;private PetManager petManager;private PetGUI petGUI;private PlayerTagManager playerTagManager;private TagGUI tagGUI;private com.thenerdcj.cosmetic.JoinLeaveMessageManager joinLeaveMessageManager;private com.thenerdcj.cosmetic.NameColorManager nameColorManager;private com.thenerdcj.cosmetic.JoinLeaveMessageMainGUI joinLeaveMessageMainGUI;private PlayerNametagManager playerNametagManager;private ElytraWingManager elytraWingManager;private WingGUI wingGUI;private RuneManager runeManager;private RuneGUI runeGUI;private HelmetSkinManager helmetSkinManager;private HelmetSkinGUI helmetSkinGUI;private DeathEffectManager deathEffectManager;private DeathEffectGUI deathEffectGUI;private DeathMessageManager deathMessageManager;
     private DeathMessageGUI deathMessageGUI;private BackpackSkinManager backpackSkinManager;private BackpackSkinGUI backpackSkinGUI;private PowerOrbSkinManager powerOrbSkinManager;private PowerOrbSkinGUI powerOrbSkinGUI;private MinionSkinManager minionSkinManager;private MinionSkinGUI minionSkinGUI;private IslandFurnitureManager islandFurnitureManager;private IslandFurnitureGUI islandFurnitureGUI;private IslandMusicManager islandMusicManager;private IslandMusicGUI islandMusicGUI;private OverheadCosmeticManager overheadCosmeticManager;private EmoteCosmeticManager emoteCosmeticManager;private IslandStructureManager islandStructureManager;private IslandStructureGUI islandStructureGUI;
+    private AFKManager afkManager;
 
     private ChatBubbleCosmeticManager chatBubbleCosmeticManager;private IslandWeatherCosmeticManager islandWeatherCosmeticManager;private IslandWeatherGUI islandWeatherGUI;private AccessoryCosmeticManager accessoryCosmeticManager;private CollectionManager collectionManager;private CollectionsGUI collectionsGUI;private SeasonManager seasonManager;private MuseumManager museumManager;private MuseumGUI museumGUI;private PlayerSkillManager playerSkillManager;private SkillGUI skillGUI;private IslandTopGUI islandTopGUI;private IslandBrowseGUI islandBrowseGUI;private TradeGUI tradeGUI;private SlayerGUI slayerGUI;private SlayerLeaderboardGUI slayerLeaderboardGUI;private SlayerAchievementGUI slayerAchievementGUI;private SlayerShopGUI slayerShopGUI;private SlayerTokenLeaderboardGUI slayerTokenLeaderboardGUI;private EnchantingTableGUI enchantingTableGUI;private EnchantmentManager enchantmentManager;private IslandChatManager islandChatManager;private IslandUpgradeGUI islandUpgradeGUI;private ResetConfirmationGUI resetConfirmationGUI;private BiomeSelectionGUI biomeSelectionGUI;private TPAListGUI tpaListGUI;private AuctionGUI auctionGUI;private BazaarGUI bazaarGUI;private DimensionResetGUI dimensionResetGUI;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        ensureBlockWorthDefaults();
         validateConfiguration();
 
         // Note: For 1.21+ pause menu "Server Links", configure via server.properties or use Paper's ServerLinks API manually if desired.
@@ -78,6 +86,7 @@ public class FoliaSkyblock extends JavaPlugin {
 
         this.islandUpgradeManager = new IslandUpgradeManager(this);this.islandOreGenerator = new IslandOreGenerator(this, gridManager, islandUpgradeManager);this.islandSettingsManager = new IslandSettingsManager(this);
         this.islandBankManager = new IslandBankManager(this);this.islandRatingManager = new IslandRatingManager(this);this.islandWarpManager = new IslandWarpManager(this);this.minionManager = new MinionManager(this);this.chestShopManager = new ChestShopManager(this);this.auctionManager = new AuctionManager(this);this.bazaarManager = new BazaarManager(this);this.chatManager = new ChatManager(this);this.teleportRequestManager = new TeleportRequestManager(this);this.tpaListGUI = new TPAListGUI(this, teleportRequestManager);this.punishmentManager = new PunishmentManager(this);this.bugReportManager = new BugReportManager(this);this.bugReportListGUI = new BugReportListGUI(this);getServer().getPluginManager().registerEvents(this.bugReportListGUI, this);this.autoSellerManager = new AutoSellerManager(this);this.islandWorthManager = new IslandWorthManager(this);this.missionManager = new MissionManager(this);this.boosterManager = new BoosterManager(this);this.boosterGUI = new BoosterGUI(this);this.islandShopManager = new IslandShopManager(this);this.islandShopGUI = new IslandShopGUI(this);this.islandBankGUI = new IslandBankGUI(this);this.islandSettingsGUI = new IslandSettingsGUI(this);this.prestigeManager = new PrestigeManager(this);this.prestigeGUI = new PrestigeGUI(this);this.borderVisualManager = new BorderVisualManager(this);this.crateManager = new CrateManager(this);this.crateGUI = new CrateGUI(this);this.particleTrailManager = new ParticleTrailManager(this);this.particleTrailGUI = new ParticleTrailGUI(this);this.generatorGUI = new GeneratorGUI(this);this.adminIslandInspectGUI = new AdminIslandInspectGUI(this);this.spawnEditGUI = new SpawnEditGUI(this);
+        this.afkManager = new AFKManager(this);
 
         long worthIntervalMin = (islandWorthManager != null && islandWorthManager.isPeriodicRecalcEnabled())
                 ? islandWorthManager.getWorthRecalcIntervalMinutes() : 0;
@@ -315,7 +324,7 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("setrank", staffCmd);
         safeRegisterCommand("isadmin", new AdminCommand(this));
 
-        safeRegisterCommand("bug", new BugReportCommand(this));safeRegisterCommand("bugreport", new BugReportCommand(this));safeRegisterCommand("reportbug", new BugReportCommand(this));safeRegisterCommand("reports", new BugReportCommand(this));safeRegisterCommand("trade", (sender, cmd, label, args) -> {
+        safeRegisterCommand("bug", new BugReportCommand(this));safeRegisterCommand("bugreport", new BugReportCommand(this));safeRegisterCommand("reportbug", new BugReportCommand(this));safeRegisterCommand("reports", new BugReportCommand(this));safeRegisterCommand("afk", new com.thenerdcj.command.AFKCommand(this));safeRegisterCommand("trade", (sender, cmd, label, args) -> {
             if (sender instanceof Player player) {
                 tradeGUI.openTradeGUI(player);
                 return true;
@@ -358,6 +367,7 @@ public class FoliaSkyblock extends JavaPlugin {
         pm.registerEvents(new com.thenerdcj.listener.EnchantEffectListener(this), this);
         pm.registerEvents(new DimensionIslandListener(this), this);
         pm.registerEvents(new TPAListener(this, tpaListGUI), this);
+        pm.registerEvents(new com.thenerdcj.listener.AFKListener(this), this);
         pm.registerEvents(auctionGUI, this);
         if (boosterGUI != null) {
             pm.registerEvents(boosterGUI, this);
@@ -397,6 +407,7 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandOreGenerator getIslandOreGenerator() { return islandOreGenerator; }
 
     public IslandWorthManager getIslandWorthManager() { return islandWorthManager; }
+    public AFKManager getAfkManager() { return afkManager; }
     public com.thenerdcj.mission.MissionManager getMissionManager() { return missionManager; }
     public com.thenerdcj.booster.BoosterManager getBoosterManager() { return boosterManager; }
     public com.thenerdcj.gui.IslandShopGUI getIslandShopGUI() { return islandShopGUI; }
@@ -623,6 +634,48 @@ public class FoliaSkyblock extends JavaPlugin {
             MessageUtil.severe(getLogger(), "§c[Config] Critical configuration issues detected. Review above warnings.");
         } else {
             MessageUtil.info(getLogger(), "§a[Config] Configuration validated (including new reports section).");
+        }
+    }
+
+    /**
+     * Ensures island.worth.block-worth is populated even for users with stale/outdated config.yml on disk.
+     * saveDefaultConfig() only writes the file if it is completely absent.
+     * This merges the default block values (without overwriting any user customizations) and saves if changes were made.
+     * Prevents the "block-worth is empty or missing" critical error.
+     */
+    private void ensureBlockWorthDefaults() {
+        FileConfiguration config = getConfig();
+        if (config.isConfigurationSection("island.worth.block-worth")
+                && !config.getConfigurationSection("island.worth.block-worth").getKeys(false).isEmpty()) {
+            return; // already populated
+        }
+
+        // Load the pristine defaults directly from the plugin jar resource
+        try (InputStreamReader reader = new InputStreamReader(
+                getResource("config.yml"), StandardCharsets.UTF_8)) {
+            FileConfiguration defaults = YamlConfiguration.loadConfiguration(reader);
+            ConfigurationSection defSection = defaults.getConfigurationSection("island.worth.block-worth");
+            if (defSection == null || defSection.getKeys(false).isEmpty()) return;
+
+            ConfigurationSection target = config.getConfigurationSection("island.worth.block-worth");
+            if (target == null) {
+                target = config.createSection("island.worth.block-worth");
+            }
+
+            boolean addedAny = false;
+            for (String key : defSection.getKeys(false)) {
+                if (!target.contains(key)) {
+                    target.set(key, defSection.get(key));
+                    addedAny = true;
+                }
+            }
+
+            if (addedAny) {
+                saveConfig();
+                MessageUtil.info(getLogger(), "§a[Config] Added missing default values to island.worth.block-worth (updated your config.yml).");
+            }
+        } catch (Exception e) {
+            getLogger().warning("[FoliaSkyblock] [Config] Could not auto-merge block-worth defaults: " + e.getMessage());
         }
     }
 

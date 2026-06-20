@@ -77,7 +77,14 @@ public class BugReportListGUI implements InventoryHolder, Listener {
     }
 
     public void open(Player staff) {
-        if (!staff.hasPermission("foliasb.staff") && !staff.hasPermission("foliasb.admin")) {
+        boolean canView = staff.hasPermission("foliasb.staff") || staff.hasPermission("foliasb.admin");
+        if (!canView && plugin.getRankManager() != null) {
+            String rankId = plugin.getRankManager().getPlayerRankId(staff.getUniqueId());
+            if (plugin.getRankManager().isStaffRank(rankId)) {
+                canView = true;
+            }
+        }
+        if (!canView) {
             MessageUtil.sendMessage(staff, "§cYou do not have permission to view bug reports.");
             return;
         }

@@ -26,12 +26,18 @@ public class RankData {
         this.displayName = displayName;
         this.prefix = prefix != null ? prefix : "&7[" + rankId + "]";
         this.suffix = suffix != null ? suffix : "";
-        this.permissions = permissions != null ? permissions : new ArrayList<>();
+        this.permissions = permissions != null ? new ArrayList<>(permissions) : new ArrayList<>();
         this.priority = priority;
         this.isStaff = isStaff;
         this.isDonor = isDonor;
         this.parent = parent;
         this.isDefault = isDefault;
+
+        // Auto-grant foliasb.staff to any rank marked staff: true in ranks.yml.
+        // This ensures helper/mod/etc can use staff features like /reports /bug reports, /staff, etc.
+        if (isStaff && !this.permissions.contains("foliasb.staff")) {
+            this.permissions.add("foliasb.staff");
+        }
     }
 
     // Getters
