@@ -116,11 +116,6 @@ commands:
     usage: /<command>
     permission: foliasb.staff
 
-  challenge:
-    description: View daily, weekly, and progression challenges
-    usage: /<command>
-    aliases: [challenges]
-
   trade:
     description: Open the island trading GUI
     usage: /<command>
@@ -447,10 +442,6 @@ permissions:
 
   foliasb.rank:
     description: View ranks, vote, and leaderboards
-    default: true
-
-  foliasb.challenge:
-    description: View and complete challenges
     default: true
 
   foliasb.trade:

@@ -23,7 +23,7 @@ import org.bukkit.event.entity.EntityDeathEvent;
  * - Strictly anti-cheat guarded (isFlaggedForXPExploit + MONITOR like IslandXP/Skill).
  * - No modifications to core anti-cheat, island XP, or skill systems (post-process only).
  * - Folia compatible (events are main-thread; progress is memory only).
- * - Works alongside ChallengeProgressListener (missions) and SkillListener (no conflicts).
+ * - Works alongside MissionProgressListener (missions) and SkillListener (no conflicts).
  *
  * First quests target=1 or low; completing them gives light rewards + free starter cosmetic.
  */

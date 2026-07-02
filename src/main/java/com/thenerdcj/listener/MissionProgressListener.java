@@ -12,11 +12,18 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.inventory.InventoryClickEvent; // for trading simulation
 
-public class ChallengeProgressListener implements Listener {
+/**
+ * Drives the Mission system: translates gameplay events (block break/place, mob
+ * kill, fishing) into {@link com.thenerdcj.mission.MissionManager} progress.
+ *
+ * (Formerly named ChallengeProgressListener — the standalone Challenge system it
+ * was named after was removed in favor of the unified Mission system.)
+ */
+public class MissionProgressListener implements Listener {
 
     private final FoliaSkyblock plugin;
 
-    public ChallengeProgressListener(FoliaSkyblock plugin) {
+    public MissionProgressListener(FoliaSkyblock plugin) {
         this.plugin = plugin;
     }
 

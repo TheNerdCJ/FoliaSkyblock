@@ -23,7 +23,7 @@ import org.bukkit.event.EventHandler;
  * - Generation of daily/weekly quests
  * - Claiming rewards
  * 
- * Currently in-memory (like ChallengeManager). Can be extended with Database persistence.
+ * Currently in-memory. Can be extended with Database persistence.
  */
 public class QuestManager implements org.bukkit.event.Listener {
 

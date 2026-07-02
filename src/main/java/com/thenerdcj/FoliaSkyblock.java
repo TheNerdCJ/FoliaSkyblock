@@ -7,7 +7,6 @@ import com.thenerdcj.auction.AuctionManager;
 import com.thenerdcj.bazaar.BazaarManager;
 import com.thenerdcj.bazaar.BazaarGUI;
 import com.thenerdcj.boss.BossManager;
-import com.thenerdcj.challenge.ChallengeManager;
 import com.thenerdcj.command.*;
 import com.thenerdcj.island.IslandUpgradeGUI;
 import com.thenerdcj.quest.QuestManager;
@@ -63,7 +62,6 @@ public class FoliaSkyblock extends JavaPlugin {
     private IslandManager islandManager;
     private EconomyManager economyManager;
     private RankManager rankManager;
-    private ChallengeManager challengeManager;
     private QuestManager questManager;
     private QuestLogGUI questLogGUI;
     private QuestDetailGUI questDetailGUI;
@@ -259,7 +257,6 @@ public class FoliaSkyblock extends JavaPlugin {
         this.islandManager = new IslandManager(this);
         this.economyManager = new EconomyManager(this);
         this.rankManager = new RankManager(this);
-        this.challengeManager = new ChallengeManager(this);
         this.questManager = new QuestManager(this);
         Bukkit.getPluginManager().registerEvents(questManager, this);
         this.questLogGUI = new QuestLogGUI(this);
@@ -685,9 +682,6 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("rules", new PlayerCommand(this));
 
         // Gameplay
-        safeRegisterCommand("challenge", new ChallengeCommand(this));
-        safeRegisterCommand("challenges", new ChallengeCommand(this));
-        safeRegisterCommand("daily", new ChallengeCommand(this));
         safeRegisterCommand("slayer", new SlayerCommand(this));
         safeRegisterCommand("enchant", new EnchantCommand(this));
         safeRegisterCommand("trail", new ParticleCommand(this));
@@ -881,7 +875,7 @@ public class FoliaSkyblock extends JavaPlugin {
         var pm = getServer().getPluginManager();
 
         pm.registerEvents(new IslandXPListener(this), this);
-        pm.registerEvents(new ChallengeProgressListener(this), this);
+        pm.registerEvents(new MissionProgressListener(this), this);
         pm.registerEvents(islandOreGenerator, this);
         pm.registerEvents(new com.thenerdcj.listener.CropGrowthListener(this, islandUpgradeManager), this);
         pm.registerEvents(new ChestShopListener(this), this);
@@ -956,7 +950,6 @@ public class FoliaSkyblock extends JavaPlugin {
     public IslandSettingsManager getIslandSettingsManager() { return islandSettingsManager; }
     public IslandRatingManager getIslandRatingManager() { return islandRatingManager; }
     public IslandWarpManager getIslandWarpManager() { return islandWarpManager; }
-    public ChallengeManager getChallengeManager() { return challengeManager; }
     public QuestManager getQuestManager() { return questManager; }
     public com.thenerdcj.gui.QuestLogGUI getQuestLogGUI() { return questLogGUI; }
     public com.thenerdcj.gui.QuestDetailGUI getQuestDetailGUI() { return questDetailGUI; }
