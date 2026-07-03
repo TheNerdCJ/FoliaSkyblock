@@ -30,9 +30,16 @@ public class MissionProgressListener implements Listener {
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
-        Material type = event.getBlock().getType();
-        if (plugin.getMissionManager() != null) {
-            plugin.getMissionManager().addProgress(player.getUniqueId(), Mission.ObjectiveType.BREAK_BLOCKS, type.name(), 1);
+        org.bukkit.block.Block block = event.getBlock();
+        Material type = block.getType();
+        if (plugin.getMissionManager() == null) return;
+
+        plugin.getMissionManager().addProgress(player.getUniqueId(), Mission.ObjectiveType.BREAK_BLOCKS, type.name(), 1);
+
+        // Breaking a fully-grown crop also counts toward HARVEST_CROPS missions.
+        if (block.getBlockData() instanceof org.bukkit.block.data.Ageable age
+                && age.getAge() >= age.getMaximumAge()) {
+            plugin.getMissionManager().addProgress(player.getUniqueId(), Mission.ObjectiveType.HARVEST_CROPS, type.name(), 1);
         }
     }
 

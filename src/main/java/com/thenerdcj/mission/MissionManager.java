@@ -1,7 +1,6 @@
 package com.thenerdcj.mission;
 
 import com.thenerdcj.FoliaSkyblock;
-import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -20,6 +19,20 @@ import java.util.concurrent.ThreadLocalRandom;
  * per-island mission system with rich objectives and rewards.
  */
 public class MissionManager {
+
+    /**
+     * Objective types generation is allowed to pick. Restricted to those that actually receive
+     * progress feeds (see MissionProgressListener + BossManager) so no impossible-to-complete
+     * "dead-end" missions are ever generated. Add a type here only once a real feed exists for it.
+     */
+    private static final Mission.ObjectiveType[] SUPPORTED_OBJECTIVES = {
+            Mission.ObjectiveType.BREAK_BLOCKS,
+            Mission.ObjectiveType.PLACE_BLOCKS,
+            Mission.ObjectiveType.KILL_MOBS,
+            Mission.ObjectiveType.HARVEST_CROPS,
+            Mission.ObjectiveType.FISH_ITEMS,
+            Mission.ObjectiveType.COMPLETE_SLAYERS,
+    };
 
     private final FoliaSkyblock plugin;
 
@@ -109,8 +122,8 @@ public class MissionManager {
     private Mission generateRandomMission(String islandKey, int islandLevel, Mission.MissionType type) {
         Random random = ThreadLocalRandom.current();
 
-        Mission.ObjectiveType[] objectives = Mission.ObjectiveType.values();
-        Mission.ObjectiveType objective = objectives[random.nextInt(objectives.length)];
+        // Only pick objectives that have a real progress feed — never generate a dead-end mission.
+        Mission.ObjectiveType objective = SUPPORTED_OBJECTIVES[random.nextInt(SUPPORTED_OBJECTIVES.length)];
 
         int target = switch (objective) {
             case BREAK_BLOCKS, PLACE_BLOCKS -> 150 + (islandLevel * 20);
@@ -178,72 +191,99 @@ public class MissionManager {
         }
     }
 
-    public boolean claimMission(String islandKey, String missionId, Player player) {
+    /**
+     * Claims a completed mission. Money is deposited to the island bank FIRST; the claim is only
+     * finalized (persisted claimed=true, other rewards granted) once the deposit succeeds. If the
+     * deposit fails the reservation is rolled back so the reward is never silently lost and the
+     * player can retry — satisfying the atomic-economy / durable-reward invariants.
+     *
+     * @return a future resolving true if the mission was claimed and rewards delivered.
+     */
+    public CompletableFuture<Boolean> claimMission(String islandKey, String missionId, Player player) {
         List<Mission> missions = missionsByIsland.get(islandKey);
-        if (missions == null) return false;
+        if (missions == null) return CompletableFuture.completedFuture(false);
 
+        Mission found = null;
         for (Mission m : missions) {
-            if (m.getId().equals(missionId) && m.isCompleted() && !m.isClaimed()) {
-                m.setClaimed(true);
-
-                // === Give Rewards ===
-                if (m.getRewardMoney() > 0) {
-                    Island islandForMoney = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-                    if (islandForMoney != null && plugin.getIslandBankManager() != null) {
-                        GridPosition pos = islandForMoney.getGridPosition();
-                        plugin.getIslandBankManager().deposit(pos, m.getRewardMoney()).thenAccept(success -> {
-                            if (success && player.isOnline()) {
-                                player.sendMessage("§a+" + m.getRewardMoney() + " added to island bank from mission!");
-                            }
-                        });
-                    } else {
-                        player.sendMessage("§a+" + m.getRewardMoney() + " Island Money (no island bank available)");
-                    }
-                }
-
-                if (m.getRewardIslandXp() > 0 && plugin.getIslandManager() != null) {
-                    plugin.getIslandManager().addIslandXp(player, m.getRewardIslandXp());
-                }
-
-                Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
-                if (m.getRewardWorth() > 0 && plugin.getIslandWorthManager() != null && island != null) {
-                    plugin.getIslandWorthManager().invalidateCache(island);
-                    plugin.getIslandWorthManager().recalculateAndUpdate(island);
-                    player.sendMessage("§a+" + m.getRewardWorth() + " Island Worth from mission!");
-                }
-
-                // Booster reward from mission (the key finishing item for booster system)
-                if (m.getRewardBoosterType() != null && m.getRewardBoosterDurationMinutes() > 0
-                        && plugin.getBoosterManager() != null && island != null) {
-                    double mult = plugin.getConfig().getDouble("boosters.multipliers." + m.getRewardBoosterType().name(), 2.0);
-                    long durMillis = (long) m.getRewardBoosterDurationMinutes() * 60 * 1000;
-                    plugin.getBoosterManager().activateBooster(island, m.getRewardBoosterType(), mult, durMillis);
-                    player.sendMessage("§aBooster rewarded: §e" + m.getRewardBoosterType().getDisplayName()
-                            + " §7x" + String.format("%.1f", mult) + " for " + m.getRewardBoosterDurationMinutes() + "m");
-                }
-
-                // Deserialize and give item reward if present
-                if (m.getRewardItemBase64() != null && !m.getRewardItemBase64().isEmpty()) {
-                    try {
-                        byte[] data = java.util.Base64.getDecoder().decode(m.getRewardItemBase64());
-                        java.io.ByteArrayInputStream inputStream = new java.io.ByteArrayInputStream(data);
-                        org.bukkit.util.io.BukkitObjectInputStream dataInput = new org.bukkit.util.io.BukkitObjectInputStream(inputStream);
-                        ItemStack rewardItem = (ItemStack) dataInput.readObject();
-                        dataInput.close();
-                        player.getInventory().addItem(rewardItem);
-                        player.sendMessage("§aYou received a mission reward item!");
-                    } catch (Exception e) {
-                        plugin.getLogger().warning("Failed to deserialize mission item reward: " + e.getMessage());
-                    }
-                }
-
-                // Save updated mission
-                saveMission(m);
-
-                return true;
-            }
+            if (m.getId().equals(missionId)) { found = m; break; }
         }
-        return false;
+        if (found == null) return CompletableFuture.completedFuture(false);
+        final Mission mission = found;
+
+        // Atomically reserve the claim: exactly one caller wins even under concurrent clicks or
+        // two island members claiming at once on different region threads.
+        if (!mission.tryClaim()) return CompletableFuture.completedFuture(false);
+
+        // Anchor reward delivery to the canonical (NORMAL) island the missions live on.
+        final Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), World.Environment.NORMAL);
+
+        // Deposit money first; only finalize if it actually lands.
+        final CompletableFuture<Boolean> moneyFuture;
+        if (mission.getRewardMoney() > 0) {
+            if (island != null && plugin.getIslandBankManager() != null) {
+                moneyFuture = plugin.getIslandBankManager().deposit(island.getGridPosition(), mission.getRewardMoney());
+            } else {
+                moneyFuture = CompletableFuture.completedFuture(false); // no bank -> not delivered
+            }
+        } else {
+            moneyFuture = CompletableFuture.completedFuture(true); // nothing owed
+        }
+
+        return moneyFuture.exceptionally(ex -> false).thenApply(delivered -> {
+            if (mission.getRewardMoney() > 0 && !Boolean.TRUE.equals(delivered)) {
+                // Roll back the reservation — nothing was paid, so let the player try again later.
+                mission.setClaimed(false);
+                plugin.getThreadSafety().sendMessageSafely(player,
+                        "§cMission claim failed (island bank unavailable). Please try again.");
+                return false;
+            }
+            if (mission.getRewardMoney() > 0) {
+                plugin.getThreadSafety().sendMessageSafely(player,
+                        "§a+" + mission.getRewardMoney() + " added to your island bank from a mission!");
+            }
+            grantNonMoneyRewards(mission, player, island);
+            saveMission(mission); // persist claimed=true only after money is delivered
+            return true;
+        });
+    }
+
+    /** Grants XP / worth / booster / item rewards on the main thread (durable item delivery). */
+    private void grantNonMoneyRewards(Mission mission, Player player, Island island) {
+        plugin.getThreadSafety().runOnMainThread(() -> {
+            if (mission.getRewardIslandXp() > 0 && plugin.getIslandManager() != null) {
+                plugin.getIslandManager().addIslandXp(player, mission.getRewardIslandXp());
+            }
+
+            if (mission.getRewardWorth() > 0 && plugin.getIslandWorthManager() != null && island != null) {
+                plugin.getIslandWorthManager().invalidateCache(island);
+                plugin.getIslandWorthManager().recalculateAndUpdate(island);
+                player.sendMessage("§a+" + mission.getRewardWorth() + " Island Worth from mission!");
+            }
+
+            if (mission.getRewardBoosterType() != null && mission.getRewardBoosterDurationMinutes() > 0
+                    && plugin.getBoosterManager() != null && island != null) {
+                double mult = plugin.getConfig().getDouble("boosters.multipliers." + mission.getRewardBoosterType().name(), 2.0);
+                long durMillis = (long) mission.getRewardBoosterDurationMinutes() * 60 * 1000;
+                plugin.getBoosterManager().activateBooster(island, mission.getRewardBoosterType(), mult, durMillis);
+                player.sendMessage("§aBooster rewarded: §e" + mission.getRewardBoosterType().getDisplayName()
+                        + " §7x" + String.format("%.1f", mult) + " for " + mission.getRewardBoosterDurationMinutes() + "m");
+            }
+
+            if (mission.getRewardItemBase64() != null && !mission.getRewardItemBase64().isEmpty()) {
+                try {
+                    byte[] data = java.util.Base64.getDecoder().decode(mission.getRewardItemBase64());
+                    java.io.ByteArrayInputStream inputStream = new java.io.ByteArrayInputStream(data);
+                    org.bukkit.util.io.BukkitObjectInputStream dataInput = new org.bukkit.util.io.BukkitObjectInputStream(inputStream);
+                    ItemStack rewardItem = (ItemStack) dataInput.readObject();
+                    dataInput.close();
+                    // Durable: giveItemSafely stashes a pending item if the player is offline/full.
+                    plugin.getThreadSafety().giveItemSafely(player.getUniqueId(), rewardItem,
+                            "§aYou received a mission reward item!");
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Failed to deserialize mission item reward: " + e.getMessage());
+                }
+            }
+        });
     }
 
     // Called periodically or on player login

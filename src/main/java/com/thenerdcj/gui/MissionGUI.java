@@ -162,20 +162,19 @@ public class MissionGUI implements Listener {
         String missionId = pdc.get(MISSION_ID_KEY, PersistentDataType.STRING);
         if (missionId == null) return;
 
-        // Find the mission and attempt claim
+        // Find the mission and attempt claim (async: money is deposited before the claim finalizes)
         for (Mission m : currentMissions) {
             if (m.getId().equals(missionId)) {
                 if (m.isCompleted() && !m.isClaimed()) {
-                    boolean success = plugin.getMissionManager().claimMission(getIslandKey(player), missionId, player);
-
-                    if (success) {
-                        SoundUtil.reward(player);
-                        player.sendMessage("§aMission claimed! Rewards granted.");
-                        // Refresh GUI
-                        open(player, 0);
-                    } else {
-                        player.sendMessage("§cFailed to claim mission.");
-                    }
+                    plugin.getMissionManager().claimMission(getIslandKey(player), missionId, player)
+                            .thenAccept(success -> plugin.getThreadSafety().runOnMainThread(() -> {
+                                if (Boolean.TRUE.equals(success)) {
+                                    SoundUtil.reward(player);
+                                    open(player, 0); // refresh; reward messages come from claimMission
+                                } else {
+                                    player.sendMessage("§cThis mission could not be claimed.");
+                                }
+                            }));
                 } else {
                     player.sendMessage("§cThis mission is not ready to claim.");
                 }

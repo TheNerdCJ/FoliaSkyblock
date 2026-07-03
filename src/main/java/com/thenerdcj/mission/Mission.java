@@ -139,7 +139,7 @@ public class Mission {
         return completed || progress >= target;
     }
 
-    public boolean isClaimed() {
+    public synchronized boolean isClaimed() {
         return claimed;
     }
 
@@ -147,8 +147,24 @@ public class Mission {
         return System.currentTimeMillis() > expiresAt;
     }
 
-    public void setClaimed(boolean claimed) {
+    public synchronized void setClaimed(boolean claimed) {
         this.claimed = claimed;
+    }
+
+    /**
+     * Atomically reserves this mission for claiming: succeeds for exactly one caller when the
+     * mission is completed and not yet claimed. Prevents two island members (or double-clicks on
+     * different region threads) from both paying out the same reward. On a failed reward delivery
+     * the caller should roll this back via {@link #setClaimed(boolean) setClaimed(false)}.
+     */
+    public synchronized boolean tryClaim() {
+        if (claimed || !isCompletedInternal()) return false;
+        claimed = true;
+        return true;
+    }
+
+    private boolean isCompletedInternal() {
+        return completed || progress >= target;
     }
 
     public double getProgressPercent() {
