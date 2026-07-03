@@ -185,7 +185,10 @@ public class MissionGUI implements Listener {
     }
 
     private String getIslandKey(Player player) {
-        com.thenerdcj.island.Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), player.getWorld().getEnvironment());
+        // Anchor to the overworld (NORMAL) island so the GUI shows — and claims from — the same
+        // canonical mission set that generation and progress tracking use, regardless of which
+        // dimension the player opened the GUI in.
+        com.thenerdcj.island.Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), org.bukkit.World.Environment.NORMAL);
         if (island != null) {
             return island.getId();
         }

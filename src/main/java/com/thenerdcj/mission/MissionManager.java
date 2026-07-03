@@ -3,12 +3,14 @@ package com.thenerdcj.mission;
 import com.thenerdcj.FoliaSkyblock;
 import com.thenerdcj.database.GridPosition;
 import com.thenerdcj.island.Island;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -21,12 +23,21 @@ public class MissionManager {
 
     private final FoliaSkyblock plugin;
 
-    // islandKey -> active missions
+    // islandKey -> active missions. Values are CopyOnWriteArrayList so region threads can
+    // feed progress (addProgress) while the main thread generates/prunes without a CME.
     private final Map<String, List<Mission>> missionsByIsland = new ConcurrentHashMap<>();
+
+    // Islands whose persisted missions have already been pulled into memory this server run
+    // (mirrors QuestManager.ensureActiveQuestsLoaded — load once, never clobber live progress).
+    private final Set<String> loadedFromDb = ConcurrentHashMap.newKeySet();
 
     public MissionManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
-        // Future: load from DB on startup
+    }
+
+    /** Per-island mission list, created thread-safe on first touch. */
+    private List<Mission> islandList(String islandKey) {
+        return missionsByIsland.computeIfAbsent(islandKey, k -> new CopyOnWriteArrayList<>());
     }
 
     public CompletableFuture<List<Mission>> getMissionsForIsland(String islandKey) {
@@ -36,8 +47,36 @@ public class MissionManager {
         });
     }
 
+    /**
+     * Entry point used before opening the mission GUI: loads persisted missions once, then
+     * tops up daily/weekly generation in memory. Returns a future that completes when the
+     * island's missions are ready to display.
+     */
+    public CompletableFuture<Void> ensureMissionsReady(String islandKey, int islandLevel) {
+        if (loadedFromDb.contains(islandKey)) {
+            refreshMissionsForIsland(islandKey, islandLevel);
+            return CompletableFuture.completedFuture(null);
+        }
+        return plugin.getDatabaseManager().loadMissionsForIsland(islandKey).thenAccept(loaded -> {
+            List<Mission> current = islandList(islandKey);
+            for (Mission m : loaded) {
+                if (current.stream().noneMatch(existing -> existing.getId().equals(m.getId()))) {
+                    current.add(m);
+                }
+            }
+            loadedFromDb.add(islandKey);
+            refreshMissionsForIsland(islandKey, islandLevel);
+        }).exceptionally(ex -> {
+            plugin.getLogger().warning("[MissionManager] Failed to load missions for " + islandKey + ": " + ex.getMessage());
+            // Still allow fresh generation so the GUI isn't permanently empty on a DB hiccup.
+            loadedFromDb.add(islandKey);
+            refreshMissionsForIsland(islandKey, islandLevel);
+            return null;
+        });
+    }
+
     public void generateDailyMissions(String islandKey, int islandLevel) {
-        List<Mission> current = missionsByIsland.computeIfAbsent(islandKey, k -> new ArrayList<>());
+        List<Mission> current = islandList(islandKey);
 
         // Remove expired or claimed dailies
         current.removeIf(m -> m.getType() == Mission.MissionType.DAILY && (m.isExpired() || m.isClaimed()));
@@ -53,7 +92,7 @@ public class MissionManager {
     }
 
     public void generateWeeklyMissions(String islandKey, int islandLevel) {
-        List<Mission> current = missionsByIsland.computeIfAbsent(islandKey, k -> new ArrayList<>());
+        List<Mission> current = islandList(islandKey);
 
         current.removeIf(m -> m.getType() == Mission.MissionType.WEEKLY && (m.isExpired() || m.isClaimed()));
 
@@ -109,7 +148,11 @@ public class MissionManager {
     }
 
     public void addProgress(UUID playerUuid, Mission.ObjectiveType objective, String material, int amount) {
-        Island island = plugin.getIslandManager().getIsland(playerUuid, null);
+        // Missions are anchored to the player's overworld (NORMAL) island so progress from any
+        // dimension accrues to one canonical place — the same key generation and the GUI use.
+        // (The old code passed a null dimension, which IslandManager.getIsland always rejects,
+        // so every progress event was silently dropped.)
+        Island island = plugin.getIslandManager().getIsland(playerUuid, World.Environment.NORMAL);
         if (island == null) return;
 
         String key = island.getId();
@@ -213,8 +256,8 @@ public class MissionManager {
      * Load missions from DB into memory (called on island load).
      */
     public void loadMissionsForIsland(String islandKey, List<Mission> loaded) {
-        missionsByIsland.put(islandKey, new ArrayList<>(loaded));
-        // Also ensure fresh generation if needed
+        missionsByIsland.put(islandKey, new CopyOnWriteArrayList<>(loaded));
+        loadedFromDb.add(islandKey);
     }
 
     public CompletableFuture<Boolean> saveMission(Mission mission) {

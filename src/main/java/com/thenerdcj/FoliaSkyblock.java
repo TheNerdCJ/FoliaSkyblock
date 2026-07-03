@@ -65,6 +65,7 @@ public class FoliaSkyblock extends JavaPlugin {
     private QuestManager questManager;
     private QuestLogGUI questLogGUI;
     private QuestDetailGUI questDetailGUI;
+    private com.thenerdcj.gui.MissionGUI missionGUI;
     private BossManager bossManager;
     private AntiCheatManager antiCheatManager;
     private IslandUpgradeManager islandUpgradeManager;
@@ -287,6 +288,7 @@ public class FoliaSkyblock extends JavaPlugin {
         // Island Worth / Level + Economy sinks
         this.islandWorthManager = new IslandWorthManager(this);
         this.missionManager = new MissionManager(this);
+        this.missionGUI = new com.thenerdcj.gui.MissionGUI(this); // auto-registers as listener
         this.boosterManager = new BoosterManager(this);
         this.boosterGUI = new BoosterGUI(this);
         this.islandShopManager = new IslandShopManager(this);
@@ -793,6 +795,33 @@ public class FoliaSkyblock extends JavaPlugin {
         safeRegisterCommand("quest", questsExecutor);
         safeRegisterCommand("daily", questsExecutor);
         safeRegisterCommand("dailies", questsExecutor);
+
+        // Island missions (daily + weekly). Reclaims the /challenge alias freed by removing the
+        // dead Challenge system — missions are the canonical daily/weekly engine.
+        var missionsExecutor = (org.bukkit.command.CommandExecutor) (sender, cmd, label, args) -> {
+            if (sender instanceof Player player) {
+                // Anchor on the overworld island so /missions works from any dimension.
+                com.thenerdcj.island.Island island = getIslandManager().getIsland(player.getUniqueId(), World.Environment.NORMAL);
+                if (island == null) {
+                    player.sendMessage(MessageUtil.legacy("§cYou need an island to view missions. Use §e/island create§c first."));
+                    return true;
+                }
+                if (missionManager != null && missionGUI != null) {
+                    String islandKey = island.getId();
+                    int level = island.getLevel();
+                    // Load persisted missions + top up generation, then open on the main thread.
+                    missionManager.ensureMissionsReady(islandKey, level)
+                            .thenRun(() -> getThreadSafety().runOnMainThread(() -> missionGUI.open(player, 0)));
+                }
+                return true;
+            }
+            sender.sendMessage(MessageUtil.legacy("§cThis command can only be used by players."));
+            return true;
+        };
+        safeRegisterCommand("missions", missionsExecutor);
+        safeRegisterCommand("mission", missionsExecutor);
+        safeRegisterCommand("challenge", missionsExecutor);
+        safeRegisterCommand("challenges", missionsExecutor);
 
         // Advanced Overhead Cosmetics command (foundation test)
         safeRegisterCommand("overhead", new OverheadCosmeticCommand(this));

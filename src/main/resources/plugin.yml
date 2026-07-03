@@ -116,6 +116,11 @@ commands:
     usage: /<command>
     permission: foliasb.staff
 
+  missions:
+    description: View and claim your island's daily and weekly missions
+    usage: /<command>
+    aliases: [mission, challenge, challenges]
+
   trade:
     description: Open the island trading GUI
     usage: /<command>
