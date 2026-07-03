@@ -47,6 +47,11 @@ public class DimensionIslandListener implements Listener {
             Island island = plugin.getIslandManager().getIsland(player.getUniqueId(), World.Environment.NORMAL);
             if (island != null) {
                 player.sendMessage("§aWelcome back! Your island is level §e" + island.getLevel());
+                // Prepare missions at login (load persisted + top up daily/weekly) so progress is
+                // tracked from the moment they play, not only after they open the missions GUI.
+                if (plugin.getMissionManager() != null) {
+                    plugin.getMissionManager().ensureMissionsReady(island.getId(), island.getLevel());
+                }
             } else {
                 // Post-seasonal reset (or brand new player): force teleport to protected spawn area.
                 // This ensures a clean "first join again" experience after wipes. Cosmetics persist via DB.

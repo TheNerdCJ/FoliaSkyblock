@@ -44,8 +44,27 @@ public class MissionManager {
     // (mirrors QuestManager.ensureActiveQuestsLoaded — load once, never clobber live progress).
     private final Set<String> loadedFromDb = ConcurrentHashMap.newKeySet();
 
+    // Islands with in-progress mission changes not yet persisted. Flushed periodically so a
+    // restart doesn't lose progress (completed/claimed missions are already saved immediately).
+    private final Set<String> dirtyIslands = ConcurrentHashMap.newKeySet();
+
     public MissionManager(FoliaSkyblock plugin) {
         this.plugin = plugin;
+        // Auto-save in-progress missions every 2 minutes (2400 ticks).
+        plugin.getThreadSafety().runRepeatingOnMainThread(this::flushDirtyMissions, 2400L, 2400L);
+    }
+
+    /** Persists in-progress missions for islands that advanced since the last flush. */
+    public void flushDirtyMissions() {
+        if (dirtyIslands.isEmpty()) return;
+        for (String key : new ArrayList<>(dirtyIslands)) {
+            dirtyIslands.remove(key);
+            List<Mission> missions = missionsByIsland.get(key);
+            if (missions == null) continue;
+            for (Mission m : missions) {
+                if (!m.isClaimed()) saveMission(m);
+            }
+        }
     }
 
     /** Per-island mission list, created thread-safe on first touch. */
@@ -187,7 +206,8 @@ public class MissionManager {
         }
 
         if (anyUpdated) {
-            // Could notify player here if desired
+            // Mark for the periodic flush so in-progress advances survive a restart.
+            dirtyIslands.add(key);
         }
     }
 

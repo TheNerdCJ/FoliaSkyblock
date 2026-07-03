@@ -148,6 +148,21 @@ class MissionManagerTest extends TestBase {
         assertFalse(m.isClaimed(), "a failed deposit must roll back the claim so the reward isn't lost");
     }
 
+    @Test
+    void testFlushDirtyMissions_PersistsAdvancedMissions() {
+        when(mockDatabaseManager.saveMission(any(Mission.class)))
+                .thenReturn(CompletableFuture.completedFuture(true));
+
+        missionManager.generateDailyMissions(ISLAND_KEY, 10);
+        Mission target = missionManager.getMissionsForIsland(ISLAND_KEY).join().get(0);
+        missionManager.addProgress(player.getUniqueId(),
+                target.getObjective(), target.getTargetMaterial(), 1);
+
+        missionManager.flushDirtyMissions();
+
+        verify(mockDatabaseManager, atLeastOnce()).saveMission(any(Mission.class));
+    }
+
     /** A daily mission already at target (completed, unclaimed) that rewards money. */
     private Mission completedMoneyMission(String id, int money) {
         long now = System.currentTimeMillis();
